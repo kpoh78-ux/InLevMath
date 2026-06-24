@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity,
-  StyleSheet, SafeAreaView, TextInput, Alert,
+  StyleSheet, TextInput, Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import { APP_LIMITS, MISSION_LABELS, MissionType } from '@inlevmath/shared'
 import { LevelBadge } from '../../components/LevelBadge'

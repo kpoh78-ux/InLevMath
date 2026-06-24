@@ -1,4 +1,3 @@
-import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { MissionType, MISSION_LABELS, MISSION_LEVEL } from '@inlevmath/shared'
 import { Colors } from '../constants/colors'

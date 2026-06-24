@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert, SafeAreaView,
+  StyleSheet, ScrollView, Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '../../constants/colors'
 import {
   MissionType, ResultSource,

@@ -1,10 +1,19 @@
-import React from 'react'
-import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native'
+import { useState, useCallback } from 'react'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ToastAndroid, Platform, Alert } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
+import { useEvents } from '../../store/useEvents'
 import { LevelBadge } from '../../components/LevelBadge'
 import { Colors } from '../../constants/colors'
 import { APP_LIMITS, MISSION_LABELS, MissionType } from '@inlevmath/shared'
+
+function showToast(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT)
+  else Alert.alert('알림', msg)
+}
+
+type LiveAlert = { studentName: string; missionType: MissionType; correctRate: number; missionCleared: boolean }
 
 // TODO: 실제 데이터는 API에서 가져옴
 const MOCK_STUDENTS = [
@@ -16,7 +25,27 @@ const MOCK_STUDENTS = [
 
 export default function TeacherDashboard() {
   const { user, signOut } = useAuth()
+  const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([])
   const studentCount = MOCK_STUDENTS.length
+
+  // SSE: 학생이 미션 결과 입력하면 선생님에게 실시간 알림
+  const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
+    if (event.type === 'MISSION_RESULT') {
+      const alert: LiveAlert = {
+        studentName: event.studentName as string,
+        missionType: event.missionType as MissionType,
+        correctRate: event.correctRate as number,
+        missionCleared: event.missionCleared as boolean,
+      }
+      setLiveAlerts(prev => [alert, ...prev].slice(0, 5))
+      const msg = alert.missionCleared
+        ? `🏆 ${alert.studentName} — ${MISSION_LABELS[alert.missionType]} 미션 클리어!`
+        : `📝 ${alert.studentName} — ${MISSION_LABELS[alert.missionType]} ${alert.correctRate}% 제출`
+      showToast(msg)
+    }
+  }, [])
+
+  useEvents(onEvent)
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -32,6 +61,22 @@ export default function TeacherDashboard() {
             <Text style={styles.logout}>로그아웃</Text>
           </TouchableOpacity>
         </View>
+
+        {/* 실시간 알림 */}
+        {liveAlerts.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>실시간 알림 🔴</Text>
+            {liveAlerts.map((a, i) => (
+              <View key={i} style={[styles.alertRow, a.missionCleared && styles.alertCleared]}>
+                <Text style={styles.alertText}>
+                  {a.missionCleared ? '🏆' : '📝'} {a.studentName}
+                  <Text style={{ color: Colors.mission[a.missionType] }}> {MISSION_LABELS[a.missionType]}</Text>
+                  {' '}{a.correctRate}%{a.missionCleared ? ' 클리어!' : ''}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* 통계 요약 */}
         <View style={styles.statsRow}>
@@ -92,6 +137,12 @@ const styles = StyleSheet.create({
   greeting: { color: Colors.subtext, fontSize: 14 },
   name: { color: Colors.white, fontSize: 20, fontWeight: '800' },
   logout: { color: Colors.subtext, fontSize: 13 },
+  alertRow: {
+    backgroundColor: Colors.cardAlt, borderRadius: 10,
+    padding: 12, marginBottom: 6,
+  },
+  alertCleared: { backgroundColor: '#1a3d2e' },
+  alertText: { color: Colors.white, fontSize: 13 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   statCard: {
     flex: 1, backgroundColor: Colors.card,

@@ -1,27 +1,48 @@
-import React from 'react'
+import { useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView,
+  StyleSheet, ToastAndroid, Platform, Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
+import { useEvents } from '../../store/useEvents'
 import { AbilityBar } from '../../components/AbilityBar'
 import { LevelBadge } from '../../components/LevelBadge'
 import { MissionCard } from '../../components/MissionCard'
 import { Colors } from '../../constants/colors'
 import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore } from '@inlevmath/shared'
 
-// TODO: 실제 데이터는 API에서 가져옴 — 임시 Mock 데이터
-const MOCK_PROGRESS = {
+const INITIAL_PROGRESS = {
   currentLevel: 3,
   currentMission: 'basic_problem' as MissionType,
   abilityScore: { comprehension: 72, reasoning: 58, calculation: 45 } as AbilityScore,
   clearedMissions: ['concept_learning', 'concept_problem'] as MissionType[],
 }
 
+function showToast(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT)
+  else Alert.alert('알림', msg)
+}
+
 export default function StudentDashboard() {
   const { user, signOut } = useAuth()
-  const { currentLevel, currentMission, abilityScore, clearedMissions } = MOCK_PROGRESS
+  const [progress, setProgress] = useState(INITIAL_PROGRESS)
+  const { currentLevel, currentMission, abilityScore, clearedMissions } = progress
+
+  // SSE 실시간 이벤트 수신 — 레벨업 알림
+  const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
+    if (event.type === 'LEVEL_UP') {
+      showToast('🎉 미션 클리어! 다음 레벨로 올라갔어요!')
+      // TODO: API에서 최신 progress fetch 후 setProgress
+      setProgress(prev => ({
+        ...prev,
+        currentLevel: prev.currentLevel + 1,
+      }))
+    }
+  }, [])
+
+  useEvents(onEvent)
 
   const currentMissionColor = Colors.mission[currentMission]
 
@@ -97,22 +118,13 @@ const styles = StyleSheet.create({
   name: { color: Colors.white, fontSize: 20, fontWeight: '800' },
   logout: { color: Colors.subtext, fontSize: 13 },
   levelCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
+    backgroundColor: Colors.card, borderRadius: 16,
+    padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 24,
   },
   levelInfo: { flex: 1, marginLeft: 20 },
   levelTitle: { color: Colors.subtext, fontSize: 12, marginBottom: 4 },
   missionName: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  inputBtn: {
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    alignSelf: 'flex-start',
-  },
+  inputBtn: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, alignSelf: 'flex-start' },
   inputBtnText: { color: Colors.bg, fontSize: 13, fontWeight: '700' },
   section: { marginBottom: 24 },
   sectionTitle: { color: Colors.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },

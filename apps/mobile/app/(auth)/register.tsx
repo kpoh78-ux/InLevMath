@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator, Alert,
@@ -6,7 +6,7 @@ import {
 import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
 import { Colors } from '../../constants/colors'
-import { APP_LIMITS, UserRole } from '@inlevmath/shared'
+import { APP_LIMITS } from '@inlevmath/shared'
 
 export default function RegisterScreen() {
   const { signIn } = useAuth()

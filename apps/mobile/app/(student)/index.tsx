@@ -56,9 +56,14 @@ export default function StudentDashboard() {
             <Text style={styles.greeting}>안녕하세요,</Text>
             <Text style={styles.name}>{user?.name} 학생 🎮</Text>
           </View>
-          <TouchableOpacity onPress={signOut}>
-            <Text style={styles.logout}>로그아웃</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => router.push('/(student)/change-password')}>
+              <Text style={styles.pwChange}>비밀번호 변경</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={signOut}>
+              <Text style={styles.logout}>로그아웃</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 레벨 카드 */}
@@ -116,6 +121,8 @@ const styles = StyleSheet.create({
   },
   greeting: { color: Colors.subtext, fontSize: 14 },
   name: { color: Colors.white, fontSize: 20, fontWeight: '800' },
+  headerRight: { alignItems: 'flex-end', gap: 4 },
+  pwChange: { color: Colors.secondary, fontSize: 11 },
   logout: { color: Colors.subtext, fontSize: 13 },
   levelCard: {
     backgroundColor: Colors.card, borderRadius: 16,

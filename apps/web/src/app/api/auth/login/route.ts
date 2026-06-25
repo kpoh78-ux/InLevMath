@@ -4,13 +4,13 @@ import { prisma } from '@/lib/db'
 import { signToken } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json()
+  const { phone, password } = await req.json()
 
-  if (!email || !password) {
-    return NextResponse.json({ error: '이메일과 비밀번호를 입력하세요.' }, { status: 400 })
+  if (!phone || !password) {
+    return NextResponse.json({ error: '핸드폰번호와 비밀번호를 입력하세요.' }, { status: 400 })
   }
 
-  const user = await prisma.user.findUnique({ where: { email } })
+  const user = await prisma.user.findUnique({ where: { phone } })
   if (!user) {
     return NextResponse.json({ error: '계정을 찾을 수 없습니다.' }, { status: 401 })
   }
@@ -24,8 +24,11 @@ export async function POST(req: NextRequest) {
     sub: user.id,
     role: user.role as 'student' | 'teacher',
     name: user.name,
-    email: user.email,
+    phone: user.phone,
   })
 
-  return NextResponse.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } })
+  return NextResponse.json({
+    token,
+    user: { id: user.id, name: user.name, phone: user.phone, role: user.role },
+  })
 }

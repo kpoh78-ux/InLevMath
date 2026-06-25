@@ -6,33 +6,37 @@ import {
 import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
 import { Colors } from '../../constants/colors'
-import { APP_LIMITS } from '@inlevmath/shared'
 
 export default function RegisterScreen() {
   const { signIn } = useAuth()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
-  const [code, setCode] = useState('')   // 학원 등록 코드 (선생님 발급)
   const [loading, setLoading] = useState(false)
 
   const handleRegister = async () => {
-    if (!name.trim() || !email.trim() || !password.trim() || !code.trim()) {
+    if (!name.trim() || !phone.trim() || !password.trim()) {
       Alert.alert('입력 오류', '모든 항목을 입력해주세요.')
+      return
+    }
+    if (!/^\d{11}$/.test(phone.trim())) {
+      Alert.alert('입력 오류', '핸드폰번호는 숫자 11자리로 입력해주세요.\n예) 01012345678')
+      return
+    }
+    if (password.length < 6) {
+      Alert.alert('입력 오류', '비밀번호는 6자 이상으로 설정해주세요.')
       return
     }
     setLoading(true)
     try {
-      // TODO: 실제 API 연동
-      // 학원 코드 검증 → 학생으로 등록
-      // 등록 전 서버에서 maxStudents(100) 초과 여부 확인
+      // TODO: 실제 API 연동 — POST /api/auth/register
       await new Promise(r => setTimeout(r, 800))
       await signIn(
-        { id: 'student-new', name, email, role: 'student' },
-        'mock-token-new'
+        { id: 'teacher-new', name, phone, role: 'teacher' },
+        'mock-token-teacher-new'
       )
     } catch {
-      Alert.alert('가입 실패', '학원 등록 코드를 확인해주세요.')
+      Alert.alert('등록 실패', '이미 사용 중인 핸드폰번호이거나 선생님 등록 한도를 초과했습니다.')
     } finally {
       setLoading(false)
     }
@@ -45,11 +49,8 @@ export default function RegisterScreen() {
       </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.title}>학생 계정 만들기</Text>
-        <Text style={styles.subtitle}>
-          선생님께 학원 등록 코드를 받아 가입하세요{'\n'}
-          (학생 최대 {APP_LIMITS.maxStudents}명)
-        </Text>
+        <Text style={styles.title}>선생님 계정 만들기</Text>
+        <Text style={styles.subtitle}>선생님 계정은 최대 3명까지 등록 가능합니다</Text>
       </View>
 
       <View style={styles.form}>
@@ -62,42 +63,32 @@ export default function RegisterScreen() {
           onChangeText={setName}
         />
 
-        <Text style={styles.label}>이메일</Text>
+        <Text style={styles.label}>핸드폰번호 (아이디)</Text>
         <TextInput
           style={styles.input}
-          placeholder="이메일을 입력하세요"
+          placeholder="01012345678"
           placeholderTextColor={Colors.subtext}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="number-pad"
+          maxLength={11}
         />
 
-        <Text style={styles.label}>비밀번호</Text>
+        <Text style={styles.label}>비밀번호 (6자 이상)</Text>
         <TextInput
           style={styles.input}
-          placeholder="비밀번호 (6자 이상)"
+          placeholder="비밀번호를 설정하세요"
           placeholderTextColor={Colors.subtext}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
-        <Text style={styles.label}>학원 등록 코드</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="선생님께 받은 코드를 입력하세요"
-          placeholderTextColor={Colors.subtext}
-          value={code}
-          onChangeText={setCode}
-          autoCapitalize="characters"
-        />
-
         <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
           {loading ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
-            <Text style={styles.btnText}>가입 완료</Text>
+            <Text style={styles.btnText}>선생님 계정 만들기</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -106,12 +97,7 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: Colors.bg,
-    paddingHorizontal: 28,
-    paddingTop: 60,
-  },
+  container: { flexGrow: 1, backgroundColor: Colors.bg, paddingHorizontal: 28, paddingTop: 60 },
   backBtn: { marginBottom: 24 },
   backText: { color: Colors.subtext, fontSize: 14 },
   header: { marginBottom: 32 },

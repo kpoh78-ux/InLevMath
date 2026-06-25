@@ -3,38 +3,41 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator, Alert,
 } from 'react-native'
-import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
 import { Colors } from '../../constants/colors'
 
 export default function LoginScreen() {
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('입력 오류', '이메일과 비밀번호를 입력해주세요.')
+    if (!phone.trim() || !password.trim()) {
+      Alert.alert('입력 오류', '핸드폰번호와 비밀번호를 입력해주세요.')
+      return
+    }
+    if (!/^\d{11}$/.test(phone.trim())) {
+      Alert.alert('입력 오류', '핸드폰번호는 숫자 11자리로 입력해주세요.\n예) 01012345678')
       return
     }
     setLoading(true)
     try {
       // TODO: 실제 API 연동 — 임시 Mock 로그인
       await new Promise(r => setTimeout(r, 800))
-      // 선생님 계정 테스트: teacher@inlevmath.com
-      const isTeacher = email.includes('teacher')
+      // 선생님 테스트: 01011111111 / 학생: 그 외 번호
+      const isTeacher = phone === '01011111111'
       await signIn(
         {
           id: isTeacher ? 'teacher-1' : 'student-1',
           name: isTeacher ? '오근표 선생님' : '홍길동',
-          email,
+          phone,
           role: isTeacher ? 'teacher' : 'student',
         },
         'mock-token-123'
       )
     } catch {
-      Alert.alert('로그인 실패', '이메일 또는 비밀번호를 확인해주세요.')
+      Alert.alert('로그인 실패', '핸드폰번호 또는 비밀번호를 확인해주세요.')
     } finally {
       setLoading(false)
     }
@@ -48,15 +51,15 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.form}>
-        <Text style={styles.label}>이메일</Text>
+        <Text style={styles.label}>핸드폰번호 (아이디)</Text>
         <TextInput
           style={styles.input}
-          placeholder="이메일을 입력하세요"
+          placeholder="01012345678"
           placeholderTextColor={Colors.subtext}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="number-pad"
+          maxLength={11}
         />
 
         <Text style={styles.label}>비밀번호</Text>
@@ -69,17 +72,14 @@ export default function LoginScreen() {
           secureTextEntry
         />
 
+        <Text style={styles.hint}>학생 초기 비밀번호: math1234</Text>
+
         <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
           {loading ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
             <Text style={styles.btnText}>로그인</Text>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/(auth)/register')}>
-          <Text style={styles.linkText}>계정이 없으신가요? </Text>
-          <Text style={[styles.linkText, styles.linkBold]}>가입하기</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -107,6 +107,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  hint: { color: Colors.subtext, fontSize: 12, marginTop: 8, textAlign: 'center' },
   btn: {
     backgroundColor: Colors.primary,
     borderRadius: 10,
@@ -115,7 +116,4 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   btnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  linkText: { color: Colors.subtext, fontSize: 14 },
-  linkBold: { color: Colors.primary, fontWeight: '700' },
 })

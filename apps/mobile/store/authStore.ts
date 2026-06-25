@@ -5,7 +5,7 @@ import { UserRole } from '@inlevmath/shared'
 interface AuthUser {
   id: string
   name: string
-  email: string
+  phone: string   // 핸드폰번호 = 로그인 아이디
   role: UserRole
 }
 

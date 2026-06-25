@@ -10,15 +10,13 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   name      String
-  email     String   @unique
+  phone     String   @unique  // 11자리 핸드폰번호 = 로그인 아이디
   password  String
   role      Role
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 선생님 관계
   teacher   Teacher?
-  // 학생 관계
   student   Student?
 }
 
@@ -26,9 +24,6 @@ model Teacher {
   id     String @id @default(cuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // 발급한 등록 코드
-  registrationCode String  @unique @default(cuid())
 
   students Student[]
 
@@ -42,10 +37,12 @@ model Student {
   teacherId  String
   teacher    Teacher  @relation(fields: [teacherId], references: [id])
 
+  school     String   @default("")   // 학교명
+  grade      String   @default("")   // 학년 (예: 중1, 고2)
+
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
 
-  // 능력치 (0~100)
   comprehension Float @default(0)
   reasoning     Float @default(0)
   calculation   Float @default(0)
@@ -56,15 +53,15 @@ model Student {
 }
 
 model MissionResult {
-  id            String      @id @default(cuid())
-  studentId     String
-  student       Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  missionType   MissionType
-  totalProblems Int
+  id              String       @id @default(cuid())
+  studentId       String
+  student         Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  missionType     MissionType
+  totalProblems   Int
   correctProblems Int
-  source        ResultSource
-  solvedAt      DateTime
-  createdAt     DateTime    @default(now())
+  source          ResultSource
+  solvedAt        DateTime
+  createdAt       DateTime     @default(now())
 
   @@index([studentId])
 }

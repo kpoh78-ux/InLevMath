@@ -9,7 +9,7 @@ export interface JWTPayload {
   sub: string       // userId
   role: 'student' | 'teacher'
   name: string
-  email: string
+  phone: string     // 핸드폰번호 = 로그인 아이디
 }
 
 export async function signToken(payload: JWTPayload): Promise<string> {

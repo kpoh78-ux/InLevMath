@@ -10,13 +10,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 학생 최대 300명, 선생님 최대 10명 (`APP_LIMITS` in `packages/shared/src/index.ts`)
 - 로그인 아이디: 핸드폰번호 11자리, 학생 초기 비밀번호: `math1234`
 
+## Target Platforms (초기 버전 기준 — 항상 적용)
+
+| 앱 | 대상 플랫폼 | 실행 환경 |
+|---|---|---|
+| **학생용** (`apps/mobile`) | Android 스마트폰 / 태블릿 | Android OS 네이티브 앱 (Expo) |
+| **선생님용** (`apps/web`) | Windows PC | Chrome 브라우저 웹 앱 |
+
+### 개발 시 항상 적용할 제약
+
+**학생 앱 (Android 전용):**
+- iOS 지원 고려 불필요 — Android 전용 API (`ToastAndroid`, `Vibration` 등) 자유롭게 사용 가능
+- 화면 크기: 스마트폰(360~420dp) + 태블릿(768~1024dp) 양쪽 고려
+- 터치 인터페이스 기준으로 UI 설계 — 버튼 최소 44dp 이상
+- 태블릿에서는 콘텐츠가 좌우로 너무 늘어나지 않도록 `maxWidth` 제한 권장
+
+**선생님 웹 (Windows Chrome 전용):**
+- 모바일 반응형 불필요 — 데스크탑 해상도(1280px 이상) 기준으로만 설계
+- 마우스 + 키보드 인터랙션 기준으로 UI 설계 (hover 효과, 오른쪽 클릭 등 사용 가능)
+- Chrome 최신 버전 기준 — 크로스브라우저 호환성 고려 불필요
+- 테이블·그리드 레이아웃을 적극 활용해 많은 정보를 한 화면에 표시
+
 ## Monorepo Structure
 
 Turborepo + npm workspaces 구성:
 
 ```
-apps/mobile   — Expo 56 + Expo Router (학생 모바일 앱, 주 개발 대상)
-apps/web      — Next.js 16 App Router (백엔드 API + 선생님 관리 웹)
+apps/mobile   — Expo 56 + Expo Router (학생용 Android 앱)
+apps/web      — Next.js 16 App Router (선생님용 Windows Chrome 웹 + 백엔드 API)
 packages/shared — 공통 타입/상수/유틸 (TypeScript, 빌드 없이 직접 ts 임포트)
 ```
 

@@ -13,6 +13,9 @@
     "start:web": "npm run start --workspace=apps/web",
     "lint": "turbo lint"
   },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "devDependencies": {
     "turbo": "^2.0.0"
   }

@@ -31,7 +31,7 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname()
 
   return (
-    <div className="flex gap-0 -mx-6 -my-6 min-h-[calc(100vh-3.5rem)]">
+    <div className="flex gap-0 -mx-6 -my-6 min-h-full">
       {/* 사이드바 */}
       <aside className="w-48 bg-white border-r border-gray-200 shrink-0 py-5">
         <p className="px-5 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">관리</p>

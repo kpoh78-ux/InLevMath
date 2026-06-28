@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 const NAV = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/dashboard/students', label: '학생 관리' },
+  { href: '/dashboard/textbooks', label: '교재 · 채점' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

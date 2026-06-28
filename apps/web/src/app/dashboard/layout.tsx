@@ -5,10 +5,10 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 const NAV = [
-  { href: '/dashboard', label: '대시보드' },
-  { href: '/dashboard/students', label: '학생 관리' },
+  { href: '/dashboard',           label: '대시보드' },
   { href: '/dashboard/worksheets', label: '학습지' },
-  { href: '/dashboard/textbooks', label: '교재 · 채점' },
+  { href: '/dashboard/textbooks',  label: '교재 · 채점' },
+  { href: '/dashboard/manage',     label: '관리' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

@@ -1,10 +1,10 @@
 import Link from 'next/link'
 
 const STATS = [
-  { label: '등록 학생', value: '4', unit: '명', color: 'text-indigo-600', sub: '/ 300명', href: '/dashboard/students' },
-  { label: '오늘 활동', value: '2', unit: '명', color: 'text-emerald-600', sub: '미션 제출', href: '/dashboard/students' },
-  { label: '이번 주 클리어', value: '3', unit: '건', color: 'text-amber-600', sub: '레벨업', href: '/dashboard/students' },
-  { label: '최상위 달성', value: '1', unit: '명', color: 'text-rose-600', sub: '최상위문제', href: '/dashboard/students' },
+  { label: '등록 학생', value: '4', unit: '명', color: 'text-indigo-600', sub: '/ 300명', href: '/dashboard/manage/students' },
+  { label: '오늘 활동', value: '2', unit: '명', color: 'text-emerald-600', sub: '미션 제출', href: '/dashboard/manage/students' },
+  { label: '이번 주 클리어', value: '3', unit: '건', color: 'text-amber-600', sub: '레벨업', href: '/dashboard/manage/students' },
+  { label: '최상위 달성', value: '1', unit: '명', color: 'text-rose-600', sub: '최상위문제', href: '/dashboard/manage/students' },
 ]
 
 const RECENT = [
@@ -40,7 +40,7 @@ export default function DashboardPage() {
         {[
           { href: '/dashboard/worksheets', label: '학습지 채점', desc: '학습지 정답 입력 및 O/X 채점', color: 'text-teal-600', bg: 'bg-teal-50 hover:bg-teal-100 border-teal-200' },
           { href: '/dashboard/textbooks',  label: '교재 채점',   desc: '교재별 정답 입력 및 O/X 채점', color: 'text-indigo-600', bg: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200' },
-          { href: '/dashboard/students',   label: '학생 관리',   desc: '학생 등록·조회·학습내역 확인',  color: 'text-gray-700',   bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200' },
+          { href: '/dashboard/manage/students',   label: '학생 관리',   desc: '학생 등록·조회·학습내역 확인',  color: 'text-gray-700',   bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200' },
         ].map(m => (
           <Link key={m.href} href={m.href}
             className={`${m.bg} border rounded-xl px-5 py-4 flex items-center justify-between transition-colors`}>
@@ -57,7 +57,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold text-gray-800">최근 미션 제출</h2>
-          <Link href="/dashboard/students" className="text-xs text-indigo-500 hover:underline">전체보기 →</Link>
+          <Link href="/dashboard/manage/students" className="text-xs text-indigo-500 hover:underline">전체보기 →</Link>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -74,7 +74,7 @@ export default function DashboardPage() {
             {RECENT.map(r => (
               <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="px-5 py-3">
-                  <Link href={`/dashboard/students/${r.id}`}
+                  <Link href={`/dashboard/manage/students/${r.id}`}
                     className="font-semibold text-indigo-600 hover:underline">
                     {r.name}
                   </Link>

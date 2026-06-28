@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-const NAV = [
-  { href: '/dashboard',              label: '대시보드' },
+const NAV: { href: string; label: string; brand?: true }[] = [
+  { href: '/dashboard',              label: 'InLevMath', brand: true },
   { href: '/dashboard/lesson-prep',  label: '수업준비' },
   { href: '/dashboard/worksheets',   label: '학습지' },
   { href: '/dashboard/textbooks',    label: '교재' },
@@ -83,48 +83,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="px-4 h-14 flex items-center justify-between">
 
-          {/* 로고 + 네비 */}
-          <div className="flex items-center">
-            {/* 로고: 클릭 시 현재 페이지 새로고침 */}
-            <button
-              onClick={() => router.refresh()}
-              className="mr-6 text-lg font-black text-indigo-600 tracking-tight
-                hover:text-indigo-500 transition-colors select-none"
-            >
-              InLevMath
-            </button>
-
-            <nav className="flex h-14">
-              {NAV.map(n => {
-                const active = n.href === '/dashboard'
-                  ? pathname === '/dashboard'
-                  : pathname.startsWith(n.href)
-                return (
-                  <Link
-                    key={n.href}
-                    href={n.href}
-                    className={`
-                      relative flex items-center px-5 h-full text-sm font-medium
-                      border-b-2 transition-all duration-150
-                      ${active
-                        ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60'
-                        : `border-transparent text-gray-600
-                          hover:text-indigo-700 hover:bg-indigo-50
-                          hover:border-indigo-400
-                          hover:shadow-[inset_0_-2px_8px_rgba(99,102,241,0.12)]`
-                      }
-                    `}
-                  >
-                    {n.label}
-                    {/* 활성 탭 하단 강조선 */}
-                    {active && (
-                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-indigo-600 rounded-full" />
-                    )}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
+          {/* 네비 */}
+          <nav className="flex h-14">
+            {NAV.map(n => {
+              const active = n.href === '/dashboard'
+                ? pathname === '/dashboard'
+                : pathname.startsWith(n.href)
+              return (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  className={`
+                    relative flex items-center h-full border-b-2 transition-all duration-150
+                    ${n.brand
+                      ? `w-[160px] pl-6 text-[18px] font-black tracking-tight
+                          ${active
+                            ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
+                            : 'border-transparent text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`
+                      : `px-6 text-[15px] font-medium
+                          ${active
+                            ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60'
+                            : 'border-transparent text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`
+                    }
+                  `}
+                >
+                  {n.label}
+                  {active && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-indigo-600 rounded-full" />
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
 
           {/* 선생님 정보 */}
           <div className="flex items-center gap-3">

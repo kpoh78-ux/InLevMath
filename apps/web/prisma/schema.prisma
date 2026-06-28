@@ -25,7 +25,8 @@ model Teacher {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  students Student[]
+  students   Student[]
+  worksheets Worksheet[]
 
   @@index([userId])
 }
@@ -47,9 +48,61 @@ model Student {
   reasoning     Float @default(0)
   calculation   Float @default(0)
 
-  results MissionResult[]
+  results       MissionResult[]
+  distributions WorksheetDistribution[]
 
   @@index([teacherId])
+}
+
+// ── 학습지 ──────────────────────────────────────────────────────────────────
+model Worksheet {
+  id           String   @id @default(cuid())
+  title        String
+  category     String   // '단원별' | '내신대비'
+  step         String   // '기초'|'기본'|'발전'|'최상위'|'최다빈출'|'최다오답'|'서술형'|'모의고사'
+  examSubType  String?  // 모의고사 세부: '실전모의고사'|'기출모의고사'|'직전대비모의고사'
+  grade        String   // '중1'|'중2' 등
+  unit         String   @default("종합")
+  problemCount Int
+  source       String   @default("manual") // 'mathflat'|'manual'
+  teacherId    String
+  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  distributions WorksheetDistribution[]
+
+  @@index([teacherId])
+  @@index([category, step])
+}
+
+model WorksheetDistribution {
+  id           String   @id @default(cuid())
+  worksheetId  String
+  worksheet    Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status       DistributionStatus @default(distributed)
+  distributedAt DateTime @default(now())
+
+  result       WorksheetResult?
+
+  @@unique([worksheetId, studentId])
+  @@index([studentId])
+  @@index([worksheetId])
+}
+
+model WorksheetResult {
+  id              String   @id @default(cuid())
+  distributionId  String   @unique
+  distribution    WorksheetDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  correctProblems Int
+  submittedAt     DateTime @default(now())
+}
+
+enum DistributionStatus {
+  distributed
+  submitted
+  graded
 }
 
 model MissionResult {

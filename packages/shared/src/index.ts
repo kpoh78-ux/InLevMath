@@ -117,11 +117,14 @@ export type WorksheetCategory = '단원별' | '내신대비'
 // 단원별 스텝 (계산력·이해력·추론력 순으로 난이도 상승)
 export type UnitStep = '기초' | '기본' | '발전' | '최상위'
 // 내신대비 스텝
-export type ExamStep = '최다빈출' | '최다오답' | '서술형'
+export type ExamStep = '최다빈출' | '최다오답' | '서술형' | '모의고사'
+// 모의고사 세부 유형
+export type MockExamType = '실전모의고사' | '기출모의고사' | '직전대비모의고사'
 export type WorksheetStep = UnitStep | ExamStep
 
 export const UNIT_STEPS: UnitStep[] = ['기초', '기본', '발전', '최상위']
-export const EXAM_STEPS: ExamStep[] = ['최다빈출', '최다오답', '서술형']
+export const EXAM_STEPS: ExamStep[] = ['최다빈출', '최다오답', '서술형', '모의고사']
+export const MOCK_EXAM_TYPES: MockExamType[] = ['실전모의고사', '기출모의고사', '직전대비모의고사']
 
 // 스텝별 클리어 기준 정답률 (%)
 export const STEP_CLEAR_THRESHOLD: Record<WorksheetStep, number> = {
@@ -132,6 +135,7 @@ export const STEP_CLEAR_THRESHOLD: Record<WorksheetStep, number> = {
   '최다빈출': 75,
   '최다오답': 70,
   '서술형':  60,
+  '모의고사': 70,
 }
 
 // 스텝별 능력치 가중치 (합산 1.0)
@@ -143,12 +147,13 @@ export const STEP_ABILITY_WEIGHT: Record<WorksheetStep, Partial<AbilityScore>> =
   '최다빈출': { comprehension: 0.4, reasoning: 0.4, calculation: 0.2 },
   '최다오답': { comprehension: 0.5, reasoning: 0.3, calculation: 0.2 },
   '서술형':  { reasoning: 0.5, comprehension: 0.4, calculation: 0.1 },
+  '모의고사': { comprehension: 0.33, reasoning: 0.34, calculation: 0.33 },
 }
 
 // 스텝 레이블 (UI 표시용)
 export const STEP_LABEL: Record<WorksheetStep, string> = {
   '기초': '기초', '기본': '기본', '발전': '발전', '최상위': '최상위',
-  '최다빈출': '최다빈출', '최다오답': '최다오답', '서술형': '서술형',
+  '최다빈출': '최다빈출', '최다오답': '최다오답', '서술형': '서술형', '모의고사': '모의고사',
 }
 
 // 스텝별 배지 색상 (Tailwind 클래스)
@@ -160,6 +165,7 @@ export const STEP_COLOR: Record<WorksheetStep, { bg: string; text: string; borde
   '최다빈출': { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200' },
   '최다오답': { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
   '서술형':  { bg: 'bg-pink-50',   text: 'text-pink-600',   border: 'border-pink-200' },
+  '모의고사': { bg: 'bg-teal-50',   text: 'text-teal-600',   border: 'border-teal-200' },
 }
 
 // 학습지 배포 상태

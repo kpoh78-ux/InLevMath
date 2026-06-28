@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ToastAndroid, Platform, Alert,
@@ -7,26 +7,28 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useAuth } from '../../store/authStore'
 import { useEvents } from '../../store/useEvents'
+import { apiFetch } from '../../store/api'
 import { AbilityBar } from '../../components/AbilityBar'
 import { LevelBadge } from '../../components/LevelBadge'
 import { MissionCard } from '../../components/MissionCard'
 import { Colors } from '../../constants/colors'
-import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore, WorksheetStep } from '@inlevmath/shared'
+import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore } from '@inlevmath/shared'
 
 type DistributedWS = {
-  id: string; title: string; step: WorksheetStep
-  totalProblems: number; status: 'distributed' | 'submitted' | 'graded'
-  correctProblems?: number; distributedAt: string
+  distributionId: string
+  worksheetId: string
+  title: string
+  step: string
+  examSubType?: string | null
+  totalProblems: number
+  status: 'distributed' | 'submitted' | 'graded'
+  correctProblems?: number | null
+  distributedAt: string
 }
 
-const MOCK_WORKSHEETS: DistributedWS[] = [
-  { id: 'dw1', title: '수완하나중 1-1 기말 모의고사_03회', step: '최다빈출', totalProblems: 24, status: 'distributed', distributedAt: '오늘 09:30' },
-  { id: 'dw2', title: '정수와 유리수 기초 확인', step: '기초', totalProblems: 15, status: 'graded', correctProblems: 13, distributedAt: '어제' },
-]
-
-const STEP_COLOR_MAP: Record<WorksheetStep, string> = {
+const STEP_COLOR_MAP: Record<string, string> = {
   '기초': '#74B9FF', '기본': '#55EFC4', '발전': '#FDCB6E', '최상위': '#E17055',
-  '최다빈출': '#A29BFE', '최다오답': '#FD79A8', '서술형': '#FF7675',
+  '최다빈출': '#A29BFE', '최다오답': '#FD79A8', '서술형': '#FF7675', '모의고사': '#00B894',
 }
 
 const INITIAL_PROGRESS = {
@@ -44,23 +46,35 @@ function showToast(msg: string) {
 export default function StudentDashboard() {
   const { user, signOut } = useAuth()
   const [progress, setProgress] = useState(INITIAL_PROGRESS)
+  const [worksheets, setWorksheets] = useState<DistributedWS[]>([])
+  const [loadingWS, setLoadingWS] = useState(true)
   const { currentLevel, currentMission, abilityScore, clearedMissions } = progress
 
-  // SSE 실시간 이벤트 수신 — 레벨업 알림
   const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
     if (event.type === 'LEVEL_UP') {
       showToast('🎉 미션 클리어! 다음 레벨로 올라갔어요!')
-      // TODO: API에서 최신 progress fetch 후 setProgress
-      setProgress(prev => ({
-        ...prev,
-        currentLevel: prev.currentLevel + 1,
-      }))
+      setProgress(prev => ({ ...prev, currentLevel: prev.currentLevel + 1 }))
+    }
+  }, [])
+  useEvents(onEvent)
+
+  // 배포된 학습지 fetch
+  const fetchWorksheets = useCallback(async () => {
+    setLoadingWS(true)
+    try {
+      const res = await apiFetch('/api/student/worksheets')
+      if (res.ok) setWorksheets(await res.json())
+    } finally {
+      setLoadingWS(false)
     }
   }, [])
 
-  useEvents(onEvent)
+  useEffect(() => { fetchWorksheets() }, [fetchWorksheets])
 
   const currentMissionColor = Colors.mission[currentMission]
+
+  const wsLabel = (ws: DistributedWS) =>
+    ws.step === '모의고사' && ws.examSubType ? ws.examSubType : ws.step
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -125,26 +139,40 @@ export default function StudentDashboard() {
         {/* 배포된 학습지 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>배포된 학습지</Text>
-          {MOCK_WORKSHEETS.length === 0 ? (
+          {loadingWS ? (
+            <View style={styles.card}>
+              <Text style={{ color: Colors.subtext, fontSize: 13, textAlign: 'center' }}>불러오는 중...</Text>
+            </View>
+          ) : worksheets.length === 0 ? (
             <View style={styles.card}>
               <Text style={{ color: Colors.subtext, fontSize: 13, textAlign: 'center' }}>배포된 학습지가 없습니다</Text>
             </View>
-          ) : MOCK_WORKSHEETS.map(ws => {
-            const stepColor = STEP_COLOR_MAP[ws.step]
+          ) : worksheets.map(ws => {
+            const stepColor = STEP_COLOR_MAP[ws.step] ?? '#74B9FF'
             const isDone = ws.status === 'graded'
             return (
               <TouchableOpacity
-                key={ws.id}
+                key={ws.distributionId}
                 style={[styles.wsCard, isDone && styles.wsCardDone]}
                 onPress={() => {
                   if (isDone) return
-                  router.push({ pathname: '/(student)/worksheet-grade', params: { id: ws.id, title: ws.title, step: ws.step, total: ws.totalProblems } })
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ;(router.push as any)({
+                    pathname: '/(student)/worksheet-grade',
+                    params: {
+                      distributionId: ws.distributionId,
+                      title: ws.title,
+                      step: ws.step,
+                      examSubType: ws.examSubType ?? '',
+                      total: ws.totalProblems,
+                    },
+                  })
                 }}
                 activeOpacity={isDone ? 1 : 0.75}
               >
                 <View style={styles.wsTop}>
                   <View style={[styles.stepBadge, { backgroundColor: stepColor + '30', borderColor: stepColor }]}>
-                    <Text style={[styles.stepText, { color: stepColor }]}>{ws.step}</Text>
+                    <Text style={[styles.stepText, { color: stepColor }]}>{wsLabel(ws)}</Text>
                   </View>
                   {isDone ? (
                     <View style={styles.doneBadge}>
@@ -162,7 +190,9 @@ export default function StudentDashboard() {
                       {ws.correctProblems}/{ws.totalProblems} ({Math.round(ws.correctProblems / ws.totalProblems * 100)}%)
                     </Text>
                   )}
-                  <Text style={styles.wsDate}>{ws.distributedAt}</Text>
+                  <Text style={styles.wsDate}>
+                    {new Date(ws.distributedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                  </Text>
                 </View>
               </TouchableOpacity>
             )
@@ -199,7 +229,6 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { color: Colors.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },
   card: { backgroundColor: Colors.card, borderRadius: 16, padding: 20 },
-  // 학습지 카드
   wsCard: {
     backgroundColor: Colors.card, borderRadius: 14,
     padding: 14, marginBottom: 10, borderWidth: 1, borderColor: Colors.border,

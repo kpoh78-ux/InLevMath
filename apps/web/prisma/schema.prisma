@@ -27,8 +27,24 @@ model Teacher {
 
   students   Student[]
   worksheets Worksheet[]
+  schedules  ClassSchedule[]
 
   @@index([userId])
+}
+
+// ── 주간 수업 시간표 ──────────────────────────────────────────────────────────
+model ClassSchedule {
+  id           String  @id @default(cuid())
+  teacherId    String
+  teacher      Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int     // 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일
+  startTime    String  // "09:00"
+  endTime      String  // "10:30"
+  subject      String  // 수업 과목명
+  grade        String  // 학년 (예: 중1, 고2)
+  studentNames String  @default("[]") // JSON 배열 ["홍길동","김철수"]
+
+  @@index([teacherId, dayOfWeek])
 }
 
 model Student {

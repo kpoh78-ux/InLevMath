@@ -10,6 +10,7 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web": "npm run build --workspace=apps/web",
+    "start:web": "npm run start --workspace=apps/web",
     "lint": "turbo lint"
   },
   "devDependencies": {

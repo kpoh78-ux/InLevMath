@@ -11,7 +11,23 @@ import { AbilityBar } from '../../components/AbilityBar'
 import { LevelBadge } from '../../components/LevelBadge'
 import { MissionCard } from '../../components/MissionCard'
 import { Colors } from '../../constants/colors'
-import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore } from '@inlevmath/shared'
+import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore, WorksheetStep } from '@inlevmath/shared'
+
+type DistributedWS = {
+  id: string; title: string; step: WorksheetStep
+  totalProblems: number; status: 'distributed' | 'submitted' | 'graded'
+  correctProblems?: number; distributedAt: string
+}
+
+const MOCK_WORKSHEETS: DistributedWS[] = [
+  { id: 'dw1', title: '수완하나중 1-1 기말 모의고사_03회', step: '최다빈출', totalProblems: 24, status: 'distributed', distributedAt: '오늘 09:30' },
+  { id: 'dw2', title: '정수와 유리수 기초 확인', step: '기초', totalProblems: 15, status: 'graded', correctProblems: 13, distributedAt: '어제' },
+]
+
+const STEP_COLOR_MAP: Record<WorksheetStep, string> = {
+  '기초': '#74B9FF', '기본': '#55EFC4', '발전': '#FDCB6E', '최상위': '#E17055',
+  '최다빈출': '#A29BFE', '최다오답': '#FD79A8', '서술형': '#FF7675',
+}
 
 const INITIAL_PROGRESS = {
   currentLevel: 3,
@@ -106,6 +122,53 @@ export default function StudentDashboard() {
           ))}
         </View>
 
+        {/* 배포된 학습지 */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>배포된 학습지</Text>
+          {MOCK_WORKSHEETS.length === 0 ? (
+            <View style={styles.card}>
+              <Text style={{ color: Colors.subtext, fontSize: 13, textAlign: 'center' }}>배포된 학습지가 없습니다</Text>
+            </View>
+          ) : MOCK_WORKSHEETS.map(ws => {
+            const stepColor = STEP_COLOR_MAP[ws.step]
+            const isDone = ws.status === 'graded'
+            return (
+              <TouchableOpacity
+                key={ws.id}
+                style={[styles.wsCard, isDone && styles.wsCardDone]}
+                onPress={() => {
+                  if (isDone) return
+                  router.push({ pathname: '/(student)/worksheet-grade', params: { id: ws.id, title: ws.title, step: ws.step, total: ws.totalProblems } })
+                }}
+                activeOpacity={isDone ? 1 : 0.75}
+              >
+                <View style={styles.wsTop}>
+                  <View style={[styles.stepBadge, { backgroundColor: stepColor + '30', borderColor: stepColor }]}>
+                    <Text style={[styles.stepText, { color: stepColor }]}>{ws.step}</Text>
+                  </View>
+                  {isDone ? (
+                    <View style={styles.doneBadge}>
+                      <Text style={styles.doneText}>채점 완료</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.newBadge}>채점 입력 →</Text>
+                  )}
+                </View>
+                <Text style={[styles.wsTitle, isDone && { color: Colors.subtext }]} numberOfLines={1}>{ws.title}</Text>
+                <View style={styles.wsBottom}>
+                  <Text style={styles.wsInfo}>{ws.totalProblems}문제</Text>
+                  {isDone && ws.correctProblems != null && (
+                    <Text style={[styles.wsScore, { color: stepColor }]}>
+                      {ws.correctProblems}/{ws.totalProblems} ({Math.round(ws.correctProblems / ws.totalProblems * 100)}%)
+                    </Text>
+                  )}
+                  <Text style={styles.wsDate}>{ws.distributedAt}</Text>
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+
         <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
@@ -136,4 +199,25 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { color: Colors.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },
   card: { backgroundColor: Colors.card, borderRadius: 16, padding: 20 },
+  // 학습지 카드
+  wsCard: {
+    backgroundColor: Colors.card, borderRadius: 14,
+    padding: 14, marginBottom: 10, borderWidth: 1, borderColor: Colors.border,
+  },
+  wsCardDone: { opacity: 0.7 },
+  wsTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  stepBadge: {
+    borderRadius: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, marginRight: 8,
+  },
+  stepText: { fontSize: 11, fontWeight: '700' },
+  doneBadge: {
+    backgroundColor: Colors.success + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  doneText: { fontSize: 11, color: Colors.success, fontWeight: '600' },
+  newBadge: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
+  wsTitle: { color: Colors.white, fontSize: 14, fontWeight: '600', marginBottom: 6 },
+  wsBottom: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wsInfo: { fontSize: 11, color: Colors.subtext },
+  wsScore: { fontSize: 12, fontWeight: '700' },
+  wsDate: { fontSize: 11, color: Colors.subtext, marginLeft: 'auto' },
 })

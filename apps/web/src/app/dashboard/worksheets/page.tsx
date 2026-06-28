@@ -2,25 +2,42 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { UNIT_STEPS, EXAM_STEPS } from '@inlevmath/shared'
+
+type WorksheetCategory = '단원별' | '내신대비'
+type WorksheetStep = typeof UNIT_STEPS[number] | typeof EXAM_STEPS[number]
 
 type Worksheet = {
   id: string; title: string; grade: string; unit: string
   problemCount: number; createdAt: string; source: 'mathflat' | 'manual'
+  category: WorksheetCategory; step: WorksheetStep
 }
 
 const GRADE_OPTIONS = ['중1', '중2', '중3', '고1', '고2', '고3']
 
+const STEP_BADGE: Record<WorksheetStep, string> = {
+  '기초': 'bg-sky-50 text-sky-600', '기본': 'bg-emerald-50 text-emerald-600',
+  '발전': 'bg-amber-50 text-amber-600', '최상위': 'bg-rose-50 text-rose-600',
+  '최다빈출': 'bg-violet-50 text-violet-600', '최다오답': 'bg-orange-50 text-orange-600',
+  '서술형': 'bg-pink-50 text-pink-600',
+}
+
 const MOCK_WORKSHEETS: Worksheet[] = [
-  { id: 'w1', title: '수완하나중 1-1 기말 모의고사_03회', grade: '중1', unit: '정수와 유리수', problemCount: 24, createdAt: '2026-06-27', source: 'mathflat' },
-  { id: 'w2', title: '수완하나중 1-1 기말 모의고사_04회', grade: '중1', unit: '문자와 식',     problemCount: 24, createdAt: '2026-06-25', source: 'mathflat' },
-  { id: 'w3', title: '소수·합성수 개념 확인',               grade: '중1', unit: '소수와 합성수', problemCount: 15, createdAt: '2026-06-22', source: 'manual'   },
-  { id: 'w4', title: '최대공약수·최소공배수 연습',           grade: '중2', unit: '인수분해',     problemCount: 20, createdAt: '2026-06-20', source: 'manual'   },
+  { id: 'w1', title: '수완하나중 1-1 기말 모의고사_03회', grade: '중1', unit: '종합', problemCount: 24, createdAt: '2026-06-27', source: 'mathflat', category: '내신대비', step: '최다빈출' },
+  { id: 'w2', title: '수완하나중 1-1 기말 모의고사_04회', grade: '중1', unit: '종합', problemCount: 24, createdAt: '2026-06-25', source: 'mathflat', category: '내신대비', step: '최다빈출' },
+  { id: 'w3', title: '소수·합성수 개념 확인', grade: '중1', unit: '소수와 합성수', problemCount: 15, createdAt: '2026-06-22', source: 'manual', category: '단원별', step: '기초' },
+  { id: 'w4', title: '최대공약수·최소공배수 연습', grade: '중2', unit: '인수분해', problemCount: 20, createdAt: '2026-06-20', source: 'manual', category: '단원별', step: '기본' },
 ]
 
 export default function WorksheetsPage() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>(MOCK_WORKSHEETS)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ title: '', grade: '', unit: '', problemCount: '', source: 'manual' as 'mathflat' | 'manual' })
+  const [form, setForm] = useState({
+    title: '', grade: '', unit: '', problemCount: '',
+    source: 'manual' as 'mathflat' | 'manual',
+    category: '단원별' as WorksheetCategory,
+    step: '기초' as WorksheetStep,
+  })
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [gradeFilter, setGradeFilter] = useState('')
@@ -41,8 +58,10 @@ export default function WorksheetsPage() {
       problemCount: parseInt(form.problemCount) || 0,
       createdAt: new Date().toISOString().slice(0, 10),
       source: form.source,
+      category: form.category,
+      step: form.step,
     }])
-    setForm({ title: '', grade: '', unit: '', problemCount: '', source: 'manual' })
+    setForm({ title: '', grade: '', unit: '', problemCount: '', source: 'manual', category: '단원별', step: '기초' })
     setShowModal(false)
     setLoading(false)
   }
@@ -106,6 +125,7 @@ export default function WorksheetsPage() {
               <th className="px-5 py-3 text-left font-medium">학습지명</th>
               <th className="px-5 py-3 text-left font-medium">학년</th>
               <th className="px-5 py-3 text-left font-medium">단원</th>
+              <th className="px-5 py-3 text-left font-medium">스텝</th>
               <th className="px-5 py-3 text-left font-medium">출처</th>
               <th className="px-5 py-3 text-left font-medium">문제 수</th>
               <th className="px-5 py-3 text-left font-medium">등록일</th>
@@ -130,6 +150,9 @@ export default function WorksheetsPage() {
                   <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{w.grade}</span>
                 </td>
                 <td className="px-5 py-3.5 text-gray-500 text-xs">{w.unit}</td>
+                <td className="px-5 py-3.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${STEP_BADGE[w.step]}`}>{w.step}</span>
+                </td>
                 <td className="px-5 py-3.5">
                   {w.source === 'mathflat'
                     ? <span className="text-xs font-medium text-teal-600 bg-teal-50 px-2 py-0.5 rounded">매쓰플랫</span>
@@ -204,6 +227,35 @@ export default function WorksheetsPage() {
                   onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
                   placeholder="예) 정수와 유리수"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              {/* 카테고리 선택 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">카테고리 *</label>
+                <div className="flex gap-2">
+                  {(['단원별', '내신대비'] as const).map(cat => (
+                    <button key={cat} type="button"
+                      onClick={() => setForm(f => ({
+                        ...f, category: cat,
+                        step: cat === '단원별' ? '기초' : '최다빈출',
+                      }))}
+                      className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                        form.category === cat ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:border-indigo-400'
+                      }`}>{cat}</button>
+                  ))}
+                </div>
+              </div>
+              {/* 스텝 선택 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">단계 *</label>
+                <div className="flex flex-wrap gap-2">
+                  {(form.category === '단원별' ? UNIT_STEPS : EXAM_STEPS).map(step => (
+                    <button key={step} type="button"
+                      onClick={() => setForm(f => ({ ...f, step }))}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                        form.step === step ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-300 text-gray-600 hover:border-indigo-400'
+                      }`}>{step}</button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">총 문제 수 *</label>

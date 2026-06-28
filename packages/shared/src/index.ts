@@ -2,8 +2,8 @@
 
 // ── 사용자 한도 설정 (나중에 이 값만 변경하면 전체 적용) ──────────────────
 export const APP_LIMITS = {
-  maxTeachers: 3,    // 선생님 최대 등록 수
-  maxStudents: 100,  // 학생 최대 등록 수
+  maxTeachers: 10,   // 선생님 최대 등록 수
+  maxStudents: 300,  // 학생 최대 등록 수
 } as const
 
 export type AppLimits = typeof APP_LIMITS

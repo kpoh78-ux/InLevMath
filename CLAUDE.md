@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **InLevMath** (Infinity Level Up Math) — 오근표 수학학원 학생들을 위한 게임형 수학 학습 동기부여 앱.
 학생이 오프라인 문제를 풀고 결과를 입력하면 능력치(이해력/추론력/계산력)가 오르고 미션을 클리어해 레벨업하는 구조.
 
-- 학생 최대 100명, 선생님 최대 3명 (`APP_LIMITS` in `packages/shared/src/index.ts`)
+- 학생 최대 300명, 선생님 최대 10명 (`APP_LIMITS` in `packages/shared/src/index.ts`)
 - 로그인 아이디: 핸드폰번호 11자리, 학생 초기 비밀번호: `math1234`
 
 ## Monorepo Structure

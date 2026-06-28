@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 const NAV = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/dashboard/students', label: '학생 관리' },
+  { href: '/dashboard/worksheets', label: '학습지' },
   { href: '/dashboard/textbooks', label: '교재 · 채점' },
 ]
 
@@ -37,7 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="text-lg font-black text-indigo-600 tracking-tight">InLevMath</span>
             <nav className="flex gap-1">
               {NAV.map(n => {
-                const active = pathname === n.href
+                const active = n.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(n.href)
                 return (
                   <Link
                     key={n.href}

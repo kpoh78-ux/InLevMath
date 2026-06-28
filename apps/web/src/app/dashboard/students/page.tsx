@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 
 type MissionType = 'concept_learning' | 'concept_problem' | 'basic_problem' | 'advanced_problem' | 'top_problem'
 
@@ -167,7 +168,11 @@ export default function StudentsPage() {
             ) : (
               filtered.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3.5 font-semibold text-gray-900">{s.name}</td>
+                  <td className="px-5 py-3.5">
+                    <Link href={`/dashboard/students/${s.id}`} className="font-semibold text-indigo-600 hover:underline">
+                      {s.name}
+                    </Link>
+                  </td>
                   <td className="px-5 py-3.5 text-gray-500">{s.school} · {s.grade}</td>
                   <td className="px-5 py-3.5 text-gray-500 font-mono text-xs">{s.phone}</td>
                   <td className="px-5 py-3.5">

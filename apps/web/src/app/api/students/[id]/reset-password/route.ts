@@ -6,7 +6,8 @@ import { getAuthUser } from '@/lib/auth'
 const INITIAL_PASSWORD = 'math1234'
 
 // POST /api/students/[id]/reset-password — 선생님이 학생 비밀번호를 math1234로 초기화
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const user = await getAuthUser(req)
   if (!user || user.role !== 'teacher') {
     return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // 해당 학생이 이 선생님 소속인지 확인
   const student = await prisma.student.findFirst({
-    where: { id: params.id, teacherId: teacher.id },
+    where: { id, teacherId: teacher.id },
     include: { user: true },
   })
   if (!student) return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })

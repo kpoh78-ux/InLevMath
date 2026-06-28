@@ -183,20 +183,21 @@ function ScheduleModal({ onClose, onUpdated }:{ onClose:()=>void; onUpdated:()=>
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-4 space-y-3">
               <p className="text-sm font-semibold text-indigo-800">{editId ? '수업 수정' : '수업 추가'}</p>
 
+              <datalist id="time-list">
+                {TIME_OPTIONS.map(t => <option key={t} value={t} />)}
+              </datalist>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">시작 시간</label>
-                  <select value={form.startTime} onChange={e => setForm(f=>({...f, startTime:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <label className="block text-xs text-gray-500 mb-1">시작 시간 <span className="text-gray-400">(예: 10:30)</span></label>
+                  <input type="text" list="time-list" value={form.startTime} placeholder="10:30"
+                    onChange={e => setForm(f=>({...f, startTime:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">종료 시간</label>
-                  <select value={form.endTime} onChange={e => setForm(f=>({...f, endTime:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <label className="block text-xs text-gray-500 mb-1">종료 시간 <span className="text-gray-400">(예: 12:30)</span></label>
+                  <input type="text" list="time-list" value={form.endTime} placeholder="12:30"
+                    onChange={e => setForm(f=>({...f, endTime:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                 </div>
               </div>
 
@@ -334,22 +335,27 @@ export default function DashboardPage() {
         ) : (
           <div className="divide-y divide-gray-50">
             {todaySchedule.map(s => (
-              <div key={s.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors">
-                {/* 시간 */}
-                <div className="w-24 shrink-0">
-                  <p className="text-sm font-bold text-indigo-700">{s.startTime} ~ {s.endTime}</p>
+              <div key={s.id} className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors">
+                {/* 시간 블록 */}
+                <div className="shrink-0 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2.5 text-center w-[88px]">
+                  <p className="text-sm font-black text-indigo-700 leading-none">{s.startTime}</p>
+                  <p className="text-[10px] text-indigo-300 my-1">│</p>
+                  <p className="text-sm font-bold text-indigo-500 leading-none">{s.endTime}</p>
                 </div>
-                {/* 학년 배지 */}
-                <span className="shrink-0 text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg">{s.grade}</span>
-                {/* 과목 */}
-                <p className="text-sm font-semibold text-gray-800 w-32 shrink-0">{s.subject}</p>
-                {/* 학생 명단 */}
-                <div className="flex flex-wrap gap-1.5 flex-1">
-                  {s.studentNames.length === 0 ? (
-                    <span className="text-xs text-gray-300">학생 미등록</span>
-                  ) : s.studentNames.map((n,i) => (
-                    <span key={i} className="text-xs bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-0.5 rounded-full font-medium">{n}</span>
-                  ))}
+                {/* 수업 정보 */}
+                <div className="flex-1 pt-0.5">
+                  <p className="text-sm font-semibold text-gray-800 mb-2">
+                    <span className="text-[11px] text-gray-400 font-normal mr-1.5">{s.grade}</span>
+                    {s.subject}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {s.studentNames.length === 0
+                      ? <span className="text-xs text-gray-300 italic">학생 미등록</span>
+                      : s.studentNames.map((n,i) => (
+                          <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full font-medium shadow-sm">{n}</span>
+                        ))
+                    }
+                  </div>
                 </div>
               </div>
             ))}

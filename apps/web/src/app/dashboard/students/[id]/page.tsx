@@ -77,7 +77,7 @@ export default function StudentDetailPage() {
     <div className="space-y-4">
       {/* 헤더 */}
       <div className="flex items-center gap-3">
-        <Link href="/dashboard/students" className="text-gray-400 hover:text-gray-600 text-sm">← 학생 목록</Link>
+        <Link href="/dashboard/manage/students" className="text-gray-400 hover:text-gray-600 text-sm">← 학생 목록</Link>
         <span className="text-gray-300">|</span>
         <div className="flex items-center gap-4">
           <div>

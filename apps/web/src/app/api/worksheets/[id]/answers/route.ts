@@ -2,45 +2,56 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 
-async function getTeacherFromReq(req: NextRequest) {
+async function getTeacher(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
   if (!auth) return null
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return null
-  const teacher = await prisma.teacher.findFirst({ where: { userId: payload.sub } })
-  return teacher
+  return prisma.teacher.findFirst({ where: { userId: payload.sub } })
 }
 
-// DELETE /api/worksheets/[id]
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const teacher = await getTeacherFromReq(req)
-  if (!teacher) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
-
-  const { id } = await params
-  const ws = await prisma.worksheet.findFirst({ where: { id, teacherId: teacher.id } })
-  if (!ws) return NextResponse.json({ error: '학습지 없음' }, { status: 404 })
-
-  await prisma.worksheet.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
-}
-
-// GET /api/worksheets/[id]/answers  — 정답 목록 조회
-// PUT /api/worksheets/[id]/answers  — 정답 저장
-// (별도 파일로 분리하지 않고 [id]/route.ts에서 공통 helper 노출)
-
-// GET /api/worksheets/[id] — 단일 조회
+// GET /api/worksheets/[id]/answers
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const teacher = await getTeacherFromReq(req)
+  const teacher = await getTeacher(req)
   if (!teacher) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
   const { id } = await params
   const ws = await prisma.worksheet.findFirst({ where: { id, teacherId: teacher.id } })
   if (!ws) return NextResponse.json({ error: '학습지 없음' }, { status: 404 })
-  return NextResponse.json(ws)
+
+  const answers: string[] = ws.answersJson ? JSON.parse(ws.answersJson) : []
+  return NextResponse.json({ answers })
+}
+
+// PUT /api/worksheets/[id]/answers  — body: { answers: string[] }
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const teacher = await getTeacher(req)
+  if (!teacher) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+
+  const { id } = await params
+  const ws = await prisma.worksheet.findFirst({ where: { id, teacherId: teacher.id } })
+  if (!ws) return NextResponse.json({ error: '학습지 없음' }, { status: 404 })
+
+  const body = await req.json()
+  const answers: string[] = body.answers ?? []
+
+  if (answers.length !== ws.problemCount) {
+    return NextResponse.json(
+      { error: `문제 수(${ws.problemCount})와 정답 개수(${answers.length})가 다릅니다.` },
+      { status: 400 }
+    )
+  }
+
+  const updated = await prisma.worksheet.update({
+    where: { id },
+    data: { answersJson: JSON.stringify(answers) },
+  })
+
+  return NextResponse.json({ answers: JSON.parse(updated.answersJson!) })
 }

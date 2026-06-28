@@ -65,6 +65,7 @@ model Worksheet {
   unit         String   @default("종합")
   problemCount Int
   source       String   @default("manual") // 'mathflat'|'manual'
+  answersJson  String?  // JSON: ["①","15","2x+3",...] 문제별 정답 배열
   teacherId    String
   teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())

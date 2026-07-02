@@ -153,4 +153,67 @@ app/(teacher)/students.tsx        — 학생 관리 (등록/검색/비밀번호 
 ```
 DATABASE_URL=           # PostgreSQL 연결 문자열 (Railway)
 JWT_SECRET=             # JWT 서명 키
+GEMINI_API_KEY=         # Google Gemini API 키
+ANTHROPIC_API_KEY=      # Anthropic Claude API 키
 ```
+
+- **모든 API 키는 반드시 `.env` 파일에만 저장한다.** 코드에 하드코딩 절대 금지.
+- `apps/web/.env`는 `.gitignore`에 포함되어 있어야 한다. 커밋 전 확인 필수.
+- 새 LLM 키나 외부 서비스 키가 생기면 `.env`에 추가하고, 키 이름(변수명)만 이 파일에 문서화한다.
+
+## 보안 및 배포 원칙
+
+### RLS (Row Level Security)
+- PostgreSQL 배포 시 **RLS를 반드시 활성화**한다.
+- 현재는 JWT + Prisma 레벨에서 `teacherId` 필터로 접근을 제한하고 있으나, DB 레벨 RLS가 최종 방어선이다.
+- 배포 전 체크리스트:
+  - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;` 적용 여부 확인
+  - 각 테이블에 `teacherId = auth.uid()` 조건의 Policy가 존재하는지 확인
+  - 직접 DB 접속(Prisma Studio, psql 등)은 관리자 계정으로만 허용
+
+### API 키 및 시크릿 관리
+- `.env` 파일은 절대 Git에 커밋하지 않는다.
+- Railway 배포 시 환경변수는 Railway 대시보드 → Variables 탭에서 직접 설정한다.
+- 로컬 개발: `apps/web/.env.local` 사용 (`.env.example`에 키 이름만 남겨 팀 공유).
+
+### 인증 (Authentication) — Supabase Auth 적용 완료
+- **Supabase Auth 기반으로 마이그레이션 완료.** `src/lib/auth.ts` + `src/lib/supabase.ts` 참고.
+- 로그인 흐름: bcrypt 비밀번호 검증 → `signInWithSupabase()` → Supabase JWT 반환
+- Supabase Auth 비밀번호: `HMAC(JWT_SECRET, "supa_"+userId)` — 서버만 알고 있음, 사용자 비밀번호와 무관
+- JWT 검증: `verifyToken(token)` → `supabaseAdmin.auth.getUser()` → `prisma.user.findUnique({ supabaseId })`
+- 모든 기존 `verifyToken()` 호출 코드는 변경 없이 동작함 (시그니처 유지)
+
+### Supabase 초기 설정 절차 (신규 배포 시)
+1. supabase.com → 새 프로젝트 생성
+2. Settings → API → `URL`, `anon key`, `service_role key` 복사 → `.env`에 저장
+3. Settings → Database → Connection string(URI) 복사 → `DATABASE_URL`에 저장
+4. `cd apps/web && npx prisma migrate deploy` 실행 (테이블 생성)
+5. Supabase 대시보드 → SQL Editor → `apps/web/supabase-rls.sql` 전체 실행 (RLS 정책 적용)
+6. Supabase 대시보드 → Authentication → Providers → Email 활성화, "Confirm email" **OFF** 설정
+
+### Supabase 자동정지 방지 (헬스체크 Cron)
+- 무료 티어는 7일 미활동 시 자동 정지됨
+- **cron-job.org** (무료)에서 5일마다 `/api/health` 호출 설정:
+  1. cron-job.org 가입 → 새 크론잡 생성
+  2. URL: `https://your-app-domain.com/api/health`
+  3. 실행 주기: 5일마다 (또는 `0 9 */5 * *`)
+  4. 저장 → 활성화
+- 헬스체크 엔드포인트: `GET /api/health` → DB 쿼리(user count) 후 `{ status: "ok" }` 반환
+
+### 요청 제한 (Rate Limiting)
+- **앱 앞단에 Cloudflare(또는 동급 CDN/WAF)를 두어 IP당 요청 횟수를 제한한다.**
+- 기본 정책: IP당 1일 최대 **10회** (로그인·API 엔드포인트 기준).
+- 배포 전 체크리스트:
+  - Cloudflare Rate Limiting 규칙 활성화 여부 확인
+  - `/api/auth/login`, `/api/students/bulk` 등 남용 가능한 엔드포인트에 규칙 적용
+  - 필요 시 Next.js 미들웨어(`middleware.ts`)에 보조 rate limit 추가 (예: `@upstash/ratelimit`)
+
+### 커밋 전 API 키 유출 방지
+- **커밋 전에 API 키·시크릿이 코드에 섞여 있는지 반드시 확인한다.**
+- 권장 도구: `git-secrets` 또는 `trufflehog` — 패턴 매칭으로 키 유출 자동 감지.
+- pre-commit hook 예시 (`apps/web/.husky/pre-commit` 또는 `.git/hooks/pre-commit`):
+  ```bash
+  # API 키 패턴 감지 (AIza..., sk-..., ghp_... 등)
+  git diff --cached | grep -E "(AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{48}|ghp_[A-Za-z0-9]{36})" && echo "❌ API 키가 포함된 것 같습니다. 커밋을 중단합니다." && exit 1 || exit 0
+  ```
+- Claude Code로 코드 작성 후 커밋 전, 변경 파일에 하드코딩된 키가 없는지 `git diff --cached`로 확인한다.

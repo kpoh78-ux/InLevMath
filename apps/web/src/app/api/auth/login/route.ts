@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
-import { signToken } from '@/lib/auth'
+import { signInWithSupabase } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
   const { phone, password } = await req.json()
@@ -20,12 +20,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '비밀번호가 일치하지 않습니다.' }, { status: 401 })
   }
 
-  const token = await signToken({
-    sub: user.id,
-    role: user.role as 'student' | 'teacher',
-    name: user.name,
-    phone: user.phone,
-  })
+  // bcrypt 검증 성공 → Supabase Auth JWT 발급
+  const token = await signInWithSupabase(user.id, user.phone)
 
   return NextResponse.json({
     token,

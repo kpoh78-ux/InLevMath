@@ -11,9 +11,9 @@ const GRADE_OPTIONS = ['초1','초2','초3','초4','초5','초6','중1','중2','
 
 function timeOptions() {
   const opts: string[] = []
-  for (let h = 9; h <= 22; h++) {
+  for (let h = 9; h <= 24; h++) {
     opts.push(`${String(h).padStart(2,'0')}:00`)
-    if (h < 22) opts.push(`${String(h).padStart(2,'0')}:30`)
+    if (h < 24) opts.push(`${String(h).padStart(2,'0')}:30`)
   }
   return opts
 }
@@ -36,7 +36,7 @@ type Student       = { id:string; name:string; school:string; grade:string; curr
 type Distribution  = { id:string; studentName:string; studentGrade:string; worksheetTitle:string; step:string; examSubType:string|null; problemCount:number; status:'distributed'|'submitted'|'graded'; correctProblems:number|null; distributedAt:string }
 type Summary = { studentCount:number; worksheetCount:number; worksheetsWithAnswers:number; distTotal:number; distGraded:number; distPending:number; todaySchedule:ScheduleEntry[]; students:Student[]; recentDistributions:Distribution[] }
 
-const EMPTY_FORM = { dayOfWeek:0, startTime:'09:00', endTime:'10:00', subject:'', grade:'중1', studentNames:'' }
+const EMPTY_FORM = { dayOfWeek:0, startTime:'', endTime:'', subject:'', grade:'중1', studentNames:'' }
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 function AbilityMini({ label, value, color }:{ label:string; value:number; color:string }) {
@@ -183,21 +183,22 @@ function ScheduleModal({ onClose, onUpdated }:{ onClose:()=>void; onUpdated:()=>
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-4 space-y-3">
               <p className="text-sm font-semibold text-indigo-800">{editId ? '수업 수정' : '수업 추가'}</p>
 
-              <datalist id="time-list">
-                {TIME_OPTIONS.map(t => <option key={t} value={t} />)}
-              </datalist>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">시작 시간 <span className="text-gray-400">(예: 10:30)</span></label>
-                  <input type="text" list="time-list" value={form.startTime} placeholder="10:30"
-                    onChange={e => setForm(f=>({...f, startTime:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  <label className="block text-xs text-gray-500 mb-1">시작 시간</label>
+                  <select value={form.startTime} onChange={e => setForm(f=>({...f, startTime:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">시작 시간 선택</option>
+                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">종료 시간 <span className="text-gray-400">(예: 12:30)</span></label>
-                  <input type="text" list="time-list" value={form.endTime} placeholder="12:30"
-                    onChange={e => setForm(f=>({...f, endTime:e.target.value}))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  <label className="block text-xs text-gray-500 mb-1">종료 시간</label>
+                  <select value={form.endTime} onChange={e => setForm(f=>({...f, endTime:e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">종료 시간 선택</option>
+                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
               </div>
 
@@ -335,28 +336,19 @@ export default function DashboardPage() {
         ) : (
           <div className="divide-y divide-gray-50">
             {todaySchedule.map(s => (
-              <div key={s.id} className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50/60 transition-colors">
-                {/* 시간 블록 */}
-                <div className="shrink-0 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2.5 text-center w-[88px]">
-                  <p className="text-sm font-black text-indigo-700 leading-none">{s.startTime}</p>
-                  <p className="text-[10px] text-indigo-300 my-1">│</p>
-                  <p className="text-sm font-bold text-indigo-500 leading-none">{s.endTime}</p>
-                </div>
-                {/* 수업 정보 */}
-                <div className="flex-1 pt-0.5">
-                  <p className="text-sm font-semibold text-gray-800 mb-2">
-                    <span className="text-[11px] text-gray-400 font-normal mr-1.5">{s.grade}</span>
-                    {s.subject}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {s.studentNames.length === 0
-                      ? <span className="text-xs text-gray-300 italic">학생 미등록</span>
-                      : s.studentNames.map((n,i) => (
-                          <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full font-medium shadow-sm">{n}</span>
-                        ))
-                    }
-                  </div>
-                </div>
+              <div key={s.id} className="flex items-center gap-2 px-5 py-3 hover:bg-gray-50/60 transition-colors flex-wrap">
+                <span className="shrink-0 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md px-2 py-0.5">
+                  {s.startTime}~{s.endTime}
+                </span>
+                <span className="shrink-0 text-[11px] text-gray-400">{s.grade}</span>
+                <span className="shrink-0 text-sm font-semibold text-gray-800">{s.subject}</span>
+                <span className="shrink-0 text-gray-200 text-xs">|</span>
+                {s.studentNames.length === 0
+                  ? <span className="text-xs text-gray-300 italic">학생 미등록</span>
+                  : s.studentNames.map((n,i) => (
+                      <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full font-medium shadow-sm">{n}</span>
+                    ))
+                }
               </div>
             ))}
           </div>

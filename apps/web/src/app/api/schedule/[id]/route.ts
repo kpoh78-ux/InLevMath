@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 
+function safeParseNames(raw: string): string[] {
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+function parseEntry(s: { studentNames: string; [key: string]: unknown }) {
+  return { ...s, studentNames: safeParseNames(s.studentNames) }
+}
+
 async function getTeacher(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
   if (!auth) return null
@@ -35,7 +42,7 @@ export async function PUT(
       studentNames: JSON.stringify(Array.isArray(studentNames) ? studentNames : JSON.parse(entry.studentNames)),
     },
   })
-  return NextResponse.json(updated)
+  return NextResponse.json(parseEntry(updated))
 }
 
 // DELETE /api/schedule/[id] — 수업 삭제

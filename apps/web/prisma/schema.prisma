@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String   @unique  // 11자리 핸드폰번호 = 로그인 아이디
-  password  String
-  role      Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  phone       String   @unique  // 11자리 핸드폰번호 = 로그인 아이디
+  password    String
+  role        Role
+  supabaseId  String?  @unique  // Supabase Auth UUID (auth.users.id)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   teacher   Teacher?
   student   Student?
@@ -54,8 +55,11 @@ model Student {
   teacherId  String
   teacher    Teacher  @relation(fields: [teacherId], references: [id])
 
-  school     String   @default("")   // 학교명
-  grade      String   @default("")   // 학년 (예: 중1, 고2)
+  school      String   @default("")   // 학교명
+  grade       String   @default("")   // 학년 (예: 중1, 고2)
+  parentName  String   @default("")   // 보호자 이름
+  parentPhone String   @default("")   // 보호자 연락처
+  startDate   String   @default("")   // 수업시작일 (YYYY-MM-DD)
 
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)

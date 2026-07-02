@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 const NAV: { href: string; label: string; brand?: true }[] = [
   { href: '/dashboard',              label: 'InLevMath', brand: true },
@@ -19,19 +19,6 @@ type AttendedStudent = {
 
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
-// 출결 Mock 데이터 (추후 API로 교체)
-const MOCK_ATTENDANCE: AttendedStudent[] = [
-  { id: 's1', name: '홍길동', grade: '중2', attended: true,  checkInTime: '09:30' },
-  { id: 's2', name: '김철수', grade: '중1', attended: true,  checkInTime: '09:45' },
-  { id: 's3', name: '이영희', grade: '중3', attended: false },
-  { id: 's4', name: '박지민', grade: '중2', attended: true,  checkInTime: '10:05' },
-  { id: 's5', name: '최민준', grade: '중1', attended: false },
-  { id: 's6', name: '정수진', grade: '중3', attended: true,  checkInTime: '09:20' },
-  { id: 's7', name: '김태양', grade: '중2', attended: false },
-  { id: 's8', name: '이하늘', grade: '고1', attended: true,  checkInTime: '10:30' },
-  { id: 's9', name: '박서준', grade: '중1', attended: true,  checkInTime: '09:55' },
-]
-
 function groupByGrade(students: AttendedStudent[]) {
   const groups: Record<string, AttendedStudent[]> = {}
   students.forEach(s => {
@@ -47,16 +34,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
+  const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
+
+  const fetchSidebarStudents = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('teacher_token') ?? ''
+      const res = await fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) return
+      const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
+      const students: AttendedStudent[] = data.map(s => ({
+        id: s.id, name: s.user.name, grade: s.grade, attended: false,
+      }))
+      setSidebarStudents(students)
+      setExpandedGrades(prev => {
+        const grades = [...new Set(students.map(s => s.grade))]
+        const next = { ...prev }
+        grades.forEach(g => { if (next[g] === undefined) next[g] = true })
+        return next
+      })
+    } catch { /* 인증 오류 등 무시 */ }
+  }, [])
 
   useEffect(() => {
     const name = localStorage.getItem('teacher_name')
     if (!name) { router.replace('/'); return }
     setTeacherName(name)
+    fetchSidebarStudents()
+  }, [router, fetchSidebarStudents])
 
-    // 모든 학년 펼친 상태로 초기화
-    const grades = [...new Set(MOCK_ATTENDANCE.map(s => s.grade))]
-    setExpandedGrades(Object.fromEntries(grades.map(g => [g, true])))
-  }, [router])
+  useEffect(() => {
+    const handler = () => fetchSidebarStudents()
+    window.addEventListener('students-updated', handler)
+    return () => window.removeEventListener('students-updated', handler)
+  }, [fetchSidebarStudents])
 
   const handleLogout = () => {
     localStorage.removeItem('teacher_token')
@@ -67,11 +77,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // 관리 페이지는 자체 사이드바 사용 → 출결 사이드바 숨김
   const showAttendanceSidebar = !pathname.startsWith('/dashboard/manage')
 
-  const gradeGroups = groupByGrade(MOCK_ATTENDANCE)
+  const gradeGroups = groupByGrade(sidebarStudents)
   const sortedGrades = GRADE_ORDER.filter(g => gradeGroups[g])
 
-  const attendedTotal  = MOCK_ATTENDANCE.filter(s => s.attended).length
-  const absentTotal    = MOCK_ATTENDANCE.filter(s => !s.attended).length
+  const attendedTotal = sidebarStudents.filter(s => s.attended).length
+  const total         = sidebarStudents.length
 
   const toggleGrade = (grade: string) =>
     setExpandedGrades(prev => ({ ...prev, [grade]: !prev[grade] }))
@@ -144,17 +154,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* 사이드바 헤더 */}
             <div className="px-4 py-2.5 border-b border-gray-100">
-              <p className="text-xs font-bold text-gray-800">오늘 수업</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
-              </p>
+              <p className="text-xs font-bold text-gray-800">등록 학생</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명</p>
             </div>
 
             {/* 학생 목록 (학년별 접기/펼치기) */}
             <div className="flex-1 overflow-y-auto py-1">
+              {sortedGrades.length === 0 && (
+                <p className="text-[11px] text-gray-300 text-center py-6">등록된 학생이 없습니다</p>
+              )}
               {sortedGrades.map(grade => {
                 const students = gradeGroups[grade]
-                const attendedCount = students.filter(s => s.attended).length
                 const isExpanded = expandedGrades[grade] ?? true
 
                 return (
@@ -167,7 +177,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     >
                       <div className="flex items-center gap-1">
                         <span className="text-[11px] font-bold text-gray-500">{grade}</span>
-                        <span className="text-[11px] text-emerald-500 font-semibold">{attendedCount}</span>
                         <span className="text-[11px] text-gray-300">/{students.length}</span>
                       </div>
                       <svg
@@ -191,20 +200,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               ${selectedStudent === s.id
                                 ? 'bg-indigo-50 border-r-2 border-indigo-500'
                                 : 'hover:bg-gray-50 border-r-2 border-transparent'}
-                              ${!s.attended ? 'opacity-40' : ''}
                             `}
                           >
-                            {/* 출석 인디케이터 */}
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0
-                              ${s.attended ? 'bg-emerald-400' : 'bg-gray-300'}`}
-                            />
-                            <span className={`text-[11px] flex-1 truncate
-                              ${s.attended ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-200" />
+                            <span className="text-[11px] flex-1 truncate text-gray-700">
                               {s.name}
                             </span>
-                            {s.attended && s.checkInTime && (
-                              <span className="text-[10px] text-gray-300 shrink-0">{s.checkInTime}</span>
-                            )}
                           </button>
                         ))}
                       </div>
@@ -214,20 +215,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               })}
             </div>
 
-            {/* 출결 요약 */}
+            {/* 하단 요약 */}
             <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/80">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-gray-500">출석</span>
-                <span className="text-[11px] font-bold text-emerald-600">{attendedTotal}명</span>
-              </div>
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500">미출석</span>
-                <span className="text-[11px] font-bold text-gray-400">{absentTotal}명</span>
+                <span className="text-[11px] text-gray-500">전체</span>
+                <span className="text-[11px] font-bold text-indigo-600">{total}명</span>
               </div>
               <div className="mt-2 bg-gray-200 rounded-full h-1 overflow-hidden">
                 <div
-                  className="bg-emerald-400 h-1 rounded-full transition-all"
-                  style={{ width: `${(attendedTotal / MOCK_ATTENDANCE.length) * 100}%` }}
+                  className="bg-indigo-400 h-1 rounded-full"
+                  style={{ width: total > 0 ? `${Math.min((attendedTotal / total) * 100, 100)}%` : '0%' }}
                 />
               </div>
             </div>

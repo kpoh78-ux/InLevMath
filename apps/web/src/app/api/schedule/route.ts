@@ -10,6 +10,14 @@ async function getTeacher(req: NextRequest) {
   return prisma.teacher.findFirst({ where: { userId: payload.sub } })
 }
 
+function parseEntry(s: { studentNames: string; [key: string]: unknown }) {
+  return { ...s, studentNames: safeParseNames(s.studentNames) }
+}
+
+function safeParseNames(raw: string): string[] {
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+
 // GET /api/schedule — 선생님 전체 시간표
 export async function GET(req: NextRequest) {
   const teacher = await getTeacher(req)
@@ -19,7 +27,7 @@ export async function GET(req: NextRequest) {
     where: { teacherId: teacher.id },
     orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
   })
-  return NextResponse.json(schedules)
+  return NextResponse.json(schedules.map(parseEntry))
 }
 
 // POST /api/schedule — 수업 추가
@@ -43,5 +51,5 @@ export async function POST(req: NextRequest) {
       studentNames: JSON.stringify(Array.isArray(studentNames) ? studentNames : []),
     },
   })
-  return NextResponse.json(entry, { status: 201 })
+  return NextResponse.json(parseEntry(entry), { status: 201 })
 }

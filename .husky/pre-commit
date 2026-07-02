@@ -1,0 +1,14 @@
+#!/bin/sh
+# API 키·시크릿 하드코딩 감지
+DIFF=$(git diff --cached -- "*.ts" "*.tsx" "*.js" "*.mjs" 2>/dev/null | grep "^+" | grep -v "^+++" || true)
+case "$DIFF" in
+  *AIza*|*"sk-ant-"*|*"AKIA"*|*"ghp_"*)
+    echo ""
+    echo "커밋 차단: API 키가 코드에 포함된 것 같습니다. .env 파일로 이동해주세요."
+    echo ""
+    exit 1
+    ;;
+  *)
+    exit 0
+    ;;
+esac

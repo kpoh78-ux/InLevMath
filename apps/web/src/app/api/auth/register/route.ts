@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
-import { signToken } from '@/lib/auth'
+import { signInWithSupabase } from '@/lib/auth'
 import { APP_LIMITS } from '@inlevmath/shared'
 
 // POST /api/auth/register — 선생님 계정 생성 (최대 3명)
@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '핸드폰번호는 11자리 숫자로 입력하세요.' }, { status: 400 })
   }
 
-  // 선생님 수 한도 확인
   const teacherCount = await prisma.teacher.count()
   if (teacherCount >= APP_LIMITS.maxTeachers) {
     return NextResponse.json({ error: `선생님 등록 한도(${APP_LIMITS.maxTeachers}명)를 초과했습니다.` }, { status: 409 })
@@ -36,7 +35,8 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  const token = await signToken({ sub: user.id, role: 'teacher', name: user.name, phone: user.phone })
+  // Prisma User 생성 후 Supabase Auth 계정 생성 및 JWT 발급
+  const token = await signInWithSupabase(user.id, user.phone)
 
   return NextResponse.json(
     { token, user: { id: user.id, name: user.name, phone: user.phone, role: 'teacher' } },

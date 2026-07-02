@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
 
-const INITIAL_PASSWORD = 'math1234'
+const INITIAL_PASSWORD = process.env.STUDENT_INITIAL_PASSWORD ?? 'math1234'
 
 // POST /api/students/[id]/reset-password — 선생님이 학생 비밀번호를 math1234로 초기화
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,5 +29,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     data: { password: hashed },
   })
 
-  return NextResponse.json({ message: `${student.user.name} 학생의 비밀번호가 초기화되었습니다. (${INITIAL_PASSWORD})` })
+  return NextResponse.json({ message: `${student.user.name} 학생의 비밀번호가 초기화되었습니다.` })
 }

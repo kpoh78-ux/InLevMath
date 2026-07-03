@@ -18,19 +18,40 @@ function computeSupabasePassword(userId: string): string {
 }
 
 // Supabase Auth에 사용자 계정이 없으면 생성하고 supabaseId를 DB에 저장
+// 이미 같은 이메일이 Supabase Auth에 존재하면 비밀번호를 현재 userId 기준으로 업데이트 후 연결
 export async function ensureSupabaseUser(userId: string, phone: string): Promise<string> {
   const existing = await prisma.user.findUnique({ where: { id: userId }, select: { supabaseId: true } })
   if (existing?.supabaseId) return existing.supabaseId
 
+  const email = phoneToEmail(phone)
+  const password = computeSupabasePassword(userId)
+
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email: phoneToEmail(phone),
-    password: computeSupabasePassword(userId),
+    email,
+    password,
     email_confirm: true,
   })
-  if (error) throw new Error(`Supabase Auth 사용자 생성 실패: ${error.message}`)
 
-  await prisma.user.update({ where: { id: userId }, data: { supabaseId: data.user.id } })
-  return data.user.id
+  let supabaseUserId: string
+
+  if (error) {
+    if (!error.message.includes('already been registered') && !error.message.includes('already registered')) {
+      throw new Error(`Supabase Auth 사용자 생성 실패: ${error.message}`)
+    }
+    // 이미 존재하는 계정 → 목록에서 찾아 비밀번호를 이 userId 기준으로 업데이트
+    const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
+    if (listError) throw new Error(`Supabase 사용자 조회 실패: ${listError.message}`)
+    const found = list.users.find(u => u.email === email)
+    if (!found) throw new Error('Supabase Auth에서 기존 계정을 찾을 수 없습니다.')
+    supabaseUserId = found.id
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(supabaseUserId, { password })
+    if (updateError) throw new Error(`Supabase 비밀번호 업데이트 실패: ${updateError.message}`)
+  } else {
+    supabaseUserId = data.user.id
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { supabaseId: supabaseUserId } })
+  return supabaseUserId
 }
 
 // Supabase Auth로 로그인하여 access_token(JWT) 반환

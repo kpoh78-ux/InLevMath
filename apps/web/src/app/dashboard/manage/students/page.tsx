@@ -45,12 +45,17 @@ export default function ManageStudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [loadingStudents, setLoadingStudents] = useState(true)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'재원' | '퇴원'>('재원')
   const [groupFilter, setGroupFilter] = useState<'' | '초' | '중' | '고'>('')
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [resetTarget, setResetTarget] = useState<Student | null>(null)
+  const [withdrawTarget, setWithdrawTarget] = useState<Student | null>(null)
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [continueAdd, setContinueAdd] = useState(false)
 
   // 일괄 등록
@@ -67,7 +72,7 @@ export default function ManageStudentsPage() {
       const res = await apiFetch('/api/students')
       if (!res.ok) return
       const data = await res.json() as {
-        id: string; school: string; grade: string
+        id: string; school: string; grade: string; status: string
         parentName: string; parentPhone: string; startDate: string
         user: { id: string; name: string; phone: string; createdAt: string }
       }[]
@@ -81,7 +86,7 @@ export default function ManageStudentsPage() {
         parentPhone: s.parentPhone,
         startDate: s.startDate,
         registeredAt: s.user.createdAt.slice(0, 10),
-        status: '재원',
+        status: (s.status === 'withdrawn' ? '퇴원' : '재원') as '재원' | '퇴원',
         gradeGroup: gradeGroup(s.grade),
       })))
     } catch {
@@ -94,6 +99,7 @@ export default function ManageStudentsPage() {
   useEffect(() => { fetchStudents() }, [fetchStudents])
 
   const filtered = students.filter(s =>
+    s.status === statusFilter &&
     (groupFilter === '' || s.gradeGroup === groupFilter) &&
     (s.name.includes(search) || s.school.includes(search) || s.phone.includes(search))
   )
@@ -145,6 +151,41 @@ export default function ManageStudentsPage() {
       alert('초기화에 실패했습니다.')
     }
     setResetTarget(null)
+  }
+
+  const handleWithdraw = async (targetStatus: '재원' | '퇴원') => {
+    if (!withdrawTarget) return
+    setWithdrawing(true)
+    try {
+      const res = await apiFetch(`/api/students/${withdrawTarget.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: targetStatus === '퇴원' ? 'withdrawn' : 'active' }),
+      })
+      if (!res.ok) { alert('처리에 실패했습니다.'); return }
+      setStudents(prev => prev.map(s => s.id === withdrawTarget.id ? { ...s, status: targetStatus } : s))
+      window.dispatchEvent(new Event('students-updated'))
+    } catch {
+      alert('처리에 실패했습니다.')
+    } finally {
+      setWithdrawing(false)
+      setWithdrawTarget(null)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/api/students/${deleteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) { alert('삭제에 실패했습니다.'); return }
+      setStudents(prev => prev.filter(s => s.id !== deleteTarget.id))
+      window.dispatchEvent(new Event('students-updated'))
+    } catch {
+      alert('삭제에 실패했습니다.')
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
   }
 
   const f = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -219,14 +260,25 @@ export default function ManageStudentsPage() {
         </div>
       </div>
 
-      {/* 필터 + 검색 */}
-      <div className="flex items-center gap-3">
+      {/* 상태 탭 + 필터 + 검색 */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* 재원/퇴원 탭 */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-white">
+          {(['재원', '퇴원'] as const).map(s => (
+            <button key={s} onClick={() => { setStatusFilter(s); setGroupFilter('') }}
+              className={`px-4 py-2 text-sm font-medium transition-colors border-r border-gray-200 last:border-0 ${
+                statusFilter === s ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+              }`}>
+              {s} {students.filter(st => st.status === s).length}명
+            </button>
+          ))}
+        </div>
+        {/* 학년 필터 */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-white">
           {([['', '전체'], ['초', '초'], ['중', '중'], ['고', '고']] as const).map(([val, label]) => (
-            <button key={val}
-              onClick={() => setGroupFilter(val)}
+            <button key={val} onClick={() => setGroupFilter(val)}
               className={`px-4 py-2 text-sm font-medium transition-colors border-r border-gray-200 last:border-0 ${
-                groupFilter === val ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                groupFilter === val ? 'bg-gray-700 text-white' : 'text-gray-600 hover:bg-gray-50'
               }`}>
               {label}
             </button>
@@ -275,7 +327,9 @@ export default function ManageStudentsPage() {
                   <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s.grade}</span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{s.status}</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    s.status === '재원' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'
+                  }`}>{s.status}</span>
                 </td>
                 <td className="px-4 py-3 font-semibold text-gray-900">{s.name}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{s.school || '-'}</td>
@@ -288,12 +342,23 @@ export default function ManageStudentsPage() {
                 </td>
                 <td className="px-4 py-3 text-gray-400 text-xs">{s.startDate || '-'}</td>
                 <td className="px-4 py-3 text-center">
-                  <button
-                    onClick={() => setResetTarget(s)}
-                    className="text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-400 px-2 py-1 rounded transition-colors"
-                  >
-                    초기화
-                  </button>
+                  <div className="flex items-center justify-center gap-1">
+                    {s.status === '재원' ? (
+                      <button onClick={() => setWithdrawTarget(s)}
+                        className="text-xs text-rose-500 hover:text-rose-600 border border-rose-200 hover:border-rose-400 px-2 py-1 rounded transition-colors">
+                        퇴원
+                      </button>
+                    ) : (
+                      <button onClick={() => setWithdrawTarget(s)}
+                        className="text-xs text-indigo-500 hover:text-indigo-600 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors">
+                        복귀
+                      </button>
+                    )}
+                    <button onClick={() => setResetTarget(s)}
+                      className="text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-400 px-2 py-1 rounded transition-colors">
+                      비번초기화
+                    </button>
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-center">
                   <Link href={`/dashboard/students/${s.id}`}
@@ -302,7 +367,7 @@ export default function ManageStudentsPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <button className="text-gray-300 hover:text-red-400 transition-colors" title="삭제">
+                  <button onClick={() => setDeleteTarget(s)} className="text-gray-300 hover:text-red-400 transition-colors" title="삭제">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -575,6 +640,92 @@ export default function ManageStudentsPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 퇴원/재원 복귀 확인 모달 */}
+      {withdrawTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                withdrawTarget.status === '재원' ? 'bg-rose-100' : 'bg-indigo-100'
+              }`}>
+                <svg className={`w-5 h-5 ${withdrawTarget.status === '재원' ? 'text-rose-600' : 'text-indigo-600'}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d={withdrawTarget.status === '재원'
+                      ? 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1'
+                      : 'M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1'} />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">
+                  {withdrawTarget.status === '재원' ? '퇴원 처리' : '재원 복귀'}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">{withdrawTarget.name} 학생</p>
+              </div>
+            </div>
+            {withdrawTarget.status === '재원' ? (
+              <p className="text-sm text-gray-600 mb-5">
+                퇴원 처리 시 학생 앱 로그인이 비활성화됩니다.<br />
+                <span className="text-xs text-gray-400">학습 이력·채점 데이터는 보존됩니다.</span>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600 mb-5">
+                <strong className="text-gray-900">{withdrawTarget.name}</strong> 학생을 재원으로 복귀시킵니다.<br />
+                <span className="text-xs text-gray-400">앱 로그인이 다시 활성화됩니다.</span>
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setWithdrawTarget(null)} disabled={withdrawing}
+                className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
+                취소
+              </button>
+              <button
+                onClick={() => handleWithdraw(withdrawTarget.status === '재원' ? '퇴원' : '재원')}
+                disabled={withdrawing}
+                className={`flex-1 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                  withdrawTarget.status === '재원' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}>
+                {withdrawing ? '처리 중...' : withdrawTarget.status === '재원' ? '퇴원 확인' : '복귀 확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 학생 삭제 확인 모달 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">학생 삭제</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{deleteTarget.name} 학생</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">
+              <strong className="text-gray-900">{deleteTarget.name}</strong> 학생과 관련된 모든 데이터가 삭제됩니다.
+            </p>
+            <p className="text-xs text-red-500 mb-5">학습지 배포 내역, 채점 결과, 미션 기록이 모두 삭제되며 복구할 수 없습니다.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50">
+                취소
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 bg-red-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50">
+                {deleting ? '삭제 중...' : '삭제 확인'}
+              </button>
             </div>
           </div>
         </div>

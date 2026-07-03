@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api'
 
 type Textbook = {
   id: string; title: string; grade: string; publisher: string
@@ -10,18 +12,28 @@ type Textbook = {
 
 const GRADE_OPTIONS = ['중1-1', '중1-2', '중2-1', '중2-2', '중3-1', '중3-2', '고1', '고2', '고3']
 
-const MOCK_TEXTBOOKS: Textbook[] = [
-  { id: 't1', title: '일품 - 중등수학1(상)', grade: '중1-1', publisher: '좋은책신사고', problemCount: 120, createdAt: '2026-06-20' },
-  { id: 't2', title: '우공비Q+Q 표준완성 - 중등수학1(하)', grade: '중1-2', publisher: '좋은책신사고', problemCount: 98, createdAt: '2026-06-22' },
-  { id: 't3', title: '수완하나중 1-1 기말 모의고사_04회', grade: '중1-1', publisher: '직접 출제', problemCount: 24, createdAt: '2026-06-27' },
-]
+function TextbooksPageInner() {
+  const searchParams = useSearchParams()
+  const selectedStudent = searchParams.get('student')
 
-export default function TextbooksPage() {
-  const [textbooks, setTextbooks] = useState<Textbook[]>(MOCK_TEXTBOOKS)
+  const [textbooks, setTextbooks] = useState<Textbook[]>([])
+  const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ title: '', grade: '', publisher: '', problemCount: '' })
-  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+
+  const fetchTextbooks = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await apiFetch('/api/textbooks')
+      if (res.ok) setTextbooks(await res.json())
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTextbooks() }, [fetchTextbooks])
 
   const filtered = textbooks.filter(t =>
     t.title.includes(search) || t.grade.includes(search) || t.publisher.includes(search)
@@ -30,38 +42,55 @@ export default function TextbooksPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.grade) { alert('학년을 선택해주세요.'); return }
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
-    setTextbooks(prev => [...prev, {
-      id: `t${Date.now()}`,
-      title: form.title, grade: form.grade,
-      publisher: form.publisher || '직접 출제',
-      problemCount: parseInt(form.problemCount) || 0,
-      createdAt: new Date().toISOString().slice(0, 10),
-    }])
-    setForm({ title: '', grade: '', publisher: '', problemCount: '' })
-    setShowModal(false)
-    setLoading(false)
+    setSaving(true)
+    try {
+      const res = await apiFetch('/api/textbooks', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: form.title, grade: form.grade,
+          publisher: form.publisher || '직접 출제',
+          problemCount: parseInt(form.problemCount) || 0,
+        }),
+      })
+      if (res.ok) {
+        await fetchTextbooks()
+        setForm({ title: '', grade: '', publisher: '', problemCount: '' })
+        setShowModal(false)
+      } else {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        alert(d.error || '등록 실패')
+      }
+    } finally { setSaving(false) }
   }
 
-  const handleDelete = (t: Textbook) => {
+  const handleDelete = async (t: Textbook) => {
     if (!confirm(`"${t.title}"을 삭제할까요?`)) return
+    await apiFetch(`/api/textbooks/${t.id}`, { method: 'DELETE' })
     setTextbooks(prev => prev.filter(x => x.id !== t.id))
   }
+
+  const detailHref = (id: string) =>
+    selectedStudent ? `/dashboard/textbooks/${id}?student=${selectedStudent}` : `/dashboard/textbooks/${id}`
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">교재 · 채점</h1>
-          <p className="text-sm text-gray-500 mt-0.5">교재별 정답을 입력하고 학생 답안을 채점합니다</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {selectedStudent
+              ? '교재를 선택하면 해당 학생을 바로 채점합니다'
+              : '교재별 정답을 입력하고 학생 답안을 채점합니다'}
+          </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          + 교재 등록
-        </button>
+        {!selectedStudent && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            + 교재 등록
+          </button>
+        )}
       </div>
 
       {/* 검색 */}
@@ -90,12 +119,14 @@ export default function TextbooksPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {filtered.length === 0 ? (
+            {loading ? (
+              <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td></tr>
+            ) : filtered.length === 0 ? (
               <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">등록된 교재가 없습니다.</td></tr>
             ) : filtered.map(t => (
               <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-5 py-3.5">
-                  <Link href={`/dashboard/textbooks/${t.id}`} className="font-semibold text-indigo-600 hover:underline">
+                  <Link href={detailHref(t.id)} className="font-semibold text-indigo-600 hover:underline">
                     {t.title}
                   </Link>
                 </td>
@@ -104,21 +135,25 @@ export default function TextbooksPage() {
                 </td>
                 <td className="px-5 py-3.5 text-gray-500">{t.publisher}</td>
                 <td className="px-5 py-3.5 text-gray-700 font-medium">{t.problemCount}문제</td>
-                <td className="px-5 py-3.5 text-gray-400 text-xs">{t.createdAt}</td>
+                <td className="px-5 py-3.5 text-gray-400 text-xs">
+                  {new Date(t.createdAt).toLocaleDateString('ko-KR')}
+                </td>
                 <td className="px-5 py-3.5">
                   <div className="flex gap-2">
                     <Link
-                      href={`/dashboard/textbooks/${t.id}`}
-                      className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors"
+                      href={detailHref(t.id)}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors whitespace-nowrap"
                     >
-                      정답·채점
+                      {selectedStudent ? '채점하기' : '정답·채점'}
                     </Link>
-                    <button
-                      onClick={() => handleDelete(t)}
-                      className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors"
-                    >
-                      삭제
-                    </button>
+                    {!selectedStudent && (
+                      <button
+                        onClick={() => handleDelete(t)}
+                        className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors"
+                      >
+                        삭제
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -173,9 +208,9 @@ export default function TextbooksPage() {
                   className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                   취소
                 </button>
-                <button type="submit" disabled={loading || !form.grade}
+                <button type="submit" disabled={saving || !form.grade}
                   className="flex-1 bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                  {loading ? '등록 중...' : '등록 완료'}
+                  {saving ? '등록 중...' : '등록 완료'}
                 </button>
               </div>
             </form>
@@ -183,5 +218,13 @@ export default function TextbooksPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function TextbooksPage() {
+  return (
+    <Suspense>
+      <TextbooksPageInner />
+    </Suspense>
   )
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { MISSION_LABELS, MissionType } from '@inlevmath/shared'
 
@@ -251,8 +252,276 @@ function ScheduleModal({ onClose, onUpdated }:{ onClose:()=>void; onUpdated:()=>
   )
 }
 
+// ── SVG 차트 컴포넌트 ─────────────────────────────────────────────────────────
+
+function DonutChart({ rate, size = 120, color = '#6366f1' }: { rate: number; size?: number; color?: string }) {
+  const cx = size / 2, cy = size / 2, r = size * 0.42
+  const circ = 2 * Math.PI * r
+  const trackColor = '#f3f4f6'
+  const arcColor = rate >= 80 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444'
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={size * 0.1} />
+      <circle
+        cx={cx} cy={cy} r={r} fill="none"
+        stroke={color !== '#6366f1' ? color : arcColor}
+        strokeWidth={size * 0.1}
+        strokeDasharray={`${(rate / 100) * circ} ${circ}`}
+        strokeDashoffset={0}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cy})`}
+      />
+      <text x={cx} y={cy - 4} textAnchor="middle" fontSize={size * 0.22} fontWeight="800" fill="#111827">{rate}%</text>
+      <text x={cx} y={cy + size * 0.17} textAnchor="middle" fontSize={size * 0.1} fill="#9ca3af">정답률</text>
+    </svg>
+  )
+}
+
+function LineChart({ data }: { data: { label: string; correctRate: number | null; problems: number }[] }) {
+  const W = 360, H = 120, PAD = { t: 12, r: 16, b: 28, l: 28 }
+  const chartW = W - PAD.l - PAD.r
+  const chartH = H - PAD.t - PAD.b
+  const hasData = data.some(d => d.correctRate !== null)
+  const points = data.map((d, i) => ({
+    x: PAD.l + (i / (data.length - 1)) * chartW,
+    y: d.correctRate !== null ? PAD.t + chartH - (d.correctRate / 100) * chartH : null,
+    rate: d.correctRate,
+    label: d.label,
+    problems: d.problems,
+  }))
+  const connected = points.filter(p => p.y !== null)
+  const pathD = connected.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  const areaD = connected.length > 1
+    ? `${pathD} L ${connected[connected.length - 1].x} ${PAD.t + chartH} L ${connected[0].x} ${PAD.t + chartH} Z`
+    : ''
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+      {/* 가이드 라인 */}
+      {[0, 50, 100].map(v => {
+        const y = PAD.t + chartH - (v / 100) * chartH
+        return (
+          <g key={v}>
+            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#f3f4f6" strokeWidth="1" />
+            <text x={PAD.l - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#d1d5db">{v}</text>
+          </g>
+        )
+      })}
+      {/* 면적 */}
+      {hasData && areaD && (
+        <path d={areaD} fill="#6366f1" opacity="0.08" />
+      )}
+      {/* 선 */}
+      {hasData && connected.length > 1 && (
+        <path d={pathD} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+      {/* 점 + 레이블 */}
+      {points.map((p, i) => (
+        <g key={i}>
+          {p.y !== null && (
+            <>
+              <circle cx={p.x} cy={p.y} r="4" fill="#6366f1" />
+              <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" fontWeight="700" fill="#4f46e5">{p.rate}%</text>
+            </>
+          )}
+          {p.y === null && (
+            <text x={p.x} y={PAD.t + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">-</text>
+          )}
+          <text x={p.x} y={H - 4} textAnchor="middle" fontSize="9" fill="#9ca3af">{p.label}</text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+const STEP_COLORS: Record<string, string> = {
+  '기초': 'bg-sky-400', '기본': 'bg-emerald-400', '발전': 'bg-amber-400',
+  '최상위': 'bg-rose-400', '최다빈출': 'bg-violet-400', '최다오답': 'bg-orange-400',
+  '서술형': 'bg-pink-400', '모의고사': 'bg-teal-400', '교재': 'bg-indigo-400',
+}
+
+// ── 학생 통계 뷰 ──────────────────────────────────────────────────────────────
+
+type Stats = {
+  student: { id:string; name:string; grade:string; currentLevel:number; currentMission:string; comprehension:number; reasoning:number; calculation:number }
+  summary: { totalProblems:number; correctProblems:number; avgCorrectRate:number; worksheetCount:number; textbookCount:number }
+  weeklyTrend: { label:string; problems:number; correctRate:number|null }[]
+  byStep: { step:string; total:number; correct:number; rate:number }[]
+}
+
+function StudentStatsView({ studentId }: { studentId: string }) {
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    apiFetch(`/api/students/${studentId}/stats`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setStats(d) })
+      .finally(() => setLoading(false))
+  }, [studentId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+        학생 학습현황을 불러오는 중...
+      </div>
+    )
+  }
+  if (!stats) {
+    return <div className="py-20 text-center text-gray-400 text-sm">데이터를 불러올 수 없습니다.</div>
+  }
+
+  const { student, summary, weeklyTrend, byStep } = stats
+  const noActivity = summary.totalProblems === 0
+  const missionLabel = MISSION_LABELS[student.currentMission as MissionType] ?? student.currentMission
+
+  return (
+    <div className="space-y-5">
+      {/* 학생 헤더 */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+          <span className="text-sm font-black text-indigo-700">Lv{student.currentLevel}</span>
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-gray-900">{student.name}</h1>
+            <span className="text-xs bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded">{student.grade}</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">현재 미션: <span className={`font-semibold ${MISSION_COLOR[student.currentMission]??'text-gray-500'}`}>{missionLabel}</span></p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="text-xs text-gray-400">최근 30일 학습현황</p>
+          <p className="text-xs text-indigo-500 mt-0.5">
+            학습지 {summary.worksheetCount}회 · 교재 {summary.textbookCount}회 채점
+          </p>
+        </div>
+      </div>
+
+      {noActivity ? (
+        <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center text-gray-400">
+          <p className="text-2xl mb-2">📚</p>
+          <p className="text-sm">최근 30일간 채점된 학습 기록이 없습니다.</p>
+          <p className="text-xs text-gray-300 mt-1">학습지 또는 교재를 채점하면 통계가 표시됩니다.</p>
+        </div>
+      ) : (
+        <>
+          {/* 상단 3열 카드 */}
+          <div className="grid grid-cols-3 gap-4">
+            {/* 원그래프 — 정답률 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col items-center gap-2">
+              <p className="text-xs font-semibold text-gray-500 self-start">평균 정답률</p>
+              <DonutChart rate={summary.avgCorrectRate} size={100} />
+              <p className="text-xs text-gray-400">
+                {summary.correctProblems} / {summary.totalProblems} 문제 정답
+              </p>
+            </div>
+
+            {/* 영역별 능력치 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+              <p className="text-xs font-semibold text-gray-500">영역별 능력치</p>
+              {([
+                ['이해력', student.comprehension, 'bg-sky-400'],
+                ['추론력', student.reasoning,     'bg-violet-400'],
+                ['계산력', student.calculation,   'bg-amber-400'],
+              ] as [string, number, string][]).map(([label, value, color]) => (
+                <div key={label} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">{label}</span>
+                    <span className="font-bold text-gray-700">{value.toFixed(1)}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${color} transition-all`}
+                      style={{ width: `${Math.min(value, 100)}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 풀이 요약 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+              <p className="text-xs font-semibold text-gray-500">학습 요약</p>
+              <div className="space-y-2.5">
+                {[
+                  { label: '총 풀이 문제', value: `${summary.totalProblems}문제`, color: 'text-gray-800' },
+                  { label: '정답 문제',   value: `${summary.correctProblems}문제`, color: 'text-emerald-600' },
+                  { label: '오답 문제',   value: `${summary.totalProblems - summary.correctProblems}문제`, color: 'text-rose-500' },
+                  { label: '학습지 채점', value: `${summary.worksheetCount}회`, color: 'text-indigo-600' },
+                  { label: '교재 채점',   value: `${summary.textbookCount}회`, color: 'text-teal-600' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex justify-between text-xs">
+                    <span className="text-gray-400">{label}</span>
+                    <span className={`font-bold ${color}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 꺽은선 그래프 — 주간 추이 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-xs font-semibold text-gray-500 mb-4">주간 정답률 추이</p>
+            <LineChart data={weeklyTrend} />
+            <div className="flex gap-4 mt-3 flex-wrap">
+              {weeklyTrend.map(w => (
+                <div key={w.label} className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <span>{w.label}</span>
+                  <span className="font-semibold text-gray-700">{w.correctRate !== null ? `${w.correctRate}%` : '-'}</span>
+                  {w.problems > 0 && <span className="text-gray-300">({w.problems}문제)</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 띠그래프 — 단계별 정답률 */}
+          {byStep.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-xs font-semibold text-gray-500 mb-4">단계별 정답률</p>
+              <div className="space-y-3">
+                {byStep.map(s => (
+                  <div key={s.step} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="font-medium text-gray-600">{s.step}</span>
+                      <span className="text-gray-400">{s.correct}/{s.total} 문제 · <span className={`font-bold ${s.rate >= 80 ? 'text-emerald-600' : s.rate >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>{s.rate}%</span></span>
+                    </div>
+                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                      <div
+                        className={`h-full rounded-full transition-all ${STEP_COLORS[s.step] ?? 'bg-indigo-400'}`}
+                        style={{ width: `${s.rate}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── 메인 페이지 ──────────────────────────────────────────────────────────────
+function DashboardPageInner() {
+  const searchParams = useSearchParams()
+  const selectedStudent = searchParams.get('student')
+
+  // 학생 선택 시 학생 통계 화면
+  if (selectedStudent) return <StudentStatsView studentId={selectedStudent} />
+
+  // 이하 일반 대시보드
+  return <NormalDashboard />
+}
+
 export default function DashboardPage() {
+  return (
+    <Suspense>
+      <DashboardPageInner />
+    </Suspense>
+  )
+}
+
+function NormalDashboard() {
   const [summary, setSummary]       = useState<Summary|null>(null)
   const [loading, setLoading]       = useState(true)
   const [showSchedule, setShowSchedule] = useState(false)

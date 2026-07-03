@@ -29,6 +29,7 @@ model Teacher {
 
   students   Student[]
   worksheets Worksheet[]
+  textbooks  Textbook[]
   schedules  ClassSchedule[]
 
   @@index([userId])
@@ -70,10 +71,54 @@ model Student {
   reasoning     Float @default(0)
   calculation   Float @default(0)
 
-  results       MissionResult[]
-  distributions WorksheetDistribution[]
+  results          MissionResult[]
+  distributions    WorksheetDistribution[]
+  textbookResults  TextbookResult[]
 
   @@index([teacherId])
+}
+
+// ── 교재 ────────────────────────────────────────────────────────────────────
+model Textbook {
+  id          String   @id @default(cuid())
+  title       String
+  grade       String
+  publisher   String   @default("직접 출제")
+  teacherId   String
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  problems  TextbookProblem[]
+  results   TextbookResult[]
+
+  @@index([teacherId])
+}
+
+model TextbookProblem {
+  id         String   @id @default(cuid())
+  textbookId String
+  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  number     Int
+  unit       String   @default("")
+  type       String   @default("multiple")  // "multiple" | "short"
+  answer     String   @default("")
+
+  @@unique([textbookId, number])
+  @@index([textbookId])
+}
+
+model TextbookResult {
+  id                String   @id @default(cuid())
+  textbookId        String
+  textbook          Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  wrongProblemsJson String   @default("[]")
+  gradedBy          String   @default("teacher")
+  submittedAt       DateTime @default(now())
+
+  @@unique([textbookId, studentId])
+  @@index([studentId])
 }
 
 // ── 학습지 ──────────────────────────────────────────────────────────────────
@@ -115,11 +160,13 @@ model WorksheetDistribution {
 }
 
 model WorksheetResult {
-  id              String   @id @default(cuid())
-  distributionId  String   @unique
-  distribution    WorksheetDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
-  correctProblems Int
-  submittedAt     DateTime @default(now())
+  id               String   @id @default(cuid())
+  distributionId   String   @unique
+  distribution     WorksheetDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  correctProblems  Int
+  wrongProblemsJson String  @default("[]")  // JSON: 틀린 문제 번호 배열 [2, 5, 8]
+  gradedBy         String  @default("student")  // "student" | "teacher"
+  submittedAt      DateTime @default(now())
 }
 
 enum DistributionStatus {

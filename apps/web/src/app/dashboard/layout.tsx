@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useState, Suspense } from 'react'
 
 const NAV: { href: string; label: string; brand?: true }[] = [
   { href: '/dashboard',              label: 'InLevMath', brand: true },
@@ -28,12 +28,13 @@ function groupByGrade(students: AttendedStudent[]) {
   return groups
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const selectedStudent = searchParams.get('student')
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
-  const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
 
   const fetchSidebarStudents = useCallback(async () => {
@@ -194,7 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {students.map(s => (
                           <button
                             key={s.id}
-                            onClick={() => setSelectedStudent(s.id === selectedStudent ? null : s.id)}
+                            onClick={() => router.push(pathname + (selectedStudent === s.id ? '' : `?student=${s.id}`))}
                             className={`
                               w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors
                               ${selectedStudent === s.id
@@ -237,5 +238,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </Suspense>
   )
 }

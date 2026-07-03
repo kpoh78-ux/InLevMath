@@ -75,6 +75,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   // 채점 모달
   const [gradingDist, setGradingDist] = useState<Distribution | null>(null)
   const [wrongSet, setWrongSet] = useState<Set<number>>(new Set())
+  const [initialWrongSet, setInitialWrongSet] = useState<Set<number>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [gradedResult, setGradedResult] = useState<{ correctRate: number; newAbility: { comprehension: number; reasoning: number; calculation: number } } | null>(null)
 
@@ -95,9 +96,9 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   useEffect(() => { fetchStudentWorksheets() }, [fetchStudentWorksheets])
 
   const openGrading = (dist: Distribution) => {
-    // 기존 채점 결과 있으면 오답 불러오기
     const existing: number[] = dist.result ? JSON.parse(dist.result.wrongProblemsJson) : []
     setWrongSet(new Set(existing))
+    setInitialWrongSet(new Set(existing))
     setGradedResult(null)
     setGradingDist(dist)
   }
@@ -110,6 +111,13 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
       return next
     })
   }
+
+  const allCorrect = () => setWrongSet(new Set())
+  const allWrong = () => {
+    if (!gradingDist) return
+    setWrongSet(new Set(Array.from({ length: gradingDist.worksheet.problemCount }, (_, i) => i + 1)))
+  }
+  const resetGrading = () => setWrongSet(new Set(initialWrongSet))
 
   const submitGrade = async () => {
     if (!gradingDist) return
@@ -241,6 +249,23 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
               <button onClick={() => { setGradingDist(null); setGradedResult(null) }}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-4">×</button>
             </div>
+
+            {!gradedResult && (
+              <div className="flex gap-2 px-5 py-2.5 border-b border-gray-100 bg-gray-50/70">
+                <button onClick={resetGrading}
+                  className="flex-1 text-xs font-semibold py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors">
+                  전체 취소
+                </button>
+                <button onClick={allCorrect}
+                  className="flex-1 text-xs font-semibold py-1.5 rounded-lg border border-indigo-300 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                  전체 정답
+                </button>
+                <button onClick={allWrong}
+                  className="flex-1 text-xs font-semibold py-1.5 rounded-lg border border-rose-300 text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors">
+                  전체 오답
+                </button>
+              </div>
+            )}
 
             {gradedResult ? (
               /* 채점 완료 결과 화면 */

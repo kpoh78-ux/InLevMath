@@ -42,6 +42,7 @@ function TextbookDetailPageInner() {
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>(preselectedStudent ?? '')
   const [wrongSet, setWrongSet] = useState<Set<number>>(new Set())
+  const [initialWrongSet, setInitialWrongSet] = useState<Set<number>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [gradedResult, setGradedResult] = useState<{
     correctRate: number
@@ -75,9 +76,11 @@ function TextbookDetailPageInner() {
       try {
         const wrong: number[] = JSON.parse(existing.wrongProblemsJson)
         setWrongSet(new Set(wrong))
-      } catch { setWrongSet(new Set()) }
+        setInitialWrongSet(new Set(wrong))
+      } catch { setWrongSet(new Set()); setInitialWrongSet(new Set()) }
     } else {
       setWrongSet(new Set())
+      setInitialWrongSet(new Set())
     }
     setGradedResult(null)
   }
@@ -135,6 +138,10 @@ function TextbookDetailPageInner() {
       return next
     })
   }
+
+  const allCorrect = () => setWrongSet(new Set())
+  const allWrong = () => setWrongSet(new Set(problems.map(p => p.number)))
+  const resetGrading = () => setWrongSet(new Set(initialWrongSet))
 
   const submitGrade = async () => {
     if (!selectedStudentId) { alert('학생을 선택해주세요.'); return }
@@ -376,6 +383,22 @@ function TextbookDetailPageInner() {
                   </div>
                 ) : (
                   <>
+                    {!gradedResult && (
+                      <div className="flex gap-2">
+                        <button onClick={resetGrading}
+                          className="flex-1 text-xs font-semibold py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors">
+                          전체 취소
+                        </button>
+                        <button onClick={allCorrect}
+                          className="flex-1 text-xs font-semibold py-2 rounded-lg border border-indigo-300 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                          전체 정답
+                        </button>
+                        <button onClick={allWrong}
+                          className="flex-1 text-xs font-semibold py-2 rounded-lg border border-rose-300 text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors">
+                          전체 오답
+                        </button>
+                      </div>
+                    )}
                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                       {units.map(unit => {
                         const unitProblems = problems.filter(p => (p.unit || '단원 미지정') === unit)

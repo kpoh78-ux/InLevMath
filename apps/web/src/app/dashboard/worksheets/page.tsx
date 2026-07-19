@@ -358,6 +358,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
 // ── 전체 학습지 관리 (기존 뷰) ───────────────────────────────────────────────
 
+const WS_GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
+
 function AllWorksheetsView() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([])
   const [loadingList, setLoadingList] = useState(true)
@@ -373,6 +375,7 @@ function AllWorksheetsView() {
   const [saveError, setSaveError] = useState('')
   const [search, setSearch] = useState('')
   const [gradeFilter, setGradeFilter] = useState('')
+  const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
 
   const [answerWs, setAnswerWs] = useState<Worksheet | null>(null)
   const [answerInputs, setAnswerInputs] = useState<string[]>([])
@@ -493,70 +496,111 @@ function AllWorksheetsView() {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
-              <th className="px-5 py-3 text-left font-medium">학습지명</th>
-              <th className="px-4 py-3 text-left font-medium">학년</th>
-              <th className="px-4 py-3 text-left font-medium">단원</th>
-              <th className="px-4 py-3 text-left font-medium">단계</th>
-              <th className="px-4 py-3 text-center font-medium">문제 수</th>
-              <th className="px-4 py-3 text-center font-medium">정답</th>
-              <th className="px-4 py-3 text-left font-medium">등록일</th>
-              <th className="px-4 py-3 text-left font-medium">관리</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {loadingList ? (
-              <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400 text-sm">불러오는 중...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400 text-sm">
-                {worksheets.length === 0
-                  ? '등록된 학습지가 없습니다. 오른쪽 상단 "+ 학습지 등록"을 눌러 추가하세요.'
-                  : '검색 결과가 없습니다.'}
-              </td></tr>
-            ) : filtered.map(w => (
-              <tr key={w.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-5 py-3.5">
-                  <div className="font-semibold text-gray-800 text-sm">{w.title}</div>
-                  {w.source === 'mathflat' && (
-                    <span className="text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">매쓰플랫</span>
+      {/* 학년별 아코디언 */}
+      {loadingList ? (
+        <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">불러오는 중...</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">
+          {worksheets.length === 0
+            ? '등록된 학습지가 없습니다. 오른쪽 상단 "+ 학습지 등록"을 눌러 추가하세요.'
+            : '검색 결과가 없습니다.'}
+        </div>
+      ) : (() => {
+        // 학년별 그룹 (단원 오름차순 정렬)
+        const groups: Record<string, Worksheet[]> = {}
+        filtered.forEach(w => {
+          if (!groups[w.grade]) groups[w.grade] = []
+          groups[w.grade].push(w)
+        })
+        Object.keys(groups).forEach(g => {
+          groups[g].sort((a, b) => a.unit.localeCompare(b.unit, 'ko') || a.title.localeCompare(b.title, 'ko'))
+        })
+        const sortedGrades = WS_GRADE_ORDER.filter(g => groups[g])
+
+        return (
+          <div className="space-y-2">
+            {sortedGrades.map(grade => {
+              const isOpen = expandedGrades[grade] ?? false
+              const list = groups[grade]
+              return (
+                <div key={grade} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  {/* 학년 헤더 */}
+                  <button
+                    onClick={() => setExpandedGrades(prev => ({ ...prev, [grade]: !isOpen }))}
+                    className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : 'rotate-0'}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="text-sm font-bold text-gray-700">{grade}</span>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{list.length}개</span>
+                    {list.some(w => !hasAnswers(w)) && (
+                      <span className="text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                        정답 미입력 {list.filter(w => !hasAnswers(w)).length}개
+                      </span>
+                    )}
+                  </button>
+
+                  {/* 학습지 목록 테이블 */}
+                  {isOpen && (
+                    <table className="w-full text-sm border-t border-gray-100">
+                      <thead>
+                        <tr className="bg-gray-50 text-xs text-gray-400">
+                          <th className="px-5 py-2.5 text-left font-medium">학습지명</th>
+                          <th className="px-4 py-2.5 text-left font-medium">단원</th>
+                          <th className="px-4 py-2.5 text-left font-medium">단계</th>
+                          <th className="px-4 py-2.5 text-center font-medium">문제 수</th>
+                          <th className="px-4 py-2.5 text-center font-medium">정답</th>
+                          <th className="px-4 py-2.5 text-left font-medium">등록일</th>
+                          <th className="px-4 py-2.5 text-left font-medium">관리</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {list.map(w => (
+                          <tr key={w.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-5 py-3">
+                              <div className="font-semibold text-gray-800 text-sm">{w.title}</div>
+                              {w.source === 'mathflat' && (
+                                <span className="text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">매쓰플랫</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">{w.unit}</td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                {stepLabel(w)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center text-gray-700 font-medium text-sm">{w.problemCount}</td>
+                            <td className="px-4 py-3 text-center">
+                              {hasAnswers(w)
+                                ? <span className="text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
+                                : <span className="text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-xs">{new Date(w.createdAt).toLocaleDateString('ko-KR')}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2">
+                                <button onClick={() => openAnswers(w)}
+                                  className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap">
+                                  정답 설정
+                                </button>
+                                <button onClick={() => handleDelete(w)}
+                                  className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors">
+                                  삭제
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
-                </td>
-                <td className="px-4 py-3.5">
-                  <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{w.grade}</span>
-                </td>
-                <td className="px-4 py-3.5 text-gray-500 text-xs">{w.unit}</td>
-                <td className="px-4 py-3.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                    {stepLabel(w)}
-                  </span>
-                </td>
-                <td className="px-4 py-3.5 text-center text-gray-700 font-medium text-sm">{w.problemCount}</td>
-                <td className="px-4 py-3.5 text-center">
-                  {hasAnswers(w)
-                    ? <span className="text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
-                    : <span className="text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
-                </td>
-                <td className="px-4 py-3.5 text-gray-400 text-xs">{new Date(w.createdAt).toLocaleDateString('ko-KR')}</td>
-                <td className="px-4 py-3.5">
-                  <div className="flex gap-2">
-                    <button onClick={() => openAnswers(w)}
-                      className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap">
-                      정답 설정
-                    </button>
-                    <button onClick={() => handleDelete(w)}
-                      className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors">
-                      삭제
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* 학습지 등록 모달 */}
       {showAddModal && (

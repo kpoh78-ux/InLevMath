@@ -23,15 +23,7 @@ const STEP_STYLE: Record<string, { bg: string; text: string; dot: string }> = {
   '모의고사': { bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-400' },
 }
 
-// 오늘 출석 학생 — 실제 출결 API 연동 시 교체
-const ATTENDING_STUDENTS: StudentItem[] = [
-  { id: 's1', name: '홍길동', grade: '중2' },
-  { id: 's2', name: '김철수', grade: '중1' },
-  { id: 's4', name: '박지민', grade: '중2' },
-  { id: 's6', name: '정수진', grade: '중3' },
-  { id: 's8', name: '이하늘', grade: '고1' },
-  { id: 's9', name: '박서준', grade: '중1' },
-]
+const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
 export default function DistributePage() {
   const [activeCategory, setActiveCategory] = useState<WorksheetCategory>('단원별')
@@ -44,6 +36,7 @@ export default function DistributePage() {
   const [justDistributed, setJustDistributed] = useState<string | null>(null)
   const [distributedIds, setDistributedIds] = useState<Set<string>>(new Set())
   const [gradeFilter, setGradeFilter] = useState('')
+  const [allStudents, setAllStudents] = useState<StudentItem[]>([])
 
   const fetchWorksheets = useCallback(async () => {
     setLoadingList(true)
@@ -55,7 +48,23 @@ export default function DistributePage() {
     }
   }, [])
 
-  useEffect(() => { fetchWorksheets() }, [fetchWorksheets])
+  const fetchStudents = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/students')
+      if (res.ok) {
+        const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
+        const sorted = [...data].sort((a, b) =>
+          GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade)
+        )
+        setAllStudents(sorted.map(s => ({ id: s.id, name: s.user.name, grade: s.grade })))
+      }
+    } catch { /* 무시 */ }
+  }, [])
+
+  useEffect(() => {
+    fetchWorksheets()
+    fetchStudents()
+  }, [fetchWorksheets, fetchStudents])
 
   const steps = activeCategory === '단원별' ? UNIT_STEPS : EXAM_STEPS
 
@@ -69,7 +78,7 @@ export default function DistributePage() {
 
   const selectAll = () =>
     setSelectedStudents(
-      selectedStudents.length === ATTENDING_STUDENTS.length ? [] : ATTENDING_STUDENTS.map(s => s.id)
+      selectedStudents.length === allStudents.length ? [] : allStudents.map(s => s.id)
     )
 
   const handleDistribute = async () => {
@@ -213,14 +222,16 @@ export default function DistributePage() {
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-700">배포 대상</p>
             <button onClick={selectAll} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">
-              {selectedStudents.length === ATTENDING_STUDENTS.length ? '전체 해제' : '전체 선택'}
+              {selectedStudents.length === allStudents.length && allStudents.length > 0 ? '전체 해제' : '전체 선택'}
             </button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-0.5">오늘 출석 {ATTENDING_STUDENTS.length}명</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">등록 학생 {allStudents.length}명</p>
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          {ATTENDING_STUDENTS.map(s => {
+          {allStudents.length === 0 ? (
+            <p className="text-[11px] text-gray-300 text-center py-6">학생을 불러오는 중...</p>
+          ) : allStudents.map(s => {
             const checked = selectedStudents.includes(s.id)
             return (
               <button key={s.id} onClick={() => toggleStudent(s.id)}

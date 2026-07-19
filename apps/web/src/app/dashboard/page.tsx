@@ -525,6 +525,7 @@ function NormalDashboard() {
   const [summary, setSummary]       = useState<Summary|null>(null)
   const [loading, setLoading]       = useState(true)
   const [showSchedule, setShowSchedule] = useState(false)
+  const [showStudents, setShowStudents] = useState(false)
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -646,47 +647,58 @@ function NormalDashboard() {
 
         {/* 학생 현황 */}
         <div className="col-span-3 bg-white rounded-xl border border-gray-200">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <button
+            onClick={() => setShowStudents(v => !v)}
+            className="w-full px-5 py-4 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
             <div className="flex items-center gap-2">
+              <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showStudents ? 'rotate-90' : 'rotate-0'}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
               <h2 className="font-semibold text-gray-800">학생 현황</h2>
               <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-medium">{studentCount}명</span>
             </div>
-            <Link href="/dashboard/manage/students" className="text-xs text-indigo-500 hover:underline">전체보기 →</Link>
-          </div>
-          {students.length === 0 ? (
-            <div className="px-5 py-10 text-center text-gray-400 text-sm">
-              등록된 학생이 없습니다.
-              <Link href="/dashboard/manage/students" className="block mt-2 text-indigo-500 hover:underline text-xs">학생 등록하기 →</Link>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {students.map(s => (
-                <Link key={s.id} href={`/dashboard/manage/students/${s.id}`}
-                  className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors group">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-black text-indigo-700">Lv{s.currentLevel}</span>
-                  </div>
-                  <div className="w-24 shrink-0">
-                    <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">{s.name}</p>
-                    <p className="text-[11px] text-gray-400">{s.grade}</p>
-                  </div>
-                  <div className="w-24 shrink-0">
-                    <p className="text-[11px] text-gray-400 mb-0.5">현재 미션</p>
-                    <p className={`text-xs font-semibold ${MISSION_COLOR[s.currentMission]??'text-gray-600'}`}>{MISSION_LABELS[s.currentMission]}</p>
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <AbilityMini label="이해" value={s.comprehension} color="bg-sky-400" />
-                    <AbilityMini label="추론" value={s.reasoning}     color="bg-violet-400" />
-                    <AbilityMini label="계산" value={s.calculation}   color="bg-amber-400" />
-                  </div>
-                  <div className="w-14 text-right shrink-0">
-                    {s.lastActivity
-                      ? <span className="text-[11px] text-gray-400">{timeAgo(s.lastActivity)}</span>
-                      : <span className="text-[11px] text-gray-300">활동없음</span>}
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <Link href="/dashboard/manage/students"
+              onClick={e => e.stopPropagation()}
+              className="text-xs text-indigo-500 hover:underline">전체보기 →</Link>
+          </button>
+          {showStudents && (
+            students.length === 0 ? (
+              <div className="px-5 py-10 text-center text-gray-400 text-sm">
+                등록된 학생이 없습니다.
+                <Link href="/dashboard/manage/students" className="block mt-2 text-indigo-500 hover:underline text-xs">학생 등록하기 →</Link>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {students.map(s => (
+                  <Link key={s.id} href={`/dashboard/manage/students/${s.id}`}
+                    className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors group">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-black text-indigo-700">Lv{s.currentLevel}</span>
+                    </div>
+                    <div className="w-24 shrink-0">
+                      <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">{s.name}</p>
+                      <p className="text-[11px] text-gray-400">{s.grade}</p>
+                    </div>
+                    <div className="w-24 shrink-0">
+                      <p className="text-[11px] text-gray-400 mb-0.5">현재 미션</p>
+                      <p className={`text-xs font-semibold ${MISSION_COLOR[s.currentMission]??'text-gray-600'}`}>{MISSION_LABELS[s.currentMission]}</p>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <AbilityMini label="이해" value={s.comprehension} color="bg-sky-400" />
+                      <AbilityMini label="추론" value={s.reasoning}     color="bg-violet-400" />
+                      <AbilityMini label="계산" value={s.calculation}   color="bg-amber-400" />
+                    </div>
+                    <div className="w-14 text-right shrink-0">
+                      {s.lastActivity
+                        ? <span className="text-[11px] text-gray-400">{timeAgo(s.lastActivity)}</span>
+                        : <span className="text-[11px] text-gray-300">활동없음</span>}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )
           )}
         </div>
 

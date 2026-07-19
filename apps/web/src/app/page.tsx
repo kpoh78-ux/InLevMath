@@ -36,8 +36,8 @@ export default function LoginPage() {
       localStorage.setItem('teacher_token', data.token)
       localStorage.setItem('teacher_name', `${data.user.name} 선생님`)
       router.push('/dashboard')
-    } catch {
-      setError('서버 연결에 실패했습니다.')
+    } catch (e: any) {
+      setError(`서버 연결에 실패했습니다. (${e?.message ?? 'network error'})`)
     } finally {
       setLoading(false)
     }

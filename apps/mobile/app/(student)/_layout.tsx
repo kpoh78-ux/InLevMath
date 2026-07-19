@@ -11,9 +11,10 @@ export default function StudentLayout() {
         tabBarInactiveTintColor: Colors.subtext,
       }}
     >
-      <Tabs.Screen name="index"   options={{ title: '대시보드', tabBarIcon: () => null }} />
-      <Tabs.Screen name="mission" options={{ title: '미션 입력', tabBarIcon: () => null }} />
-      <Tabs.Screen name="history" options={{ title: '이력',      tabBarIcon: () => null }} />
+      <Tabs.Screen name="index"     options={{ title: '대시보드', tabBarIcon: () => null }} />
+      <Tabs.Screen name="mission"   options={{ title: '미션 입력', tabBarIcon: () => null }} />
+      <Tabs.Screen name="inventory" options={{ title: '🎒 보관창고', tabBarIcon: () => null }} />
+      <Tabs.Screen name="history"   options={{ title: '이력',      tabBarIcon: () => null }} />
     </Tabs>
   )
 }

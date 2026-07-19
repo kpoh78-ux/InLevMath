@@ -10,6 +10,7 @@ const NAV: { href: string; label: string; brand?: true }[] = [
   { href: '/dashboard/worksheets',   label: '학습지' },
   { href: '/dashboard/textbooks',    label: '교재' },
   { href: '/dashboard/manage',       label: '학생관리' },
+  { href: '/dashboard/rewards',      label: '보상관리' },
 ]
 
 type AttendedStudent = {

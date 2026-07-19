@@ -27,10 +27,11 @@ model Teacher {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  students   Student[]
-  worksheets Worksheet[]
-  textbooks  Textbook[]
-  schedules  ClassSchedule[]
+  students     Student[]
+  worksheets   Worksheet[]
+  textbooks    Textbook[]
+  schedules    ClassSchedule[]
+  rewardItems  RewardItem[]
 
   @@index([userId])
 }
@@ -71,9 +72,13 @@ model Student {
   reasoning     Float @default(0)
   calculation   Float @default(0)
 
+  rewardPoints    Int @default(0)
+
   results          MissionResult[]
   distributions    WorksheetDistribution[]
   textbookResults  TextbookResult[]
+  rewards          StudentReward[]
+  pointHistory     PointTransaction[]
 
   @@index([teacherId])
 }
@@ -205,4 +210,52 @@ enum MissionType {
 enum ResultSource {
   manual
   mathflat
+}
+
+// ── 보상 아이템 (선생님이 생성) ────────────────────────────────────────────────
+model RewardItem {
+  id          String   @id @default(cuid())
+  teacherId   String
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  emoji       String   @default("🎁")
+  type        String   @default("virtual")   // "virtual" | "physical"
+  rarity      String   @default("common")    // "common" | "rare" | "epic" | "legendary"
+  pointValue  Int      @default(0)           // 지급시 함께 부여할 포인트
+  createdAt   DateTime @default(now())
+
+  grants StudentReward[]
+
+  @@index([teacherId])
+}
+
+// ── 학생 보관창고 ──────────────────────────────────────────────────────────────
+model StudentReward {
+  id         String     @id @default(cuid())
+  studentId  String
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       RewardItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity   Int        @default(1)
+  status     String     @default("owned")    // "owned" | "redeemed"
+  reason     String     @default("")
+  grantedAt  DateTime   @default(now())
+  redeemedAt DateTime?
+
+  @@index([studentId])
+  @@index([itemId])
+}
+
+// ── 포인트 내역 ────────────────────────────────────────────────────────────────
+model PointTransaction {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    String
+  type      String   @default("manual")  // "quest" | "exam" | "manual" | "redeem"
+  createdAt DateTime @default(now())
+
+  @@index([studentId])
 }

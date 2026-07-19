@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto'
 import { NextRequest } from 'next/server'
+import { SignJWT, jwtVerify } from 'jose'
 import { supabaseAdmin, supabaseAnon, phoneToEmail } from './supabase'
 import { prisma } from './db'
 
@@ -8,6 +9,29 @@ export interface JWTPayload {
   role: 'student' | 'teacher'
   name: string
   phone: string
+}
+
+function jwtSecret() {
+  return new TextEncoder().encode(process.env.JWT_SECRET!)
+}
+
+async function signLocalJWT(userId: string, phone: string): Promise<string> {
+  return new SignJWT({ sub: userId, phone })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(jwtSecret())
+}
+
+async function verifyLocalJWT(token: string): Promise<{ sub: string; phone: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, jwtSecret())
+    if (typeof payload.sub === 'string' && typeof payload.phone === 'string') {
+      return { sub: payload.sub, phone: payload.phone as string }
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 // Supabase Auth 전용 비밀번호 — 사용자가 직접 사용하지 않음, 서버만 알고 있음
@@ -54,32 +78,55 @@ export async function ensureSupabaseUser(userId: string, phone: string): Promise
   return supabaseUserId
 }
 
-// Supabase Auth로 로그인하여 access_token(JWT) 반환
+// Supabase Auth로 로그인하여 access_token(JWT) 반환. Supabase 불가 시 로컬 JWT 폴백
 export async function signInWithSupabase(userId: string, phone: string): Promise<string> {
-  await ensureSupabaseUser(userId, phone)
-
-  const { data, error } = await supabaseAnon.auth.signInWithPassword({
-    email: phoneToEmail(phone),
-    password: computeSupabasePassword(userId),
-  })
-  if (error) throw new Error(`Supabase 로그인 실패: ${error.message}`)
-
-  return data.session.access_token
+  try {
+    await ensureSupabaseUser(userId, phone)
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({
+      email: phoneToEmail(phone),
+      password: computeSupabasePassword(userId),
+    })
+    if (error) throw new Error(`Supabase 로그인 실패: ${error.message}`)
+    return data.session.access_token
+  } catch (e: any) {
+    if (e?.cause?.code === 'ENOTFOUND' || e?.message?.includes('fetch failed') || e?.message?.includes('ENOTFOUND')) {
+      console.warn('[auth] Supabase 연결 불가 — 로컬 JWT 사용')
+      return signLocalJWT(userId, phone)
+    }
+    throw e
+  }
 }
 
-// Supabase JWT 검증 후 Prisma User 정보 반환 (기존 verifyToken 시그니처 호환 유지)
+// Supabase JWT 검증 후 Prisma User 정보 반환. 실패 시 로컬 JWT 폴백
 export async function verifyToken(token: string): Promise<JWTPayload> {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) throw new Error('유효하지 않은 토큰입니다.')
+  // 로컬 JWT 우선 시도 (Supabase 불가 환경 대응)
+  const local = await verifyLocalJWT(token)
+  if (local) {
+    const prismaUser = await prisma.user.findUnique({ where: { id: local.sub } })
+    if (prismaUser) {
+      return {
+        sub: prismaUser.id,
+        role: prismaUser.role as 'student' | 'teacher',
+        name: prismaUser.name,
+        phone: prismaUser.phone,
+      }
+    }
+  }
 
-  const prismaUser = await prisma.user.findUnique({ where: { supabaseId: user.id } })
-  if (!prismaUser) throw new Error('사용자를 찾을 수 없습니다.')
-
-  return {
-    sub: prismaUser.id,
-    role: prismaUser.role as 'student' | 'teacher',
-    name: prismaUser.name,
-    phone: prismaUser.phone,
+  // Supabase JWT 검증
+  try {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
+    if (error || !user) throw new Error('유효하지 않은 토큰입니다.')
+    const prismaUser = await prisma.user.findUnique({ where: { supabaseId: user.id } })
+    if (!prismaUser) throw new Error('사용자를 찾을 수 없습니다.')
+    return {
+      sub: prismaUser.id,
+      role: prismaUser.role as 'student' | 'teacher',
+      name: prismaUser.name,
+      phone: prismaUser.phone,
+    }
+  } catch (e: any) {
+    throw new Error('유효하지 않은 토큰입니다.')
   }
 }
 

@@ -20,11 +20,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '비밀번호가 일치하지 않습니다.' }, { status: 401 })
   }
 
-  // bcrypt 검증 성공 → Supabase Auth JWT 발급
-  const token = await signInWithSupabase(user.id, user.phone)
-
-  return NextResponse.json({
-    token,
-    user: { id: user.id, name: user.name, phone: user.phone, role: user.role },
-  })
+  // bcrypt 검증 성공 → JWT 발급
+  try {
+    const token = await signInWithSupabase(user.id, user.phone)
+    return NextResponse.json({
+      token,
+      user: { id: user.id, name: user.name, phone: user.phone, role: user.role },
+    })
+  } catch (e: any) {
+    console.error('[login] JWT 발급 실패:', e?.message)
+    return NextResponse.json({ error: 'JWT 발급에 실패했습니다.' }, { status: 500 })
+  }
 }

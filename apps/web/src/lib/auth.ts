@@ -89,11 +89,9 @@ export async function signInWithSupabase(userId: string, phone: string): Promise
     if (error) throw new Error(`Supabase 로그인 실패: ${error.message}`)
     return data.session.access_token
   } catch (e: any) {
-    if (e?.cause?.code === 'ENOTFOUND' || e?.message?.includes('fetch failed') || e?.message?.includes('ENOTFOUND')) {
-      console.warn('[auth] Supabase 연결 불가 — 로컬 JWT 사용')
-      return signLocalJWT(userId, phone)
-    }
-    throw e
+    // Supabase 불가(네트워크, 프로젝트 일시정지, API 오류 등) 시 로컬 JWT 사용
+    console.warn('[auth] Supabase 오류 — 로컬 JWT 폴백:', e?.message)
+    return signLocalJWT(userId, phone)
   }
 }
 

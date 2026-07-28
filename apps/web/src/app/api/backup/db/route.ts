@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const filename = `full-db-backup-${timestamp}.dump`;
   const filepath = path.join(backupsDir, filename);
 
-  return await new Promise((resolve) => {
+  return await new Promise<NextResponse>((resolve) => {
     const args = ['--format=custom', '--file', filepath, databaseUrl];
     const pgDump = spawn(process.env.PG_DUMP_PATH || 'pg_dump', args);
 

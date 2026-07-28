@@ -18,7 +18,12 @@ type SessionItem = {
   title: string; grade: string; unit?: string; step?: string; problemCount: number
   assignedIds: string[]; distributing: boolean; distributed: boolean
   removing: boolean; blocked: BlockedEntry[]
+  originalIds: string[]   // DB에 실제로 배포되어 있는 학생 — 배포 시 diff 기준
+  submittedIds: string[]  // 제출 완료 → 배정 해제 불가
 }
+
+// 배포 현황 API 응답 (필요한 필드만)
+type DistRow = { studentId: string; result: { id: string } | null }
 
 type RecentSession = {
   type: 'worksheet' | 'textbook'
@@ -444,14 +449,37 @@ export default function LessonPrepPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const addWorksheet = (w: Worksheet) => {
+  // 해당 학습지의 현재 배포 현황을 DB에서 조회 (숨김 건 제외)
+  const loadDistribution = async (worksheetId: string) => {
+    const res = await apiFetch(`/api/worksheets/distribute?worksheetId=${encodeURIComponent(worksheetId)}`)
+    if (!res.ok) return null
+    const rows = await res.json() as DistRow[]
+    return {
+      currentIds:   rows.map(r => r.studentId),
+      submittedIds: rows.filter(r => r.result !== null).map(r => r.studentId),
+    }
+  }
+
+  const addWorksheet = async (w: Worksheet) => {
+    const key = `ws-${w.id}-${Date.now()}`
     setItems(prev => [...prev, {
-      key: `ws-${w.id}-${Date.now()}`, type: 'worksheet',
+      key, type: 'worksheet',
       id: w.id, title: w.title, grade: w.grade, unit: w.unit, step: w.step,
       problemCount: w.problemCount, assignedIds: [], distributing: false, distributed: false,
-      removing: false, blocked: [],
+      removing: false, blocked: [], originalIds: [], submittedIds: [],
     }])
     setShowWSPicker(false)
+
+    // 이미 배포된 학습지면 실제 배포 상태를 그대로 반영 (화면-DB 불일치 방지)
+    const dist = await loadDistribution(w.id)
+    if (!dist || dist.currentIds.length === 0) return
+    setItems(prev => prev.map(i => i.key === key ? {
+      ...i,
+      assignedIds:  dist.currentIds,
+      originalIds:  dist.currentIds,
+      submittedIds: dist.submittedIds,
+      distributed:  true,
+    } : i))
   }
 
   const addTextbook = (t: Textbook) => {
@@ -459,7 +487,7 @@ export default function LessonPrepPage() {
       key: `tb-${t.id}-${Date.now()}`, type: 'textbook',
       id: t.id, title: t.title, grade: t.grade,
       problemCount: t.problemCount, assignedIds: [], distributing: false, distributed: false,
-      removing: false, blocked: [],
+      removing: false, blocked: [], originalIds: [], submittedIds: [],
     }])
     setShowTBPicker(false)
   }
@@ -467,6 +495,7 @@ export default function LessonPrepPage() {
   const toggleStudent = (key: string, studentId: string) => {
     setItems(prev => prev.map(item => {
       if (item.key !== key) return item
+      if (item.submittedIds.includes(studentId)) return item  // 제출 완료 → 해제 불가
       const already = item.assignedIds.includes(studentId)
       return { ...item, assignedIds: already ? item.assignedIds.filter(id => id !== studentId) : [...item.assignedIds, studentId] }
     }))
@@ -476,22 +505,62 @@ export default function LessonPrepPage() {
     setItems(prev => prev.map(item => {
       if (item.key !== key) return item
       const allSelected = item.assignedIds.length === students.length
-      return { ...item, assignedIds: allSelected ? [] : students.map(s => s.id) }
+      // 전체 해제해도 제출 완료 학생은 남긴다
+      return { ...item, assignedIds: allSelected ? item.submittedIds : students.map(s => s.id) }
     }))
   }
 
+  // 배포 — 현재 선택과 DB 상태(originalIds)의 차이만 반영한다
+  // 추가된 학생은 POST, 빠진 학생은 DELETE(미제출 건만 실제 삭제)
   const distribute = async (key: string) => {
     const item = items.find(i => i.key === key)
-    if (!item || item.assignedIds.length === 0) {
+    if (!item) return
+
+    if (item.type !== 'worksheet') {
+      // 교재는 아직 배포 API가 없어 화면 상태만 갱신
+      if (item.assignedIds.length === 0) {
+        showToast('배정할 학생을 먼저 선택하세요.', false)
+        return
+      }
+      showToast(`"${item.title}" — ${item.assignedIds.length}명에게 배정 완료!`)
+      setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: true } : i))
+      return
+    }
+
+    const toAdd    = item.assignedIds.filter(id => !item.originalIds.includes(id))
+    const toRemove = item.originalIds.filter(id => !item.assignedIds.includes(id))
+
+    if (item.assignedIds.length === 0 && toRemove.length === 0) {
       showToast('배정할 학생을 먼저 선택하세요.', false)
       return
     }
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      showToast('변경된 배정이 없습니다.', false)
+      setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: true } : i))
+      return
+    }
+
     setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: true } : i))
     try {
-      if (item.type === 'worksheet') {
+      let blocked: BlockedEntry[] = []
+
+      if (toRemove.length > 0) {
+        const res = await apiFetch('/api/worksheets/distribute', {
+          method: 'DELETE',
+          body: JSON.stringify({ worksheetId: item.id, studentIds: toRemove }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string }
+          showToast(d.error ?? '배정 해제 실패', false)
+          return
+        }
+        blocked = (await res.json() as { deleted: number; blocked: BlockedEntry[] }).blocked
+      }
+
+      if (toAdd.length > 0) {
         const res = await apiFetch('/api/worksheets/distribute', {
           method: 'POST',
-          body: JSON.stringify({ worksheetId: item.id, studentIds: item.assignedIds }),
+          body: JSON.stringify({ worksheetId: item.id, studentIds: toAdd }),
         })
         if (!res.ok) {
           const d = await res.json().catch(() => ({})) as { error?: string }
@@ -499,15 +568,63 @@ export default function LessonPrepPage() {
           return
         }
       }
-      showToast(`"${item.title}" — ${item.assignedIds.length}명에게 ${item.type === 'worksheet' ? '배포' : '배정'} 완료!`)
-      setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: true } : i))
+
+      // 제출 완료라 해제되지 않은 학생은 계속 배포 상태로 남는다
+      const blockedIds = blocked.map(b => b.studentId)
+      const finalIds = [...item.assignedIds, ...blockedIds.filter(id => !item.assignedIds.includes(id))]
+      const removed  = toRemove.length - blocked.length
+
+      const parts: string[] = []
+      if (toAdd.length > 0) parts.push(`${toAdd.length}명 배포`)
+      if (removed > 0)      parts.push(`${removed}명 해제`)
+      showToast(`"${item.title}" — ${parts.join(', ')} 완료!`, blocked.length === 0)
+
+      setItems(prev => prev.map(i => i.key === key ? {
+        ...i,
+        distributed:  true,
+        assignedIds:  finalIds,
+        originalIds:  finalIds,
+        submittedIds: [...i.submittedIds, ...blockedIds.filter(id => !i.submittedIds.includes(id))],
+        blocked,
+      } : i))
     } finally {
       setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: false } : i))
     }
   }
 
-  const redist = (key: string) => {
-    setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: false, assignedIds: [], blocked: [] } : i))
+  // 재배포 — DB의 현재 배포 상태를 불러와 편집 모드로 전환
+  const redist = async (key: string) => {
+    const item = items.find(i => i.key === key)
+    if (!item) return
+
+    if (item.type !== 'worksheet') {
+      setItems(prev => prev.map(i => i.key === key
+        ? { ...i, distributed: false, assignedIds: [], originalIds: [], submittedIds: [], blocked: [] }
+        : i))
+      return
+    }
+
+    setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: true } : i))
+    try {
+      const dist = await loadDistribution(item.id)
+      if (!dist) {
+        showToast('배포 현황을 불러오지 못했습니다.', false)
+        return
+      }
+      setItems(prev => prev.map(i => i.key === key ? {
+        ...i,
+        distributed:  false,
+        assignedIds:  dist.currentIds,
+        originalIds:  dist.currentIds,
+        submittedIds: dist.submittedIds,
+        blocked:      [],
+      } : i))
+      showToast(dist.submittedIds.length > 0
+        ? `배정을 수정한 뒤 배포를 누르세요. 제출 완료 ${dist.submittedIds.length}명은 해제할 수 없습니다.`
+        : '배정을 수정한 뒤 배포를 누르세요.')
+    } finally {
+      setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: false } : i))
+    }
   }
 
   // ✕ — 배포 전이면 화면에서만 제거, 배포 후면 실제 배포 취소(미제출 건만 삭제)
@@ -531,7 +648,7 @@ export default function LessonPrepPage() {
     try {
       const res = await apiFetch('/api/worksheets/distribute', {
         method: 'DELETE',
-        body: JSON.stringify({ worksheetId: item.id, studentIds: item.assignedIds }),
+        body: JSON.stringify({ worksheetId: item.id, studentIds: item.originalIds }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
@@ -547,11 +664,12 @@ export default function LessonPrepPage() {
       }
 
       showToast(
-        `${data.deleted}명 삭제 — ${data.blocked.length}명은 이미 제출해 삭제할 수 없습니다.`,
+        `${data.deleted}명 삭제 — ${data.blocked.length}명은 이미 제출해 취소할 수 없습니다.`,
         false
       )
+      const blockedIds = data.blocked.map(b => b.studentId)
       setItems(prev => prev.map(i => i.key === key
-        ? { ...i, blocked: data.blocked, assignedIds: data.blocked.map(b => b.studentId) }
+        ? { ...i, blocked: data.blocked, assignedIds: blockedIds, originalIds: blockedIds, submittedIds: blockedIds }
         : i))
     } finally {
       setItems(prev => prev.map(i => i.key === key ? { ...i, removing: false } : i))
@@ -691,22 +809,33 @@ export default function LessonPrepPage() {
                         배포완료 {item.assignedIds.length}명
                       </span>
                       <button onClick={() => redist(item.key)}
-                        className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded transition-colors font-medium">
-                        재배포
+                        disabled={item.distributing}
+                        className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1 rounded transition-colors font-medium">
+                        {item.distributing ? '불러오는 중...' : '재배포'}
                       </button>
                     </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-gray-400">
-                        {item.assignedIds.length > 0 ? `${item.assignedIds.length}명 선택` : '미배정'}
-                      </span>
-                      <button onClick={() => distribute(item.key)}
-                        disabled={item.distributing || item.assignedIds.length === 0}
-                        className="text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors font-semibold">
-                        {item.distributing ? '배포중...' : '배포'}
-                      </button>
-                    </>
-                  )}
+                  ) : (() => {
+                    const toAdd    = item.assignedIds.filter(id => !item.originalIds.includes(id))
+                    const toRemove = item.originalIds.filter(id => !item.assignedIds.includes(id))
+                    const editing  = item.originalIds.length > 0   // 재배포로 진입한 편집 모드
+                    const diff     = toAdd.length + toRemove.length
+                    return (
+                      <>
+                        <span className="text-xs text-gray-400">
+                          {editing
+                            ? (diff > 0
+                                ? [toAdd.length > 0 ? `+${toAdd.length}명` : '', toRemove.length > 0 ? `-${toRemove.length}명` : ''].filter(Boolean).join(' ')
+                                : '변경 없음')
+                            : (item.assignedIds.length > 0 ? `${item.assignedIds.length}명 선택` : '미배정')}
+                        </span>
+                        <button onClick={() => distribute(item.key)}
+                          disabled={item.distributing || (editing ? diff === 0 : item.assignedIds.length === 0)}
+                          className="text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors font-semibold">
+                          {item.distributing ? '적용중...' : editing ? '변경 적용' : '배포'}
+                        </button>
+                      </>
+                    )
+                  })()}
                   <button onClick={() => removeItem(item.key)}
                     disabled={item.removing}
                     title={item.distributed && item.type === 'worksheet' ? '배포 취소 (미제출 건만 삭제)' : '목록에서 제거'}
@@ -734,7 +863,7 @@ export default function LessonPrepPage() {
                     </svg>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-amber-800">
-                        {item.blocked.length}명은 이미 제출해 삭제할 수 없습니다.
+                        {item.blocked.length}명은 이미 제출해 배포를 취소할 수 없습니다.
                       </p>
                       <p className="text-[11px] text-amber-600 mt-0.5">
                         채점 기록과 능력치를 보존하기 위해 남겨둡니다. 목록에서만 숨길 수 있습니다.
@@ -764,13 +893,18 @@ export default function LessonPrepPage() {
                     {item.assignedIds.length === students.length ? '전체 해제' : '전체 선택'}
                   </button>
                   {students.map(s => {
-                    const assigned = item.assignedIds.includes(s.id)
+                    const assigned  = item.assignedIds.includes(s.id)
+                    const submitted = item.submittedIds.includes(s.id)
                     return (
                       <button key={s.id} onClick={() => toggleStudent(item.key, s.id)}
+                        disabled={submitted}
+                        title={submitted ? '이미 제출한 학생 — 배정을 해제할 수 없습니다.' : undefined}
                         className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all font-medium ${
-                          assigned
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600'
+                          submitted
+                            ? 'bg-emerald-600 text-white border-emerald-600 cursor-not-allowed'
+                            : assigned
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600'
                         }`}>
                         {assigned && (
                           <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -779,6 +913,7 @@ export default function LessonPrepPage() {
                         )}
                         {s.name}
                         <span className={`text-[10px] ${assigned ? 'text-indigo-200' : 'text-gray-300'}`}>{s.grade}</span>
+                        {submitted && <span className="text-[10px] text-emerald-100">제출</span>}
                       </button>
                     )
                   })}

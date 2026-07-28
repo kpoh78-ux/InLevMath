@@ -218,7 +218,7 @@ export default function DistributePage() {
 
       {/* 오른쪽: 학생 선택 */}
       <div className="w-56 bg-white border-l border-gray-200 flex flex-col shrink-0">
-        <div className="px-4 py-3 border-b border-gray-100">
+        <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-700">배포 대상</p>
             <button onClick={selectAll} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">
@@ -226,6 +226,22 @@ export default function DistributePage() {
             </button>
           </div>
           <p className="text-[11px] text-gray-400 mt-0.5">등록 학생 {allStudents.length}명</p>
+        </div>
+
+        {/* 선택한 학습지 요약 + 배포 버튼 — 학생 목록을 스크롤해도 항상 보이도록 상단 고정 */}
+        {selectedWSData && (
+          <div className="mx-3 mb-2 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs">
+            <p className="font-semibold text-gray-700 truncate">{selectedWSData.title}</p>
+            <p className="text-gray-400 mt-0.5">{selectedWSData.problemCount}문제 · 클리어 {threshold}%</p>
+          </div>
+        )}
+
+        <div className="px-3 pb-3 border-b border-gray-100">
+          <button onClick={handleDistribute}
+            disabled={!selectedWS || selectedStudents.length === 0 || distributing}
+            className="w-full bg-indigo-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            {distributing ? '배포 중...' : selectedStudents.length > 0 ? `${selectedStudents.length}명에게 배포` : '학생을 선택하세요'}
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
@@ -248,20 +264,6 @@ export default function DistributePage() {
           })}
         </div>
 
-        {selectedWSData && (
-          <div className="mx-3 mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs">
-            <p className="font-semibold text-gray-700 truncate">{selectedWSData.title}</p>
-            <p className="text-gray-400 mt-0.5">{selectedWSData.problemCount}문제 · 클리어 {threshold}%</p>
-          </div>
-        )}
-
-        <div className="p-3 border-t border-gray-100">
-          <button onClick={handleDistribute}
-            disabled={!selectedWS || selectedStudents.length === 0 || distributing}
-            className="w-full bg-indigo-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            {distributing ? '배포 중...' : selectedStudents.length > 0 ? `${selectedStudents.length}명에게 배포` : '학생을 선택하세요'}
-          </button>
-        </div>
       </div>
     </div>
   )

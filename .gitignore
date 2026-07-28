@@ -10,6 +10,9 @@ dist
 build
 .expo
 
+# Backup outputs
+apps/web/backups
+
 # Environment
 .env
 .env.local

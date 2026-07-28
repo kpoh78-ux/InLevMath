@@ -51,9 +51,9 @@ export async function GET(req: NextRequest) {
       orderBy: { startTime: 'asc' },
     }),
 
-    // 최근 배포 10건
+    // 최근 배포 10건 (숨김 처리된 건 제외 — 집계 통계에는 그대로 포함)
     prisma.worksheetDistribution.findMany({
-      where: { worksheet: { teacherId: teacher.id } },
+      where: { worksheet: { teacherId: teacher.id }, hiddenAt: null },
       include: {
         worksheet: { select: { title: true, step: true, examSubType: true, problemCount: true } },
         student:   { include: { user: { select: { name: true } } } },

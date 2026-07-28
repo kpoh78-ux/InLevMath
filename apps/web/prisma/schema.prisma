@@ -156,12 +156,14 @@ model WorksheetDistribution {
   student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   status       DistributionStatus @default(distributed)
   distributedAt DateTime @default(now())
+  hiddenAt     DateTime?   // 선생님 배포목록에서만 숨김. 학생앱·학습이력·집계에는 영향 없음
 
   result       WorksheetResult?
 
   @@unique([worksheetId, studentId])
   @@index([studentId])
   @@index([worksheetId])
+  @@index([hiddenAt])
 }
 
 model WorksheetResult {

@@ -10,10 +10,14 @@ type Student   = { id: string; name: string; grade: string }
 type Worksheet = { id: string; title: string; grade: string; unit: string; step: string; problemCount: number }
 type Textbook  = { id: string; title: string; grade: string; publisher: string; problemCount: number }
 
+// 제출 완료라 삭제하지 못한 배포 건
+type BlockedEntry = { distributionId: string; studentId: string; studentName: string; hidden: boolean }
+
 type SessionItem = {
   key: string; type: 'worksheet' | 'textbook'; id: string
   title: string; grade: string; unit?: string; step?: string; problemCount: number
   assignedIds: string[]; distributing: boolean; distributed: boolean
+  removing: boolean; blocked: BlockedEntry[]
 }
 
 type RecentSession = {
@@ -445,6 +449,7 @@ export default function LessonPrepPage() {
       key: `ws-${w.id}-${Date.now()}`, type: 'worksheet',
       id: w.id, title: w.title, grade: w.grade, unit: w.unit, step: w.step,
       problemCount: w.problemCount, assignedIds: [], distributing: false, distributed: false,
+      removing: false, blocked: [],
     }])
     setShowWSPicker(false)
   }
@@ -454,6 +459,7 @@ export default function LessonPrepPage() {
       key: `tb-${t.id}-${Date.now()}`, type: 'textbook',
       id: t.id, title: t.title, grade: t.grade,
       problemCount: t.problemCount, assignedIds: [], distributing: false, distributed: false,
+      removing: false, blocked: [],
     }])
     setShowTBPicker(false)
   }
@@ -501,11 +507,81 @@ export default function LessonPrepPage() {
   }
 
   const redist = (key: string) => {
-    setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: false, assignedIds: [] } : i))
+    setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: false, assignedIds: [], blocked: [] } : i))
   }
 
-  const removeItem = (key: string) => {
-    setItems(prev => prev.filter(i => i.key !== key))
+  // ✕ — 배포 전이면 화면에서만 제거, 배포 후면 실제 배포 취소(미제출 건만 삭제)
+  const removeItem = async (key: string) => {
+    const item = items.find(i => i.key === key)
+    if (!item) return
+
+    if (!item.distributed || item.type !== 'worksheet') {
+      setItems(prev => prev.filter(i => i.key !== key))
+      return
+    }
+
+    const ok = window.confirm(
+      `"${item.title}" 배포를 취소할까요?\n\n` +
+      `아직 제출하지 않은 학생의 학습지만 삭제됩니다.\n` +
+      `이미 제출한 학생의 채점 기록·능력치는 삭제되지 않습니다.`
+    )
+    if (!ok) return
+
+    setItems(prev => prev.map(i => i.key === key ? { ...i, removing: true } : i))
+    try {
+      const res = await apiFetch('/api/worksheets/distribute', {
+        method: 'DELETE',
+        body: JSON.stringify({ worksheetId: item.id, studentIds: item.assignedIds }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        showToast(d.error ?? '배포 취소 실패', false)
+        return
+      }
+      const data = await res.json() as { deleted: number; blocked: BlockedEntry[] }
+
+      if (data.blocked.length === 0) {
+        showToast(`"${item.title}" 배포 취소 완료 — ${data.deleted}명`)
+        setItems(prev => prev.filter(i => i.key !== key))
+        return
+      }
+
+      showToast(
+        `${data.deleted}명 삭제 — ${data.blocked.length}명은 이미 제출해 삭제할 수 없습니다.`,
+        false
+      )
+      setItems(prev => prev.map(i => i.key === key
+        ? { ...i, blocked: data.blocked, assignedIds: data.blocked.map(b => b.studentId) }
+        : i))
+    } finally {
+      setItems(prev => prev.map(i => i.key === key ? { ...i, removing: false } : i))
+    }
+  }
+
+  // 제출 완료라 삭제 못 한 건 → 배포 목록에서만 숨김 (학습 기록은 보존)
+  const hideBlocked = async (key: string) => {
+    const item = items.find(i => i.key === key)
+    if (!item || item.blocked.length === 0) return
+
+    setItems(prev => prev.map(i => i.key === key ? { ...i, removing: true } : i))
+    try {
+      const res = await apiFetch('/api/worksheets/distribute', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          distributionIds: item.blocked.map(b => b.distributionId),
+          hidden: true,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        showToast(d.error ?? '숨기기 실패', false)
+        return
+      }
+      showToast(`"${item.title}" — 제출 완료 ${item.blocked.length}명을 목록에서 숨겼습니다. 학습 기록은 유지됩니다.`)
+      setItems(prev => prev.filter(i => i.key !== key))
+    } finally {
+      setItems(prev => prev.map(i => i.key === key ? { ...i, removing: false } : i))
+    }
   }
 
   const handleStudentClick = (s: Student) => {
@@ -632,13 +708,54 @@ export default function LessonPrepPage() {
                     </>
                   )}
                   <button onClick={() => removeItem(item.key)}
-                    className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-colors">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
+                    disabled={item.removing}
+                    title={item.distributed && item.type === 'worksheet' ? '배포 취소 (미제출 건만 삭제)' : '목록에서 제거'}
+                    className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors">
+                    {item.removing ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25"/>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
+
+              {/* 제출 완료라 삭제하지 못한 건 — 목록에서 숨기기 안내 */}
+              {item.blocked.length > 0 && (
+                <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-amber-800">
+                        {item.blocked.length}명은 이미 제출해 삭제할 수 없습니다.
+                      </p>
+                      <p className="text-[11px] text-amber-600 mt-0.5">
+                        채점 기록과 능력치를 보존하기 위해 남겨둡니다. 목록에서만 숨길 수 있습니다.
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                        {item.blocked.map(b => (
+                          <span key={b.distributionId}
+                            className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-amber-200 text-amber-700 font-medium">
+                            {b.studentName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => hideBlocked(item.key)}
+                      disabled={item.removing}
+                      className="shrink-0 text-xs text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors font-semibold">
+                      {item.removing ? '처리중...' : '목록에서 숨기기'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {!item.distributed && (
                 <div className="px-5 py-3 flex items-center gap-2 flex-wrap">
@@ -668,7 +785,7 @@ export default function LessonPrepPage() {
                 </div>
               )}
 
-              {item.distributed && (
+              {item.distributed && item.blocked.length === 0 && (
                 <div className="px-5 py-3 flex items-center gap-2 flex-wrap">
                   {students.filter(s => item.assignedIds.includes(s.id)).map(s => (
                     <span key={s.id}

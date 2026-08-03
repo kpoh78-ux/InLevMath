@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { MAX_TEXTBOOK_PROBLEMS } from '@/lib/answers'
 
 // GET /api/textbooks — 내 교재 목록
 export async function GET(req: NextRequest) {
@@ -40,17 +41,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '필수 항목이 누락되었습니다.' }, { status: 400 })
   }
 
+  const count = Math.floor(Number(problemCount))
+  if (!Number.isInteger(count) || count < 1 || count > MAX_TEXTBOOK_PROBLEMS) {
+    return NextResponse.json(
+      { error: `문제 수는 1~${MAX_TEXTBOOK_PROBLEMS} 사이로 입력해주세요.` },
+      { status: 400 }
+    )
+  }
+
   const textbook = await prisma.textbook.create({
-    data: {
-      title, grade,
-      publisher: publisher || '직접 출제',
-      teacherId: teacher.id,
-      problems: {
-        create: Array.from({ length: problemCount }, (_, i) => ({
-          number: i + 1, unit: '', type: 'multiple', answer: '',
-        })),
-      },
-    },
+    data: { title, grade, publisher: publisher || '직접 출제', teacherId: teacher.id },
+  })
+
+  // 수천 개를 중첩 create로 만들면 쿼리가 지나치게 커지므로 createMany로 일괄 삽입
+  await prisma.textbookProblem.createMany({
+    data: Array.from({ length: count }, (_, i) => ({
+      textbookId: textbook.id, number: i + 1, type: 'multiple', answer: '',
+    })),
   })
 
   return NextResponse.json({ id: textbook.id }, { status: 201 })

@@ -140,6 +140,51 @@ app/(teacher)/students.tsx        — 학생 관리 (등록/검색/비밀번호 
 - 새로운 기능 추가 시 summary API에 관련 집계 항목을 함께 추가한다
 - SSE(`/api/events`)를 통해 학생 제출 결과는 선생님 화면에 실시간 push된다
 
+## 정답 데이터 확장성 원칙
+
+학습지·교재 정답과 서술형 스냅샷 이미지는 계속 쌓이면 DB가 수십~수백 GB로 커진다.
+정답 관련 기능을 추가·수정할 때는 아래를 반드시 지킨다.
+
+### 1. 큰 값은 목록/집계 쿼리에서 읽지 않는다
+- 정답 이미지는 `AnswerImage` 테이블에 분리 저장하고, `Worksheet.answersJson` /
+  `TextbookProblem.answer`에는 마커 `__img__`(`IMAGE_ANSWER_MARKER`)만 넣는다
+- 교재 개요 API(`GET /api/textbooks/[id]`)는 문제 목록을 내려주지 않는다.
+  단원/단계 트리와 집계만 주고, 문제는 `GET /api/textbooks/[id]/problems`에서 구간별로 가져간다
+- 학생별 오답 번호 배열도 개요에 넣지 않는다 (개수만) — 상세는
+  `GET /api/textbooks/[id]/results/[studentId]`로 학생 1명 단위 조회
+
+### 2. 이미지는 오브젝트 스토리지로 뺄 수 있게 둔다
+- `src/lib/answerImageStore.ts`가 저장 위치를 추상화한다. 정답 이미지를 직접
+  `prisma.answerImage`로 읽고 쓰지 말고 반드시 이 모듈을 거친다
+- `ANSWER_IMAGE_STORAGE=db`(기본)는 base64를 DB에, `supabase`는 Supabase Storage에 저장하고
+  DB에는 `objectKey`만 남긴다. 조회 시 서명 URL을 돌려주므로 이미지 트래픽이 앱 서버를 거치지 않는다
+- 전환 절차: Supabase → Storage → 비공개 버킷 `answer-images` 생성 → `.env`에
+  `ANSWER_IMAGE_STORAGE=supabase` 설정. 기존 `db` 저장분은 그대로 계속 보인다 (혼재 가능)
+- 학습지/교재 삭제 시 `purgeAnswerImages()`를 호출해 버킷 파일까지 정리한다
+- 현재 용량은 관리자 백업 페이지(`/admin/backup`) 또는 `GET /api/admin/storage`에서 확인
+
+### 3. 대량 저장은 전체 교체가 아니라 증분으로
+- 교재 정답 저장(`PUT /api/textbooks/[id]/problems`)은 화면에서 바뀐 문제만 upsert한다.
+  전체 삭제 후 재생성하면 3000문제에서 요청·트랜잭션이 감당되지 않는다
+- 문제 수 상한: 교재 1권 `MAX_TEXTBOOK_PROBLEMS`(5000), 한 번에 저장 `PROBLEM_PAGE_SIZE_MAX`(500)
+- 이미지 1장 `MAX_ANSWER_IMAGE_BYTES`(500KB), 요청당 합계 `MAX_ANSWER_IMAGE_TOTAL_BYTES`(8MB)
+- 이미지는 클라이언트(`src/lib/imageCompress.ts`)에서 webp로 리사이즈·압축한 뒤 전송한다
+
+### 4. 문제집 정답 입력 구조 — 페이지 → 구역
+- `TextbookProblem`은 아래 값을 자유 입력 문자열/정수로 갖는다
+  - `bookPage` — 교재 쪽번호 (0 = 미지정). **정답 입력 화면의 기본 이동 단위**
+  - `majorUnit`(대단원) / `middleUnit`(중단원) / `minorUnit`(소단원)
+  - `section` — 문제유형/단계. 프리셋은 `TEXTBOOK_SECTION_PRESETS`
+    (A~C단계, 개념익히기, 대표문제, 필수유형, 확인 체크, 한번 더 풀기, 표현 더하기,
+    이런 문제가 시험에 나온다, 중단원/대단원 마무리, 서술형 …). 목록에 없으면 직접 입력
+- **구역(Block)** = 한 페이지 안에서 `(minorUnit, section)`이 같은 문제 묶음.
+  화면에서는 구역별 카드로 나뉘어 머리말(페이지·소단원·유형)을 통째로 바꿀 수 있다
+- 왼쪽 사이드바에서 페이지를 고르면 정답 화면도 그 페이지로 따라간다.
+  `이전/다음 페이지` 버튼도 같은 동작. 소단원이 바뀌는 지점에는 구분 머리말이 들어간다
+- 조회 인덱스: 페이지별은 `TextbookProblem_page_idx`, 단원/유형별은 `TextbookProblem_unit_idx`.
+  필터 컬럼을 부분만 넘기면 인덱스를 제대로 못 타므로 조합을 지켜서 넘긴다
+- 저장하지 않고 페이지를 옮기면 편집분이 사라지므로 이동 시 `confirmDiscard()`로 확인받는다
+
 ## Key Constraints
 
 - `SafeAreaView`는 반드시 `react-native-safe-area-context`에서 임포트 (`react-native` 내장 버전 사용 금지)
@@ -155,6 +200,8 @@ DATABASE_URL=           # PostgreSQL 연결 문자열 (Railway)
 JWT_SECRET=             # JWT 서명 키
 GEMINI_API_KEY=         # Google Gemini API 키
 ANTHROPIC_API_KEY=      # Anthropic Claude API 키
+ANSWER_IMAGE_STORAGE=   # 정답 이미지 저장 위치: 'db'(기본) | 'supabase'
+ANSWER_IMAGE_BUCKET=    # supabase 모드 버킷명 (기본 'answer-images')
 ```
 
 - **모든 API 키는 반드시 `.env` 파일에만 저장한다.** 코드에 하드코딩 절대 금지.

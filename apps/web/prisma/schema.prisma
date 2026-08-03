@@ -93,8 +93,9 @@ model Textbook {
   teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
-  problems  TextbookProblem[]
-  results   TextbookResult[]
+  problems     TextbookProblem[]
+  results      TextbookResult[]
+  answerImages AnswerImage[]
 
   @@index([teacherId])
 }
@@ -104,12 +105,20 @@ model TextbookProblem {
   textbookId String
   textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
   number     Int
-  unit       String   @default("")
-  type       String   @default("multiple")  // "multiple" | "short"
-  answer     String   @default("")
+  bookPage   Int      @default(0)   // 교재 쪽번호 (0 = 미지정)
+  majorUnit  String   @default("")  // 대단원
+  middleUnit String   @default("")  // 중단원
+  minorUnit  String   @default("")  // 소단원
+  section    String   @default("")  // 문제유형/단계: '필수유형'|'확인 체크'|'대표문제'|'서술형' 등 자유 입력
+  type       String   @default("multiple")  // "multiple" | "short" | "image"
+  answer     String   @default("")          // type='image'이면 IMAGE_ANSWER_MARKER
 
   @@unique([textbookId, number])
-  @@index([textbookId])
+  @@index([textbookId, number])
+  // 교재 페이지별 조회 — 정답 입력 화면의 기본 이동 단위
+  @@index([textbookId, bookPage, number], map: "TextbookProblem_page_idx")
+  // 단원/유형별 조회 — 문제 수가 수천 개여도 필요한 구간만 읽기 위한 인덱스
+  @@index([textbookId, majorUnit, middleUnit, minorUnit, section], map: "TextbookProblem_unit_idx")
 }
 
 model TextbookResult {
@@ -137,15 +146,43 @@ model Worksheet {
   unit         String   @default("종합")
   problemCount Int
   source       String   @default("manual") // 'mathflat'|'manual'
-  answersJson  String?  // JSON: ["①","15","2x+3",...] 문제별 정답 배열
+  answersJson  String?  // JSON: ["①","15","2x+3","__img__",...] 문제별 정답 배열
+                        // "__img__" = 서술형 이미지 정답 → WorksheetAnswerImage에 저장됨
   teacherId    String
   teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
 
   distributions WorksheetDistribution[]
+  answerImages  AnswerImage[]
 
   @@index([teacherId])
   @@index([category, step])
+}
+
+// 서술형 정답 이미지 (스냅샷) — 학습지·교재 공용.
+//
+// 이미지를 정답 행에 같이 두면 목록/집계 조회가 통째로 무거워지므로 분리 저장한다.
+// storage='db'  : data 컬럼에 base64 (소규모 운영용 기본값)
+// storage='object': objectKey만 저장하고 실제 파일은 오브젝트 스토리지(Supabase Storage).
+//                   DB 용량이 커지는 것을 막는 확장 경로. ANSWER_IMAGE_STORAGE 환경변수로 전환.
+model AnswerImage {
+  id          String     @id @default(cuid())
+  worksheetId String?
+  worksheet   Worksheet? @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  textbookId  String?
+  textbook    Textbook?  @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  problemNo   Int        // 1-based 문제 번호
+  mimeType    String     @default("image/webp")
+  storage     String     @default("db")   // 'db' | 'object'
+  data        String?    // storage='db'일 때 base64 본문
+  objectKey   String?    // storage='object'일 때 버킷 내 경로
+  bytes       Int        @default(0)      // 원본 바이트 수 (용량 집계용)
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([worksheetId, problemNo])
+  @@unique([textbookId, problemNo])
+  @@index([worksheetId])
+  @@index([textbookId])
 }
 
 model WorksheetDistribution {

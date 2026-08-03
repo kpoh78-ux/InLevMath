@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { UNIT_STEPS, EXAM_STEPS, MOCK_EXAM_TYPES } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
+import { IMAGE_ANSWER_MARKER, isImageAnswer } from '@/lib/answers'
+import {
+  AnswerLightbox, AnswerThumb, SnapshotHint, SymbolPalette,
+  AttachImageButton, RemoveImageButton, useSymbolPalette, useImageAttach,
+} from '@/components/AnswerInput'
 
 type WorksheetCategory = '단원별' | '내신대비'
 
@@ -65,6 +70,7 @@ const hasAnswers = (w: Worksheet) => {
   } catch { return false }
 }
 
+
 // ── 학생 모드: 학생 배포 학습지 목록 + 채점 ─────────────────────────────────
 
 function StudentWorksheetView({ studentId }: { studentId: string }) {
@@ -78,6 +84,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   const [initialWrongSet, setInitialWrongSet] = useState<Set<number>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [gradedResult, setGradedResult] = useState<{ correctRate: number; newAbility: { comprehension: number; reasoning: number; calculation: number } } | null>(null)
+  const [answerImages, setAnswerImages] = useState<Record<number, string>>({})
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
   const fetchStudentWorksheets = useCallback(async () => {
     setLoading(true)
@@ -95,12 +103,20 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
   useEffect(() => { fetchStudentWorksheets() }, [fetchStudentWorksheets])
 
-  const openGrading = (dist: Distribution) => {
+  const openGrading = async (dist: Distribution) => {
     const existing: number[] = dist.result ? JSON.parse(dist.result.wrongProblemsJson) : []
     setWrongSet(new Set(existing))
     setInitialWrongSet(new Set(existing))
     setGradedResult(null)
+    setAnswerImages({})
     setGradingDist(dist)
+
+    // 서술형 이미지 정답은 별도 저장이라 따로 불러온다
+    const res = await apiFetch(`/api/worksheets/${dist.worksheet.id}/answers`)
+    if (res.ok) {
+      const data = await res.json()
+      setAnswerImages(data.images ?? {})
+    }
   }
 
   const toggleProblem = (num: number) => {
@@ -302,24 +318,34 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                       const num = i + 1
                       const isWrong = wrongSet.has(num)
                       const answer = answers[i] ?? ''
+                      const img = isImageAnswer(answer) ? answerImages[num] : undefined
                       return (
-                        <button
+                        <div
                           key={num}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => toggleProblem(num)}
-                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 transition-all
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProblem(num) }
+                          }}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer min-h-[46px]
                             ${isWrong
                               ? 'border-rose-400 bg-rose-50'
                               : 'border-emerald-300 bg-emerald-50'}`}
                         >
-                          <span className={`text-lg font-black w-6 text-center leading-none
+                          <span className={`text-lg font-black w-6 text-center leading-none shrink-0
                             ${isWrong ? 'text-rose-500' : 'text-emerald-500'}`}>
                             {isWrong ? 'X' : 'O'}
                           </span>
-                          <span className="text-xs font-semibold text-gray-500 w-8 tabular-nums">{num}번</span>
-                          {answer && (
+                          <span className="text-xs font-semibold text-gray-500 w-8 tabular-nums shrink-0">{num}번</span>
+                          {img ? (
+                            <AnswerThumb src={img} onZoom={setZoomSrc} />
+                          ) : isImageAnswer(answer) ? (
+                            <span className="text-xs text-gray-300 flex-1 text-left">이미지 불러오는 중...</span>
+                          ) : answer ? (
                             <span className="text-xs text-gray-400 truncate flex-1 text-left">정답: {answer}</span>
-                          )}
-                        </button>
+                          ) : null}
+                        </div>
                       )
                     })}
                   </div>
@@ -352,6 +378,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
           </div>
         </div>
       )}
+
+      <AnswerLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />
     </div>
   )
 }
@@ -381,6 +409,11 @@ function AllWorksheetsView() {
   const [answerInputs, setAnswerInputs] = useState<string[]>([])
   const [loadingAnswers, setLoadingAnswers] = useState(false)
   const [savingAnswers, setSavingAnswers] = useState(false)
+
+  // 정답 이미지 (키: 1-based 문제 번호)
+  const [answerImages, setAnswerImages] = useState<Record<number, string>>({})
+  const [newImageNos, setNewImageNos] = useState<Set<number>>(new Set())
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
   const fetchWorksheets = useCallback(async () => {
     setLoadingList(true)
@@ -429,8 +462,33 @@ function AllWorksheetsView() {
     setWorksheets(prev => prev.filter(x => x.id !== w.id))
   }
 
+  const setAnswerAt = useCallback((i: number, v: string) =>
+    setAnswerInputs(prev => { const n = [...prev]; n[i] = v; return n }), [])
+
+  const palette = useSymbolPalette<number>(setAnswerAt)
+
+  const onImageAttached = useCallback((i: number, dataUrl: string) => {
+    setAnswerImages(prev => ({ ...prev, [i + 1]: dataUrl }))
+    setNewImageNos(prev => new Set(prev).add(i + 1))
+    setAnswerAt(i, IMAGE_ANSWER_MARKER)
+    // 입력칸이 사라지므로 기호 팔레트 대상에서 제외
+    palette.release(i)
+  }, [setAnswerAt, palette])
+
+  const attach = useImageAttach<number>(onImageAttached)
+
+  const closeAnswers = () => {
+    setAnswerWs(null)
+    setAnswerImages({})
+    setNewImageNos(new Set())
+    palette.setFocusedKey(null)
+  }
+
   const openAnswers = async (w: Worksheet) => {
     setAnswerWs(w)
+    setAnswerImages({})
+    setNewImageNos(new Set())
+    palette.setFocusedKey(null)
     setLoadingAnswers(true)
     try {
       const res = await apiFetch(`/api/worksheets/${w.id}/answers`)
@@ -438,22 +496,37 @@ function AllWorksheetsView() {
         const data = await res.json()
         const arr: string[] = data.answers ?? []
         setAnswerInputs(Array(w.problemCount).fill('').map((_, i) => arr[i] ?? ''))
+        setAnswerImages(data.images ?? {})
       }
     } finally { setLoadingAnswers(false) }
+  }
+
+  const removeAnswerImage = (i: number) => {
+    setAnswerImages(prev => { const n = { ...prev }; delete n[i + 1]; return n })
+    setNewImageNos(prev => { const n = new Set(prev); n.delete(i + 1); return n })
+    setAnswerAt(i, '')
   }
 
   const saveAnswers = async () => {
     if (!answerWs) return
     setSavingAnswers(true)
     try {
+      // 새로 첨부한 이미지만 data URL로 올리고, 기존 이미지는 마커로 유지
+      const payload = answerInputs.map((v, i) => {
+        if (!isImageAnswer(v)) return v
+        const no = i + 1
+        return newImageNos.has(no) ? (answerImages[no] ?? '') : IMAGE_ANSWER_MARKER
+      })
+
       const res = await apiFetch(`/api/worksheets/${answerWs.id}/answers`, {
         method: 'PUT',
-        body: JSON.stringify({ answers: answerInputs }),
+        body: JSON.stringify({ answers: payload }),
       })
       if (res.ok) {
-        const saved = JSON.stringify(answerInputs)
-        setWorksheets(prev => prev.map(w => w.id === answerWs.id ? { ...w, answersJson: saved } : w))
-        setAnswerWs(null)
+        const data = await res.json() as { answers: string[] }
+        setWorksheets(prev => prev.map(w =>
+          w.id === answerWs.id ? { ...w, answersJson: JSON.stringify(data.answers) } : w))
+        closeAnswers()
       } else {
         const d = await res.json().catch(() => ({})) as { error?: string }
         alert(d.error || '저장 실패')
@@ -713,7 +786,7 @@ function AllWorksheetsView() {
       {/* 정답 설정 모달 */}
       {answerWs && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col" style={{ maxHeight: '90vh' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '92vh' }}>
             <div className="flex items-start justify-between p-6 pb-4 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">정답 설정</h2>
@@ -723,45 +796,85 @@ function AllWorksheetsView() {
                   총 {answerWs.problemCount}문제
                 </p>
               </div>
-              <button onClick={() => setAnswerWs(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-4">×</button>
+              <button onClick={closeAnswers} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-4">×</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            {!loadingAnswers && (
+              <>
+                <div className="px-6 pt-4">
+                  <p className="text-xs text-gray-400">
+                    각 문제의 정답을 입력하세요
+                    <span className="ml-2 text-gray-300">예: ①  15  2x+3  정삼각형</span>
+                  </p>
+                  <div className="mt-1"><SnapshotHint /></div>
+                </div>
+
+                {/* 수식 기호 팔레트 — 마지막으로 클릭한 입력칸에 삽입 */}
+                <div className="px-6 pt-3">
+                  <SymbolPalette
+                    onInsert={palette.insert}
+                    disabled={palette.focusedKey === null}
+                    hint={palette.focusedKey !== null ? `선택된 칸: ${palette.focusedKey + 1}번` : undefined}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="flex-1 overflow-y-auto px-6 py-4">
               {loadingAnswers ? (
                 <div className="py-12 text-center text-gray-400 text-sm">불러오는 중...</div>
               ) : (
-                <>
-                  <p className="text-xs text-gray-400 mb-4">
-                    각 문제의 정답을 입력하세요
-                    <span className="ml-2 text-gray-300">예: ①  ②  15  2x+3  정삼각형</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {answerInputs.map((ans, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-200 focus-within:border-indigo-400 focus-within:bg-indigo-50/30 transition-colors">
+                <div className="grid grid-cols-2 gap-2">
+                  {answerInputs.map((ans, i) => {
+                    const img = isImageAnswer(ans) ? answerImages[i + 1] : undefined
+                    const busy = attach.busyKey === i
+                    return (
+                      <div
+                        key={i}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => attach.handleDrop(i, e)}
+                        className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 focus-within:border-indigo-400 focus-within:bg-indigo-50/30 transition-colors min-h-[46px]"
+                      >
                         <span className="text-xs font-bold text-gray-400 w-8 shrink-0 tabular-nums">{i + 1}번</span>
-                        <input
-                          type="text"
-                          value={ans}
-                          onChange={e => {
-                            const v = e.target.value
-                            setAnswerInputs(prev => { const n = [...prev]; n[i] = v; return n })
-                          }}
-                          placeholder="정답"
-                          className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder-gray-300 min-w-0"
-                        />
+
+                        {busy ? (
+                          <span className="flex-1 text-xs text-gray-400">이미지 처리 중...</span>
+                        ) : img ? (
+                          <>
+                            <AnswerThumb src={img} onZoom={setZoomSrc} className="flex-1" />
+                            <RemoveImageButton onClick={() => removeAnswerImage(i)} />
+                          </>
+                        ) : (
+                          <>
+                            <input
+                              ref={palette.registerRef(i)}
+                              type="text"
+                              value={ans}
+                              onChange={e => setAnswerAt(i, e.target.value)}
+                              onFocus={() => palette.setFocusedKey(i)}
+                              onPaste={e => attach.handlePaste(i, e)}
+                              placeholder="정답"
+                              className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder-gray-300 min-w-0"
+                            />
+                            <AttachImageButton onClick={() => attach.openFilePicker(i)} />
+                          </>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </>
+                    )
+                  })}
+                </div>
               )}
             </div>
 
+            {/* 📷 버튼 공용 파일 선택기 */}
+            <attach.FileInput />
+
             <div className="flex gap-3 p-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setAnswerWs(null)}
+              <button onClick={closeAnswers}
                 className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                 취소
               </button>
-              <button onClick={saveAnswers} disabled={savingAnswers || loadingAnswers}
+              <button onClick={saveAnswers} disabled={savingAnswers || loadingAnswers || attach.busyKey !== null}
                 className="flex-1 bg-emerald-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                 {savingAnswers ? '저장 중...' : '정답 저장'}
               </button>
@@ -769,6 +882,8 @@ function AllWorksheetsView() {
           </div>
         </div>
       )}
+
+      <AnswerLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />
     </div>
   )
 }

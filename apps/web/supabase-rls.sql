@@ -11,6 +11,10 @@ ALTER TABLE "Teacher"                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Student"                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ClassSchedule"          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Worksheet"              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AnswerImage"            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Textbook"               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TextbookProblem"        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TextbookResult"         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WorksheetDistribution"  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WorksheetResult"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "MissionResult"          ENABLE ROW LEVEL SECURITY;
@@ -50,6 +54,32 @@ CREATE POLICY "schedule_by_teacher" ON "ClassSchedule"
 DROP POLICY IF EXISTS "worksheets_by_teacher" ON "Worksheet";
 CREATE POLICY "worksheets_by_teacher" ON "Worksheet"
   FOR ALL USING ("teacherId" = current_teacher_id());
+
+-- ── Textbook: 담당 선생님만 접근 ─────────────────────────────
+DROP POLICY IF EXISTS "textbooks_by_teacher" ON "Textbook";
+CREATE POLICY "textbooks_by_teacher" ON "Textbook"
+  FOR ALL USING ("teacherId" = current_teacher_id());
+
+DROP POLICY IF EXISTS "textbook_problems_by_teacher" ON "TextbookProblem";
+CREATE POLICY "textbook_problems_by_teacher" ON "TextbookProblem"
+  FOR ALL USING (
+    "textbookId" IN (SELECT id FROM "Textbook" WHERE "teacherId" = current_teacher_id())
+  );
+
+DROP POLICY IF EXISTS "textbook_results_access" ON "TextbookResult";
+CREATE POLICY "textbook_results_access" ON "TextbookResult"
+  FOR ALL USING (
+    "textbookId" IN (SELECT id FROM "Textbook" WHERE "teacherId" = current_teacher_id())
+    OR "studentId" IN (SELECT id FROM "Student" WHERE "userId" = current_prisma_user_id())
+  );
+
+-- ── AnswerImage: 학습지/교재 소유 선생님만 접근 ──────────────
+DROP POLICY IF EXISTS "answer_images_by_teacher" ON "AnswerImage";
+CREATE POLICY "answer_images_by_teacher" ON "AnswerImage"
+  FOR ALL USING (
+    "worksheetId" IN (SELECT id FROM "Worksheet" WHERE "teacherId" = current_teacher_id())
+    OR "textbookId" IN (SELECT id FROM "Textbook" WHERE "teacherId" = current_teacher_id())
+  );
 
 -- ── WorksheetDistribution: 배포한 선생님 또는 대상 학생 접근 ─
 DROP POLICY IF EXISTS "distribution_access" ON "WorksheetDistribution";

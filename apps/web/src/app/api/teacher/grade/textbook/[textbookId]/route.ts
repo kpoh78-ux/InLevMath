@@ -22,7 +22,7 @@ export async function POST(
 
   const textbook = await prisma.textbook.findFirst({
     where: { id: textbookId, teacherId: teacher.id },
-    include: { problems: true },
+    select: { id: true },
   })
   if (!textbook) return NextResponse.json({ error: '교재를 찾을 수 없습니다.' }, { status: 404 })
 
@@ -31,7 +31,8 @@ export async function POST(
   })
   if (!student) return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
 
-  const totalProblems = textbook.problems.length
+  // 문제 행을 전부 읽지 않고 개수만 센다 (3000문제 교재 대응)
+  const totalProblems = await prisma.textbookProblem.count({ where: { textbookId } })
   const validWrong = wrongProblems.filter(n => n >= 1 && n <= totalProblems)
   const wrongProblemsJson = JSON.stringify(validWrong.sort((a, b) => a - b))
   const correctCount = totalProblems - validWrong.length

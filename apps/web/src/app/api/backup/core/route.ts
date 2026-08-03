@@ -34,6 +34,10 @@ export async function GET(req: NextRequest) {
       include: { teacher: { select: { id: true, userId: true } } },
     });
 
+    // 서술형 정답 이미지 — storage='object'인 행은 objectKey만 들어 있으므로
+    // 실제 파일은 오브젝트 스토리지 쪽 백업이 별도로 필요하다.
+    const answerImages = await prisma.answerImage.findMany();
+
     const textbookProblems = await prisma.textbookProblem.findMany();
     const worksheetDistributions = await prisma.worksheetDistribution.findMany({
       include: {
@@ -49,6 +53,7 @@ export async function GET(req: NextRequest) {
     const data = {
       teachers,
       worksheets,
+      answerImages,
       textbookProblems,
       worksheetDistributions,
       worksheetResults,

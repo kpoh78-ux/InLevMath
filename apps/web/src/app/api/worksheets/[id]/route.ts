@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
+import { purgeAnswerImages } from '@/lib/answerImageStore'
 
 async function getTeacherFromReq(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
@@ -23,6 +24,8 @@ export async function DELETE(
   const ws = await prisma.worksheet.findFirst({ where: { id, teacherId: teacher.id } })
   if (!ws) return NextResponse.json({ error: '학습지 없음' }, { status: 404 })
 
+  // DB 행은 cascade로 지워지지만 오브젝트 스토리지 파일은 직접 정리해야 한다
+  await purgeAnswerImages({ worksheetId: id })
   await prisma.worksheet.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

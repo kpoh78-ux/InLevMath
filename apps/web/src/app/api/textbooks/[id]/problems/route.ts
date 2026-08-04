@@ -28,7 +28,7 @@ async function getOwnedTextbook(req: NextRequest, id: string) {
 /** 쿼리스트링의 단원/유형 필터. 값이 없으면 해당 조건 미적용 */
 function unitFilter(sp: URLSearchParams) {
   const where: Record<string, string | number> = {}
-  for (const key of ['majorUnit', 'middleUnit', 'minorUnit', 'section'] as const) {
+  for (const key of ['majorUnit', 'middleUnit', 'minorUnit', 'section', 'subSection'] as const) {
     const v = sp.get(key)
     if (v !== null) where[key] = v
   }
@@ -94,7 +94,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 type ProblemUpsert = {
   number: number
   bookPage?: number
-  majorUnit?: string; middleUnit?: string; minorUnit?: string; section?: string
+  majorUnit?: string; middleUnit?: string; minorUnit?: string
+  section?: string; subSection?: string
   type?: string
   answer?: string   // 텍스트 / IMAGE_ANSWER_MARKER / data URL
 }
@@ -178,6 +179,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       middleUnit: (u.middleUnit ?? '').trim(),
       minorUnit: (u.minorUnit ?? '').trim(),
       section: (u.section ?? '').trim(),
+      subSection: (u.subSection ?? '').trim(),
       type,
       answer,
     })
@@ -228,7 +230,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const body = await req.json() as {
     count: number; bookPage?: number
-    majorUnit?: string; middleUnit?: string; minorUnit?: string; section?: string
+    majorUnit?: string; middleUnit?: string; minorUnit?: string
+    section?: string; subSection?: string
     type?: string; startNumber?: number
   }
 
@@ -291,6 +294,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       middleUnit: (body.middleUnit ?? '').trim(),
       minorUnit: (body.minorUnit ?? '').trim(),
       section: (body.section ?? '').trim(),
+      subSection: (body.subSection ?? '').trim(),
       type: body.type === 'short' || body.type === 'image' ? body.type : 'multiple',
       answer: '',
     })),

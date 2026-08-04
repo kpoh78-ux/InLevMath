@@ -550,8 +550,8 @@ function NormalDashboard() {
   const statsCards = [
     { label:'등록 학생',  value:studentCount,         unit:'명', sub:`/ 최대 300명`,                              color:'text-indigo-600', bg:'border-indigo-100', dot:'bg-indigo-500', href:'/dashboard/manage/students' },
     { label:'등록 학습지', value:worksheetCount,       unit:'개', sub:`정답 완료 ${worksheetsWithAnswers}개`,       color:'text-teal-600',   bg:'border-teal-100',   dot:'bg-teal-500',   href:'/dashboard/worksheets' },
-    { label:'학습지 배포', value:distTotal,            unit:'건', sub:`미채점 ${distPending}건`,                    color:'text-amber-600',  bg:'border-amber-100',  dot:'bg-amber-500',  href:'/dashboard/lesson-prep/distribute' },
-    { label:'채점 완료',   value:distGraded,           unit:'건', sub:`전체의 ${distTotal>0?Math.round(distGraded/distTotal*100):0}%`, color:'text-emerald-600', bg:'border-emerald-100', dot:'bg-emerald-500', href:'/dashboard/lesson-prep/distribute' },
+    { label:'학습지 배포', value:distTotal,            unit:'건', sub:`미채점 ${distPending}건`,                    color:'text-amber-600',  bg:'border-amber-100',  dot:'bg-amber-500',  href:'/dashboard/worksheets/distribute' },
+    { label:'채점 완료',   value:distGraded,           unit:'건', sub:`전체의 ${distTotal>0?Math.round(distGraded/distTotal*100):0}%`, color:'text-emerald-600', bg:'border-emerald-100', dot:'bg-emerald-500', href:'/dashboard/worksheets/distribute' },
   ]
 
   const stepLabel = (d:Distribution) => d.step==='모의고사'&&d.examSubType ? d.examSubType : d.step
@@ -707,7 +707,7 @@ function NormalDashboard() {
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
             <p className="text-xs font-bold text-gray-500 mb-3">바로가기</p>
             {[
-              { href:'/dashboard/lesson-prep/distribute', label:'학습지 배포', desc:'학생에게 학습지 배포',  color:'text-indigo-600', bg:'bg-indigo-50 hover:bg-indigo-100 border-indigo-100' },
+              { href:'/dashboard/worksheets/distribute', label:'학습지 배포', desc:'학생에게 학습지 배포',  color:'text-indigo-600', bg:'bg-indigo-50 hover:bg-indigo-100 border-indigo-100' },
               { href:'/dashboard/worksheets',             label:'학습지 관리', desc:'등록·정답 설정',       color:'text-teal-600',   bg:'bg-teal-50 hover:bg-teal-100 border-teal-100' },
               { href:'/dashboard/textbooks',              label:'교재',        desc:'교재 목록 관리',       color:'text-amber-600',  bg:'bg-amber-50 hover:bg-amber-100 border-amber-100' },
               { href:'/dashboard/manage/students',        label:'학생 관리',   desc:'학생 등록·학습 내역',  color:'text-gray-700',   bg:'bg-gray-50 hover:bg-gray-100 border-gray-200' },
@@ -747,12 +747,12 @@ function NormalDashboard() {
             <h2 className="font-semibold text-gray-800">최근 학습지 배포 현황</h2>
             <span className="text-xs text-gray-400">최근 10건</span>
           </div>
-          <Link href="/dashboard/lesson-prep/distribute" className="text-xs text-indigo-500 hover:underline">배포 관리 →</Link>
+          <Link href="/dashboard/worksheets/distribute" className="text-xs text-indigo-500 hover:underline">배포 관리 →</Link>
         </div>
         {recentDistributions.length === 0 ? (
           <div className="px-5 py-10 text-center text-gray-400 text-sm">
             배포된 학습지가 없습니다.
-            <Link href="/dashboard/lesson-prep/distribute" className="block mt-2 text-indigo-500 hover:underline text-xs">학습지 배포하기 →</Link>
+            <Link href="/dashboard/worksheets/distribute" className="block mt-2 text-indigo-500 hover:underline text-xs">학습지 배포하기 →</Link>
           </div>
         ) : (
           <table className="w-full text-sm">

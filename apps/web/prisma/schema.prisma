@@ -27,6 +27,10 @@ model Teacher {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // 문제집 문제유형(구역) 목록 — 선생님이 직접 추가·삭제한다.
+  // null이면 TEXTBOOK_SECTION_PRESETS 기본값을 쓴다. JSON: ["A단계","필수유형",...]
+  sectionPresetsJson String?
+
   students     Student[]
   worksheets   Worksheet[]
   textbooks    Textbook[]
@@ -110,6 +114,7 @@ model TextbookProblem {
   middleUnit String   @default("")  // 중단원
   minorUnit  String   @default("")  // 소단원
   section    String   @default("")  // 문제유형/단계: '필수유형'|'확인 체크'|'대표문제'|'서술형' 등 자유 입력
+  subSection String   @default("")  // 문제유형의 하위 단계: '유형 1'|'심화'|'(1)' 등 교재별 자유 입력
   type       String   @default("multiple")  // "multiple" | "short" | "image"
   answer     String   @default("")          // type='image'이면 IMAGE_ANSWER_MARKER
 
@@ -118,7 +123,7 @@ model TextbookProblem {
   // 교재 페이지별 조회 — 정답 입력 화면의 기본 이동 단위
   @@index([textbookId, bookPage, number], map: "TextbookProblem_page_idx")
   // 단원/유형별 조회 — 문제 수가 수천 개여도 필요한 구간만 읽기 위한 인덱스
-  @@index([textbookId, majorUnit, middleUnit, minorUnit, section], map: "TextbookProblem_unit_idx")
+  @@index([textbookId, majorUnit, middleUnit, minorUnit, section, subSection], map: "TextbookProblem_unit_idx")
 }
 
 model TextbookResult {

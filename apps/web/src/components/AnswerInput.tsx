@@ -6,7 +6,7 @@
 //  - 이미지 정답 썸네일 + 클릭 확대 팝업
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { MATH_SYMBOLS } from '@/lib/answers'
+import { MATH_SYMBOL_GROUPS } from '@/lib/answers'
 import { compressAnswerImage, pickImageFile } from '@/lib/imageCompress'
 
 // ── 확대 팝업 ────────────────────────────────────────────────────────────────
@@ -99,10 +99,32 @@ export function useSymbolPalette<K extends string | number>(
 export function SymbolPalette({
   onInsert, disabled, hint,
 }: { onInsert: (sym: string) => void; disabled: boolean; hint?: string }) {
+  const [group, setGroup] = useState(0)
+  const active = MATH_SYMBOL_GROUPS[group] ?? MATH_SYMBOL_GROUPS[0]
+
   return (
     <div>
+      {/* 분야 탭 — 기호가 많아 한 화면에 다 놓으면 찾기 어렵다 */}
+      <div className="flex flex-wrap gap-1 mb-1">
+        {MATH_SYMBOL_GROUPS.map((g, i) => (
+          <button
+            key={g.label}
+            type="button"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => setGroup(i)}
+            className={`text-[11px] px-2 py-1 rounded-t border-b-2 transition-colors ${
+              i === group
+                ? 'border-indigo-500 text-indigo-700 font-semibold bg-indigo-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-1 bg-gray-50 border border-gray-200 rounded-lg p-2">
-        {MATH_SYMBOLS.map(sym => (
+        {active.symbols.map(sym => (
           <button
             key={sym}
             type="button"
@@ -110,7 +132,8 @@ export function SymbolPalette({
             onMouseDown={e => e.preventDefault()}
             onClick={() => onInsert(sym)}
             disabled={disabled}
-            className="w-7 h-7 text-sm rounded border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white transition-colors leading-none"
+            title={sym}
+            className="min-w-[28px] h-7 px-1.5 text-sm rounded border border-gray-200 bg-white text-gray-700 hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white transition-colors leading-none whitespace-nowrap"
           >
             {sym}
           </button>
@@ -222,6 +245,89 @@ export function RemoveImageButton({ onClick }: { onClick: () => void }) {
     >
       ×
     </button>
+  )
+}
+
+// ── 문제유형(구역) 선택 ──────────────────────────────────────────────────────
+
+/**
+ * 문제유형 칩 목록. 선생님이 직접 유형을 추가·삭제할 수 있다.
+ * 목록은 계정에 저장되므로 교재가 바뀌어도 유지된다.
+ */
+export function SectionPresetPicker({
+  presets, value, onSelect, onAddPreset, onRemovePreset, size = 'sm',
+}: {
+  presets: string[]
+  value: string
+  onSelect: (section: string) => void
+  onAddPreset: (name: string) => void
+  onRemovePreset: (name: string) => void
+  size?: 'sm' | 'md'
+}) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const commit = () => {
+    const name = draft.trim()
+    if (name) { onAddPreset(name); onSelect(name) }
+    setDraft('')
+    setAdding(false)
+  }
+
+  const chip = size === 'md' ? 'text-[11px] px-2 py-1' : 'text-[10px] px-1.5 py-0.5'
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center">
+      {presets.map(s => (
+        <span key={s} className="relative group inline-flex">
+          <button type="button"
+            onClick={() => onSelect(s)}
+            className={`${chip} rounded border transition-colors pr-4 ${
+              value === s
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-indigo-400'
+            }`}>
+            {s}
+          </button>
+          <button type="button"
+            title={`"${s}" 유형을 목록에서 삭제`}
+            onClick={e => {
+              e.stopPropagation()
+              if (confirm(`문제유형 목록에서 "${s}"을(를) 삭제할까요?\n이미 이 유형으로 저장된 문제는 그대로 남습니다.`)) {
+                onRemovePreset(s)
+              }
+            }}
+            className={`absolute right-0.5 top-1/2 -translate-y-1/2 leading-none opacity-0 group-hover:opacity-100 transition-opacity ${
+              value === s ? 'text-white/80 hover:text-white' : 'text-gray-300 hover:text-rose-500'
+            }`}>
+            ×
+          </button>
+        </span>
+      ))}
+
+      {adding ? (
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit() }
+            if (e.key === 'Escape') { setDraft(''); setAdding(false) }
+          }}
+          placeholder="새 문제유형"
+          className={`${chip} w-28 rounded border border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300`}
+        />
+      ) : (
+        <button type="button"
+          onClick={() => setAdding(true)}
+          title="문제유형 직접 추가"
+          className={`${chip} rounded border border-dashed border-gray-300 text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors`}>
+          ＋ 유형 추가
+        </button>
+      )}
+    </div>
   )
 }
 

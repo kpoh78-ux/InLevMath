@@ -10,13 +10,13 @@ import {
 } from '@/lib/answers'
 import {
   AnswerLightbox, AnswerThumb, SymbolPalette, SnapshotHint,
-  AttachImageButton, RemoveImageButton,
+  AttachImageButton, RemoveImageButton, SectionPresetPicker,
   useSymbolPalette, useImageAttach,
 } from '@/components/AnswerInput'
 
 type Problem = {
   id: string; number: number; bookPage: number
-  majorUnit: string; middleUnit: string; minorUnit: string; section: string
+  majorUnit: string; middleUnit: string; minorUnit: string; section: string; subSection: string
   type: TextbookProblemType; answer: string
 }
 
@@ -55,6 +55,7 @@ type Block = {
   bookPage: number
   minorUnit: string
   section: string
+  subSection: string
   numbers: number[]
 }
 
@@ -69,10 +70,11 @@ const pageLabel = (p: number) => (p > 0 ? `${p}P` : '페이지 미지정')
 function buildBlocks(problems: Problem[]): Block[] {
   const map = new Map<string, Block>()
   for (const p of problems) {
-    const id = `${p.bookPage}|${p.minorUnit}|${p.section}`
+    const id = `${p.bookPage}|${p.minorUnit}|${p.section}|${p.subSection}`
     if (!map.has(id)) {
       map.set(id, {
-        id, bookPage: p.bookPage, minorUnit: p.minorUnit, section: p.section, numbers: [],
+        id, bookPage: p.bookPage, minorUnit: p.minorUnit,
+        section: p.section, subSection: p.subSection, numbers: [],
       })
     }
     map.get(id)!.numbers.push(p.number)
@@ -107,10 +109,15 @@ function TextbookDetailPageInner() {
   // 구역 추가 폼
   const [addOpen, setAddOpen] = useState(false)
   const [addForm, setAddForm] = useState({
-    bookPage: '', majorUnit: '', middleUnit: '', minorUnit: '', section: '', count: '10',
+    bookPage: '', majorUnit: '', middleUnit: '', minorUnit: '', section: '', subSection: '', count: '10',
     type: 'multiple' as TextbookProblemType,
   })
   const [adding, setAdding] = useState(false)
+  // 구역별 "추가/삭제할 문제 수" 입력값
+  const [blockAddCount, setBlockAddCount] = useState<Record<string, string>>({})
+
+  // 문제유형 목록 — 선생님 계정에 저장되며 직접 추가·삭제한다
+  const [sectionPresets, setSectionPresets] = useState<string[]>(TEXTBOOK_SECTION_PRESETS)
 
   // 채점 탭
   const [selectedStudentId, setSelectedStudentId] = useState<string>(preselectedStudent ?? '')
@@ -131,6 +138,37 @@ function TextbookDetailPageInner() {
   }, [id])
 
   useEffect(() => { fetchOverview() }, [fetchOverview])
+
+  useEffect(() => {
+    apiFetch('/api/teacher/section-presets')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.presets) setSectionPresets(d.presets) })
+      .catch(() => { /* 실패해도 기본 목록으로 동작 */ })
+  }, [])
+
+  /** 목록 변경 즉시 저장 — 실패하면 되돌린다 */
+  const saveSectionPresets = useCallback(async (next: string[]) => {
+    const prev = sectionPresets
+    setSectionPresets(next)
+    const res = await apiFetch('/api/teacher/section-presets', {
+      method: 'PUT',
+      body: JSON.stringify({ presets: next }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string }
+      alert(d.error || '문제유형 목록 저장 실패')
+      setSectionPresets(prev)
+    }
+  }, [sectionPresets])
+
+  const addSectionPreset = useCallback((name: string) => {
+    if (sectionPresets.includes(name)) return
+    saveSectionPresets([...sectionPresets, name])
+  }, [sectionPresets, saveSectionPresets])
+
+  const removeSectionPreset = useCallback((name: string) => {
+    saveSectionPresets(sectionPresets.filter(s => s !== name))
+  }, [sectionPresets, saveSectionPresets])
 
   // 첫 로딩 시 첫 페이지 자동 선택
   useEffect(() => {
@@ -226,7 +264,7 @@ function TextbookDetailPageInner() {
   }
 
   /** 구역 머리말 수정 → 그 구역의 모든 문제에 반영 */
-  const patchBlock = (blockId: string, patch: Partial<Pick<Block, 'bookPage' | 'minorUnit' | 'section'>>) => {
+  const patchBlock = (blockId: string, patch: Partial<Pick<Block, 'bookPage' | 'minorUnit' | 'section' | 'subSection'>>) => {
     setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...patch } : b))
     const block = blocks.find(b => b.id === blockId)
     if (block) patchProblems(block.numbers, patch)
@@ -241,7 +279,7 @@ function TextbookDetailPageInner() {
         .map(p => ({
           number: p.number, bookPage: p.bookPage,
           majorUnit: p.majorUnit, middleUnit: p.middleUnit,
-          minorUnit: p.minorUnit, section: p.section,
+          minorUnit: p.minorUnit, section: p.section, subSection: p.subSection,
           type: p.type,
           // 새로 첨부한 이미지만 data URL로 올리고 기존 이미지는 마커로 유지
           answer: isImageAnswer(p.answer) && newImageNos.has(p.number)
@@ -260,6 +298,60 @@ function TextbookDetailPageInner() {
         const d = await res.json().catch(() => ({})) as { error?: string }
         alert(d.error || '저장 실패')
       }
+    } finally { setSaving(false) }
+  }
+
+  /** 문제 삭제 — 개별 / 구역 전체 / 페이지 전체 공용 */
+  const deleteProblems = async (nums: number[], label: string) => {
+    if (nums.length === 0) return
+    if (!confirm(`${label}\n문제 ${nums.length}개와 입력된 정답이 삭제됩니다. 계속할까요?`)) return
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/textbooks/${id}/problems`, {
+        method: 'PUT',
+        body: JSON.stringify({ deletes: nums }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        alert(d.error || '삭제 실패')
+        return
+      }
+      const overviewRes = await apiFetch(`/api/textbooks/${id}`)
+      if (overviewRes.ok) {
+        const ov = await overviewRes.json() as TextbookOverview
+        setOverview(ov)
+        // 페이지가 통째로 비었으면 남아 있는 첫 페이지로 옮긴다
+        if (navMode === 'page' && !ov.pages.some(p => p.bookPage === selectedPage)) {
+          setSelectedPage(ov.pages[0]?.bookPage ?? null)
+          return
+        }
+      }
+      await fetchProblems()
+    } finally { setSaving(false) }
+  }
+
+  /** 구역 뒤에 문제 N개 추가 */
+  const addToBlock = async (block: Block, count: number) => {
+    if (!count || count < 1) return
+    setSaving(true)
+    try {
+      const res = await apiFetch(`/api/textbooks/${id}/problems`, {
+        method: 'POST',
+        body: JSON.stringify({
+          count,
+          bookPage: block.bookPage,
+          majorUnit: problemByNo.get(block.numbers[0])?.majorUnit ?? '',
+          middleUnit: problemByNo.get(block.numbers[0])?.middleUnit ?? '',
+          minorUnit: block.minorUnit,
+          section: block.section,
+          subSection: block.subSection,
+          type: problemByNo.get(block.numbers[0])?.type ?? 'multiple',
+        }),
+      })
+      const d = await res.json().catch(() => ({})) as { error?: string; from?: number; to?: number }
+      if (!res.ok) { alert(d.error || '문제 추가 실패'); return }
+      await Promise.all([fetchOverview(), fetchProblems()])
+      if (d.from && d.to) alert(`${d.from}~${d.to}번 ${count}문제가 추가되었습니다.`)
     } finally { setSaving(false) }
   }
 
@@ -528,6 +620,17 @@ function TextbookDetailPageInner() {
                   className="px-2.5 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:border-indigo-400 disabled:opacity-40">
                   다음 페이지{nextPage ? ` (${pageLabel(nextPage.bookPage)})` : ''} →
                 </button>
+                {tab === 'answers' && problems.length > 0 && (
+                  <button
+                    onClick={() => deleteProblems(
+                      problems.map(p => p.number),
+                      `${viewLabel} 전체를 삭제합니다.`
+                    )}
+                    disabled={saving}
+                    className="px-2.5 py-1 text-xs rounded border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 whitespace-nowrap">
+                    페이지 삭제
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -573,25 +676,62 @@ function TextbookDetailPageInner() {
                       <input
                         type="text" value={block.section}
                         onChange={e => patchBlock(block.id, { section: e.target.value })}
-                        placeholder="문제유형 (필수유형 / 확인 체크 / 서술형 …)"
-                        className="flex-1 min-w-[180px] border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="문제유형 (필수유형 / 확인 체크 …)"
+                        className="w-44 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <input
+                        type="text" value={block.subSection}
+                        onChange={e => patchBlock(block.id, { subSection: e.target.value })}
+                        placeholder="하위 단계 (유형 1 / 심화 / (1) …)"
+                        className="flex-1 min-w-[150px] border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
                       />
                       <span className="text-[11px] text-gray-400 tabular-nums shrink-0">
                         {block.numbers[0]}~{block.numbers[block.numbers.length - 1]}번 · {block.numbers.length}문제
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {TEXTBOOK_SECTION_PRESETS.map(s => (
-                        <button key={s} type="button"
-                          onClick={() => patchBlock(block.id, { section: s })}
-                          className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                            block.section === s
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'border-gray-200 bg-white text-gray-500 hover:border-indigo-400'
-                          }`}>
-                          {s}
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-1">
+                        <SectionPresetPicker
+                          presets={sectionPresets}
+                          value={block.section}
+                          onSelect={s => patchBlock(block.id, { section: s })}
+                          onAddPreset={addSectionPreset}
+                          onRemovePreset={removeSectionPreset}
+                        />
+                      </div>
+
+                      {/* 구역 문제 수 조절 */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number" min={1} max={PROBLEM_PAGE_SIZE_MAX}
+                          value={blockAddCount[block.id] ?? '5'}
+                          onChange={e => setBlockAddCount(prev => ({ ...prev, [block.id]: e.target.value }))}
+                          title="추가할 문제 수"
+                          className="w-14 border border-gray-300 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <button type="button" disabled={saving}
+                          onClick={() => addToBlock(block, parseInt(blockAddCount[block.id] ?? '5'))}
+                          className="text-[11px] px-2 py-1 rounded border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors disabled:opacity-50 whitespace-nowrap">
+                          + 문제 추가
                         </button>
-                      ))}
+                        <button type="button" disabled={saving}
+                          onClick={() => deleteProblems(
+                            block.numbers.slice(-Math.max(1, parseInt(blockAddCount[block.id] ?? '5'))),
+                            `${block.section || '이 구역'}의 마지막 문제를 지웁니다.`
+                          )}
+                          className="text-[11px] px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-rose-300 hover:text-rose-600 transition-colors disabled:opacity-50 whitespace-nowrap">
+                          − 뒤에서 삭제
+                        </button>
+                        <button type="button" disabled={saving}
+                          onClick={() => deleteProblems(
+                            block.numbers,
+                            `[${pageLabel(block.bookPage)} · ${block.section || '유형 미지정'}] 구역을 통째로 삭제합니다.`
+                          )}
+                          className="text-[11px] px-2 py-1 rounded border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50 whitespace-nowrap">
+                          구역 삭제
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -666,6 +806,16 @@ function TextbookDetailPageInner() {
                                 </div>
                               )}
                             </td>
+                            <td className="px-3 py-2 w-10 text-right">
+                              <button
+                                type="button" disabled={saving}
+                                onClick={() => deleteProblems([num], `${num}번 문제를 삭제합니다.`)}
+                                title="이 문제 삭제"
+                                className="w-6 h-6 rounded text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition-colors text-base leading-none disabled:opacity-40"
+                              >
+                                ×
+                              </button>
+                            </td>
                           </tr>
                         )
                       })}
@@ -709,21 +859,19 @@ function TextbookDetailPageInner() {
                       <input type="text" value={addForm.section}
                         onChange={e => setAddForm(f => ({ ...f, section: e.target.value }))}
                         placeholder="문제유형"
+                        className="w-36 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                      <input type="text" value={addForm.subSection}
+                        onChange={e => setAddForm(f => ({ ...f, subSection: e.target.value }))}
+                        placeholder="하위 단계 (유형 1 / 심화 …)"
                         className="flex-1 min-w-[140px] border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {TEXTBOOK_SECTION_PRESETS.map(s => (
-                        <button key={s} type="button"
-                          onClick={() => setAddForm(f => ({ ...f, section: s }))}
-                          className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                            addForm.section === s
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'border-gray-200 text-gray-500 hover:border-indigo-400'
-                          }`}>
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+                    <SectionPresetPicker
+                      presets={sectionPresets}
+                      value={addForm.section}
+                      onSelect={s => setAddForm(f => ({ ...f, section: s }))}
+                      onAddPreset={addSectionPreset}
+                      onRemovePreset={removeSectionPreset}
+                    />
                     <div className="flex gap-2 items-center flex-wrap">
                       <div className="flex gap-1">
                         {(['multiple', 'short', 'image'] as TextbookProblemType[]).map(t => (

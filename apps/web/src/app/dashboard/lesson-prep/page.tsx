@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, Suspense } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 
@@ -34,6 +35,21 @@ type RecentSession = {
 
 type MonthlyPoint = { label: string; problems: number; correctRate: number | null }
 
+type DistributionRow = {
+  id: string; title: string; step: string; unit: string; problemCount: number
+  status: string; distributedAt: string
+  graded: boolean; correctProblems: number | null; correctRate: number | null
+  gradedBy: string | null; submittedAt: string | null
+}
+
+type TextbookRange = {
+  textbookId: string; title: string; publisher: string
+  totalProblems: number; correctProblems: number; correctRate: number
+  wrongCount: number; wrongFrom: number | null; wrongTo: number | null
+  pageFrom: number | null; pageTo: number | null
+  submittedAt: string
+}
+
 type LessonHistory = {
   student: {
     id: string; name: string; grade: string; currentLevel: number
@@ -41,6 +57,8 @@ type LessonHistory = {
   }
   recentSessions: RecentSession[]
   monthlyTrend: MonthlyPoint[]
+  distributions: DistributionRow[]
+  textbookRanges: TextbookRange[]
 }
 
 const STEP_BADGE: Record<string, string> = {
@@ -287,6 +305,91 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
           </div>
         </div>
       )}
+
+      {/* 이전 시간 교재 채점 범위 + 학습지 배포·채점 현황 */}
+      {data && (
+        <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
+          {/* 교재 채점 범위 */}
+          <div className="px-5 py-4">
+            <p className="text-xs font-bold text-gray-500 mb-3">이전 교재 채점 범위</p>
+            {data.textbookRanges.length === 0 ? (
+              <p className="text-xs text-gray-300 py-6 text-center">채점된 교재가 없습니다</p>
+            ) : (
+              <div className="space-y-2">
+                {data.textbookRanges.map(t => (
+                  <Link key={t.textbookId}
+                    href={`/dashboard/textbooks/${t.textbookId}?student=${studentId}`}
+                    className="block bg-gray-50 hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 rounded-xl px-3.5 py-2.5 transition-colors">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">{t.title}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {t.pageFrom !== null && t.pageTo !== null
+                            ? `오답 구간 ${t.pageFrom}P~${t.pageTo}P`
+                            : '페이지 정보 없음'}
+                          {t.wrongFrom !== null && (
+                            <span className="ml-1.5 text-gray-300">
+                              ({t.wrongFrom}~{t.wrongTo}번 중 오답 {t.wrongCount}개)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={`text-sm font-black ${rateColor(t.correctRate)}`}>{t.correctRate}%</p>
+                        <p className="text-[10px] text-gray-300">{formatDate(t.submittedAt)}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 학습지 배포·채점 */}
+          <div className="px-5 py-4">
+            <p className="text-xs font-bold text-gray-500 mb-3">학습지 배포 · 채점</p>
+            {data.distributions.length === 0 ? (
+              <p className="text-xs text-gray-300 py-6 text-center">배포된 학습지가 없습니다</p>
+            ) : (
+              <div className="space-y-2">
+                {data.distributions.map(d => (
+                  <div key={d.id}
+                    className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                        {d.step && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 whitespace-nowrap ${STEP_BADGE[d.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                            {d.step}
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap ${
+                          d.graded ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          {d.graded ? '채점 완료' : '미채점'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-gray-800 truncate">{d.title}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {d.unit} · {d.problemCount}문제 · 배포 {formatDate(d.distributedAt)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {d.correctRate !== null ? (
+                        <>
+                          <p className={`text-sm font-black ${rateColor(d.correctRate)}`}>{d.correctRate}%</p>
+                          <p className="text-[10px] text-gray-300">{d.correctProblems}/{d.problemCount}</p>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-gray-300">—</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -417,7 +520,13 @@ function TextbookPicker({
 }
 
 // ── 메인 페이지 ──────────────────────────────────────────────────
-export default function LessonPrepPage() {
+function LessonPrepPageInner() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // 좌측 사이드바에서 고른 학생 (?student=)
+  const studentParam = searchParams.get('student')
+
   const [students, setStudents]     = useState<Student[]>([])
   const [worksheets, setWorksheets] = useState<Worksheet[]>([])
   const [textbooks, setTextbooks]   = useState<Textbook[]>([])
@@ -702,8 +811,23 @@ export default function LessonPrepPage() {
     }
   }
 
+  // 좌측 사이드바에서 학생을 고르면 중앙 칩을 누른 것과 똑같이 상태창이 열린다
+  useEffect(() => {
+    if (!studentParam) { setSelectedStudent(null); return }
+    const found = students.find(s => s.id === studentParam)
+    if (found) setSelectedStudent(found)
+  }, [studentParam, students])
+
+  // 중앙 칩 클릭 — 주소의 ?student= 도 같이 갱신해 좌측 목록과 상태를 맞춘다
   const handleStudentClick = (s: Student) => {
-    setSelectedStudent(prev => prev?.id === s.id ? null : s)
+    const next = selectedStudent?.id === s.id ? null : s
+    setSelectedStudent(next)
+    router.replace(next ? `${pathname}?student=${next.id}` : pathname, { scroll: false })
+  }
+
+  const closePanel = () => {
+    setSelectedStudent(null)
+    router.replace(pathname, { scroll: false })
   }
 
   const existingWSIds = new Set(items.filter(i => i.type === 'worksheet').map(i => i.id))
@@ -770,7 +894,7 @@ export default function LessonPrepPage() {
         <StudentHistoryPanel
           studentId={selectedStudent.id}
           studentName={selectedStudent.name}
-          onClose={() => setSelectedStudent(null)}
+          onClose={closePanel}
         />
       )}
 
@@ -957,5 +1081,14 @@ export default function LessonPrepPage() {
         <TextbookPicker textbooks={textbooks} existing={existingTBIds} onPick={addTextbook} onClose={() => setShowTBPicker(false)}/>
       )}
     </div>
+  )
+}
+
+// useSearchParams는 Suspense 경계 안에서만 쓸 수 있다
+export default function LessonPrepPage() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-gray-400 text-sm">불러오는 중...</div>}>
+      <LessonPrepPageInner />
+    </Suspense>
   )
 }

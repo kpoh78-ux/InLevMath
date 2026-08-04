@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { studentId: id, submittedAt: { gte: threeMonthsAgo } },
     include: {
       textbook: {
-        select: { title: true, grade: true, _count: { select: { problems: true } } },
+        select: { title: true, grade: true, publisher: true, _count: { select: { problems: true } } },
       },
     },
     orderBy: { submittedAt: 'desc' },
@@ -128,6 +128,59 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   })
 
+  // ── 배포된 학습지 현황 (채점 여부 포함) ──
+  const distributions = await prisma.worksheetDistribution.findMany({
+    where: { studentId: student.id },
+    orderBy: { distributedAt: 'desc' },
+    take: 10,
+    select: {
+      id: true, status: true, distributedAt: true,
+      worksheet: { select: { title: true, step: true, unit: true, problemCount: true } },
+      result: { select: { correctProblems: true, submittedAt: true, gradedBy: true } },
+    },
+  })
+
+  // ── 교재별 채점 범위 ──
+  // TextbookResult는 오답 번호만 갖고 있으므로, 그 번호들이 속한
+  // 교재 페이지 구간을 함께 계산해 "어디까지 풀었는지"를 보여준다.
+  const textbookRanges = await Promise.all(
+    tbResults.slice(0, 5).map(async r => {
+      let wrong: number[] = []
+      try { wrong = JSON.parse(r.wrongProblemsJson) } catch { /* 손상된 값 무시 */ }
+
+      const total = r.textbook._count.problems
+      const correct = Math.max(total - wrong.length, 0)
+
+      // 오답이 속한 페이지 구간 (오답이 없으면 생략)
+      let pageFrom: number | null = null
+      let pageTo: number | null = null
+      if (wrong.length > 0) {
+        const agg = await prisma.textbookProblem.aggregate({
+          where: { textbookId: r.textbookId, number: { in: wrong }, bookPage: { gt: 0 } },
+          _min: { bookPage: true },
+          _max: { bookPage: true },
+        })
+        pageFrom = agg._min.bookPage ?? null
+        pageTo = agg._max.bookPage ?? null
+      }
+
+      return {
+        textbookId: r.textbookId,
+        title: r.textbook.title,
+        publisher: r.textbook.publisher,
+        totalProblems: total,
+        correctProblems: correct,
+        correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
+        wrongCount: wrong.length,
+        wrongFrom: wrong.length > 0 ? Math.min(...wrong) : null,
+        wrongTo: wrong.length > 0 ? Math.max(...wrong) : null,
+        pageFrom,
+        pageTo,
+        submittedAt: r.submittedAt,
+      }
+    })
+  )
+
   return NextResponse.json({
     student: {
       id: student.id,
@@ -140,5 +193,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
     recentSessions,
     monthlyTrend,
+    distributions: distributions.map(d => ({
+      id: d.id,
+      title: d.worksheet.title,
+      step: d.worksheet.step,
+      unit: d.worksheet.unit,
+      problemCount: d.worksheet.problemCount,
+      status: d.status,
+      distributedAt: d.distributedAt,
+      graded: d.result !== null,
+      correctProblems: d.result?.correctProblems ?? null,
+      correctRate: d.result
+        ? Math.round((d.result.correctProblems / d.worksheet.problemCount) * 100)
+        : null,
+      gradedBy: d.result?.gradedBy ?? null,
+      submittedAt: d.result?.submittedAt ?? null,
+    })),
+    textbookRanges,
   })
 }

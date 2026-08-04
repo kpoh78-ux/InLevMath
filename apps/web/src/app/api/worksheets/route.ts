@@ -36,13 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '필수 항목 누락' }, { status: 400 })
   }
 
-  // 단원별 동일 스텝 10개 제한
-  const count = await prisma.worksheet.count({
-    where: { teacherId: teacher.id, category, step, grade, unit: unit || '종합' },
-  })
-  if (count >= 10) {
-    return NextResponse.json({ error: `${grade} ${unit} ${step} 학습지는 최대 10개까지 등록 가능합니다.` }, { status: 400 })
-  }
+  // 같은 단원+단계 학습지 개수 제한 없음 (예전 10개 제한은 해제)
 
   const ws = await prisma.worksheet.create({
     data: {

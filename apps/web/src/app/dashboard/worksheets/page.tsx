@@ -392,6 +392,8 @@ function AllWorksheetsView() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  // null이면 신규 등록, 값이 있으면 그 학습지 수정
+  const [editingWs, setEditingWs] = useState<Worksheet | null>(null)
   const [form, setForm] = useState({
     title: '', grade: '', unit: '', problemCount: '',
     source: 'manual' as string,
@@ -432,27 +434,61 @@ function AllWorksheetsView() {
     (w.title.toLowerCase().includes(search.toLowerCase()) || w.unit.includes(search))
   )
 
+  const resetForm = () =>
+    setForm({ title: '', grade: '', unit: '', problemCount: '', source: 'manual', category: '단원별', step: '기초', examSubType: '' })
+
+  const closeWsModal = () => {
+    setShowAddModal(false)
+    setEditingWs(null)
+    setSaveError('')
+    resetForm()
+  }
+
+  /** 수정 버튼 — 기존 값을 폼에 채우고 같은 모달을 연다 */
+  const openEdit = (w: Worksheet) => {
+    setEditingWs(w)
+    setSaveError('')
+    setForm({
+      title: w.title, grade: w.grade, unit: w.unit === '종합' ? '' : w.unit,
+      problemCount: String(w.problemCount), source: w.source,
+      category: w.category, step: w.step, examSubType: w.examSubType ?? '',
+    })
+    setShowAddModal(true)
+  }
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.grade) { alert('학년을 선택해주세요.'); return }
     if (form.step === '모의고사' && !form.examSubType) { alert('모의고사 유형을 선택해주세요.'); return }
+
+    const payload = {
+      title: form.title, category: form.category, step: form.step,
+      examSubType: form.step === '모의고사' ? form.examSubType : null,
+      grade: form.grade, unit: form.unit || '종합',
+      problemCount: parseInt(form.problemCount), source: form.source,
+    }
+
+    // 문제 수를 줄이면 그 뒤 정답이 사라지므로 확인받는다
+    if (editingWs && payload.problemCount < editingWs.problemCount && hasAnswers(editingWs)) {
+      const ok = confirm(
+        `문제 수를 ${editingWs.problemCount}개에서 ${payload.problemCount}개로 줄입니다.
+` +
+        `${payload.problemCount + 1}번 이후에 입력된 정답은 삭제됩니다. 계속할까요?`
+      )
+      if (!ok) return
+    }
+
     setSaving(true); setSaveError('')
     try {
-      const res = await apiFetch('/api/worksheets', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: form.title, category: form.category, step: form.step,
-          examSubType: form.step === '모의고사' ? form.examSubType : null,
-          grade: form.grade, unit: form.unit || '종합',
-          problemCount: parseInt(form.problemCount), source: form.source,
-        }),
-      })
+      const res = await apiFetch(
+        editingWs ? `/api/worksheets/${editingWs.id}` : '/api/worksheets',
+        { method: editingWs ? 'PATCH' : 'POST', body: JSON.stringify(payload) }
+      )
       let data: { error?: string } = {}
       try { data = await res.json() } catch { /* empty */ }
-      if (!res.ok) { setSaveError(data.error || '등록 실패'); return }
+      if (!res.ok) { setSaveError(data.error || (editingWs ? '수정 실패' : '등록 실패')); return }
       await fetchWorksheets()
-      setForm({ title: '', grade: '', unit: '', problemCount: '', source: 'manual', category: '단원별', step: '기초', examSubType: '' })
-      setShowAddModal(false)
+      closeWsModal()
     } finally { setSaving(false) }
   }
 
@@ -544,7 +580,7 @@ function AllWorksheetsView() {
           <h1 className="text-xl font-bold text-gray-900">학습지 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">정답 설정 후 수업준비 → 학습지 배포에서 학생에게 배포하세요</p>
         </div>
-        <button onClick={() => setShowAddModal(true)}
+        <button onClick={() => { setEditingWs(null); resetForm(); setSaveError(''); setShowAddModal(true) }}
           className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1.5">
           <span className="text-base leading-none">+</span> 학습지 등록
         </button>
@@ -659,6 +695,10 @@ function AllWorksheetsView() {
                                   className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap">
                                   정답 설정
                                 </button>
+                                <button onClick={() => openEdit(w)}
+                                  className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors whitespace-nowrap">
+                                  수정
+                                </button>
                                 <button onClick={() => handleDelete(w)}
                                   className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors whitespace-nowrap">
                                   삭제
@@ -682,8 +722,8 @@ function AllWorksheetsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">학습지 등록</h2>
-              <button onClick={() => { setShowAddModal(false); setSaveError('') }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              <h2 className="text-lg font-bold text-gray-900">{editingWs ? '학습지 수정' : '학습지 등록'}</h2>
+              <button onClick={closeWsModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <form onSubmit={handleAdd} className="space-y-4">
               <div>
@@ -717,7 +757,7 @@ function AllWorksheetsView() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  단원명 <span className="text-gray-400 font-normal">(같은 단원+단계 최대 10개)</span>
+                  단원명 <span className="text-gray-400 font-normal">(비워두면 &apos;종합&apos;)</span>
                 </label>
                 <input type="text" value={form.unit}
                   onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
@@ -771,13 +811,13 @@ function AllWorksheetsView() {
               </div>
               {saveError && <p className="text-red-500 text-sm">{saveError}</p>}
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => { setShowAddModal(false); setSaveError('') }}
+                <button type="button" onClick={closeWsModal}
                   className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                   취소
                 </button>
                 <button type="submit" disabled={saving || !form.grade}
                   className="flex-1 bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                  {saving ? '등록 중...' : '등록 완료'}
+                  {saving ? (editingWs ? '저장 중...' : '등록 중...') : (editingWs ? '수정 저장' : '등록 완료')}
                 </button>
               </div>
             </form>

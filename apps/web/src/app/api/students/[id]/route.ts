@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin, phoneToEmail } from '@/lib/supabase'
 import { prisma } from '@/lib/db'
 
-// PATCH /api/students/[id] — 퇴원 처리 (status → withdrawn, 데이터 보존)
+// PATCH /api/students/[id]
+//   { status } 만 보내면 재원/퇴원 처리
+//   그 외 필드를 보내면 학생 상세 정보 수정 (이름·연락처·학교·학년·주소 등)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getAuthUser(req)
   if (!auth || auth.role !== 'teacher') {
@@ -11,26 +13,90 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params
-  const { status } = await req.json() as { status: 'active' | 'withdrawn' }
+  const body = await req.json() as Record<string, unknown>
+  const status = body.status as 'active' | 'withdrawn' | undefined
 
   const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const student = await prisma.student.findFirst({
     where: { id, teacherId: teacher.id },
-    include: { user: { select: { id: true, supabaseId: true } } },
+    include: { user: { select: { id: true, supabaseId: true, phone: true, name: true } } },
   })
   if (!student) return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
 
-  // 퇴원 시 Supabase Auth 계정 비활성화 (재원 복귀 시 재생성)
-  if (status === 'withdrawn' && student.user.supabaseId) {
-    await supabaseAdmin.auth.admin.updateUserById(student.user.supabaseId, { ban_duration: '876600h' })
-  } else if (status === 'active' && student.user.supabaseId) {
-    await supabaseAdmin.auth.admin.updateUserById(student.user.supabaseId, { ban_duration: 'none' })
+  // ── 재원/퇴원 처리 ──
+  if (status) {
+    // 퇴원 시 Supabase Auth 계정 비활성화 (재원 복귀 시 해제)
+    if (status === 'withdrawn' && student.user.supabaseId) {
+      await supabaseAdmin.auth.admin.updateUserById(student.user.supabaseId, { ban_duration: '876600h' })
+    } else if (status === 'active' && student.user.supabaseId) {
+      await supabaseAdmin.auth.admin.updateUserById(student.user.supabaseId, { ban_duration: 'none' })
+    }
   }
 
-  const updated = await prisma.student.update({ where: { id }, data: { status } })
-  return NextResponse.json({ ok: true, status: updated.status })
+  // ── 상세 정보 수정 ──
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : undefined)
+
+  const studentData: Record<string, unknown> = {}
+  if (status) studentData.status = status
+  for (const key of ['school', 'grade', 'parentName', 'parentPhone', 'startDate',
+                     'address', 'homePhone', 'birthDate', 'email', 'memo'] as const) {
+    const v = str(body[key])
+    if (v !== undefined) studentData[key] = v
+  }
+
+  const name = str(body.name)
+  const phone = str(body.phone)
+
+  // 핸드폰번호 = 로그인 아이디. 바꾸면 중복 확인 + Supabase 계정까지 맞춰야 한다
+  if (phone !== undefined && phone !== student.user.phone) {
+    if (!/^\d{11}$/.test(phone)) {
+      return NextResponse.json({ error: '핸드폰번호는 11자리 숫자로 입력해주세요.' }, { status: 400 })
+    }
+    const dup = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
+    if (dup && dup.id !== student.user.id) {
+      return NextResponse.json({ error: '이미 등록된 핸드폰번호입니다.' }, { status: 400 })
+    }
+    if (student.user.supabaseId) {
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(student.user.supabaseId, {
+        email: phoneToEmail(phone),
+      })
+      if (error) {
+        return NextResponse.json(
+          { error: `로그인 계정 변경에 실패했습니다: ${error.message}` }, { status: 500 }
+        )
+      }
+    }
+  }
+
+  const userData: Record<string, unknown> = {}
+  if (name) userData.name = name
+  if (phone !== undefined && phone !== student.user.phone) userData.phone = phone
+
+  const updated = await prisma.student.update({
+    where: { id },
+    data: {
+      ...studentData,
+      ...(Object.keys(userData).length > 0 ? { user: { update: userData } } : {}),
+    },
+    include: { user: { select: { name: true, phone: true } } },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    status: updated.status,
+    student: {
+      id: updated.id,
+      name: updated.user.name,
+      phone: updated.user.phone,
+      school: updated.school, grade: updated.grade,
+      parentName: updated.parentName, parentPhone: updated.parentPhone,
+      startDate: updated.startDate, status: updated.status,
+      address: updated.address, homePhone: updated.homePhone,
+      birthDate: updated.birthDate, email: updated.email, memo: updated.memo,
+    },
+  })
 }
 
 // DELETE /api/students/[id] — 학생 완전 삭제 (연관 데이터 전체 cascade)

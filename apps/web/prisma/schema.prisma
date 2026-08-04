@@ -69,6 +69,13 @@ model Student {
   startDate   String   @default("")   // 수업시작일 (YYYY-MM-DD)
   status      String   @default("active")  // "active" | "withdrawn"
 
+  // 선택 입력 — 학생 상세 정보 팝업에서 수정한다
+  address     String   @default("")   // 집 주소
+  homePhone   String   @default("")   // 집 전화
+  birthDate   String   @default("")   // 생년월일 (YYYY-MM-DD)
+  email       String   @default("")   // 학생 이메일
+  memo        String   @default("")   // 특이사항 메모
+
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
 

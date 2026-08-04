@@ -16,6 +16,11 @@ type Student = {
   registeredAt: string
   status: '재원' | '퇴원'
   gradeGroup: '초' | '중' | '고'
+  address: string
+  homePhone: string
+  birthDate: string
+  email: string
+  memo: string
 }
 
 const GRADE_OPTIONS: { group: '초' | '중' | '고'; label: string }[] = [
@@ -34,11 +39,13 @@ function gradeGroup(grade: string): '초' | '중' | '고' {
 type FormState = {
   name: string; phone: string; grade: string; school: string
   parentName: string; parentPhone: string; startDate: string; memo: string
+  address: string; homePhone: string; birthDate: string; email: string
 }
 
 const EMPTY_FORM: FormState = {
   name: '', phone: '', grade: '', school: '',
   parentName: '', parentPhone: '', startDate: '', memo: '',
+  address: '', homePhone: '', birthDate: '', email: '',
 }
 
 export default function ManageStudentsPage() {
@@ -57,6 +64,8 @@ export default function ManageStudentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [continueAdd, setContinueAdd] = useState(false)
+  // null이면 신규 등록, 값이 있으면 그 학생 정보 수정
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null)
 
   // 일괄 등록
   const [showBulkModal, setShowBulkModal] = useState(false)
@@ -74,6 +83,7 @@ export default function ManageStudentsPage() {
       const data = await res.json() as {
         id: string; school: string; grade: string; status: string
         parentName: string; parentPhone: string; startDate: string
+        address?: string; homePhone?: string; birthDate?: string; email?: string; memo?: string
         user: { id: string; name: string; phone: string; createdAt: string }
       }[]
       setStudents(data.map(s => ({
@@ -88,6 +98,11 @@ export default function ManageStudentsPage() {
         registeredAt: s.user.createdAt.slice(0, 10),
         status: (s.status === 'withdrawn' ? '퇴원' : '재원') as '재원' | '퇴원',
         gradeGroup: gradeGroup(s.grade),
+        address: s.address ?? '',
+        homePhone: s.homePhone ?? '',
+        birthDate: s.birthDate ?? '',
+        email: s.email ?? '',
+        memo: s.memo ?? '',
       })))
     } catch {
       // 인증 오류 등
@@ -104,10 +119,53 @@ export default function ManageStudentsPage() {
     (s.name.includes(search) || s.school.includes(search) || s.phone.includes(search))
   )
 
+  /** 학생 이름 클릭 — 기존 값을 채워 같은 모달을 수정 모드로 연다 */
+  const openEditStudent = (st: Student) => {
+    setEditingStudent(st)
+    setError('')
+    setForm({
+      name: st.name, phone: st.phone, grade: st.grade, school: st.school,
+      parentName: st.parentName, parentPhone: st.parentPhone, startDate: st.startDate,
+      memo: st.memo, address: st.address, homePhone: st.homePhone,
+      birthDate: st.birthDate, email: st.email,
+    })
+    setShowModal(true)
+  }
+
+  const closeStudentModal = () => {
+    setShowModal(false)
+    setEditingStudent(null)
+    setError('')
+    setForm(EMPTY_FORM)
+  }
+
+  /** 수정 저장 */
+  const handleEdit = async () => {
+    if (!editingStudent) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const res = await apiFetch(`/api/students/${editingStudent.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: form.name, phone: form.phone, grade: form.grade, school: form.school,
+          parentName: form.parentName, parentPhone: form.parentPhone, startDate: form.startDate,
+          address: form.address, homePhone: form.homePhone,
+          birthDate: form.birthDate, email: form.email, memo: form.memo,
+        }),
+      })
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      if (!res.ok) { setError(body.error ?? '수정에 실패했습니다.'); return }
+      await fetchStudents()
+      closeStudentModal()
+    } finally { setSubmitting(false) }
+  }
+
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!form.grade) { setError('학년을 선택해주세요.'); return }
     if (!/^\d{11}$/.test(form.phone)) { setError('핸드폰번호는 11자리 숫자를 입력해주세요.'); return }
+    if (editingStudent) { await handleEdit(); return }
     setSubmitting(true)
     setError('')
     try {
@@ -128,6 +186,7 @@ export default function ManageStudentsPage() {
         school: body.school ?? '', grade: body.grade,
         parentName: body.parentName ?? '', parentPhone: body.parentPhone ?? '',
         startDate: body.startDate ?? '',
+        address: '', homePhone: '', birthDate: '', email: '', memo: '',
         registeredAt: new Date().toISOString().slice(0, 10),
         status: '재원', gradeGroup: gradeGroup(body.grade),
       }
@@ -249,7 +308,7 @@ export default function ManageStudentsPage() {
             학생 일괄 등록
           </button>
           <button
-            onClick={() => { setShowModal(true); setError('') }}
+            onClick={() => { setEditingStudent(null); setForm(EMPTY_FORM); setError(''); setShowModal(true) }}
             className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -331,7 +390,14 @@ export default function ManageStudentsPage() {
                     s.status === '재원' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'
                   }`}>{s.status}</span>
                 </td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{s.name}</td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => openEditStudent(s)}
+                    title="클릭하면 학생 정보를 수정할 수 있습니다"
+                    className="font-semibold text-gray-900 hover:text-indigo-600 hover:underline transition-colors">
+                    {s.name}
+                  </button>
+                </td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{s.school || '-'}</td>
                 <td className="px-4 py-3 font-mono text-gray-600 text-xs">
                   {s.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3')}
@@ -385,8 +451,8 @@ export default function ManageStudentsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 py-8">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
-              <h2 className="text-lg font-bold text-gray-900">학생 개별 등록</h2>
-              <button onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setError('') }}
+              <h2 className="text-lg font-bold text-gray-900">{editingStudent ? '학생 상세 정보' : '학생 개별 등록'}</h2>
+              <button onClick={closeStudentModal}
                 className="text-gray-400 hover:text-gray-600 text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
                 ×
               </button>
@@ -476,6 +542,34 @@ export default function ManageStudentsPage() {
                           className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">학생 생년월일</label>
+                        <input type="date" value={form.birthDate} onChange={f('birthDate')}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">학생 이메일</label>
+                        <input type="email" value={form.email} onChange={f('email')}
+                          placeholder="예시 : student@math.com"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">집 주소</label>
+                        <input type="text" value={form.address} onChange={f('address')}
+                          placeholder="주소를 입력해주세요."
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">집 전화</label>
+                        <input type="tel" value={form.homePhone}
+                          onChange={e => setForm(prev => ({ ...prev, homePhone: e.target.value.replace(/\D/g, '') }))}
+                          placeholder="숫자만 입력해주세요." maxLength={12}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1.5">비고</label>
                       <input type="text" value={form.memo} onChange={f('memo')}
@@ -485,14 +579,23 @@ export default function ManageStudentsPage() {
                   </div>
                 </div>
 
-                <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2.5 flex items-center gap-2">
-                  <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-xs text-indigo-600">
-                    초기 비밀번호는 <strong>math1234</strong>로 자동 설정됩니다. 학생이 직접 변경할 수 있습니다.
-                  </p>
-                </div>
+                {!editingStudent && (
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2.5 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-indigo-600">
+                      초기 비밀번호는 <strong>math1234</strong>로 자동 설정됩니다. 학생이 직접 변경할 수 있습니다.
+                    </p>
+                  </div>
+                )}
+                {editingStudent && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5">
+                    <p className="text-xs text-amber-700">
+                      핸드폰번호는 <strong>로그인 아이디</strong>입니다. 바꾸면 학생이 새 번호로 로그인해야 합니다.
+                    </p>
+                  </div>
+                )}
 
                 {error && (
                   <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
@@ -500,19 +603,23 @@ export default function ManageStudentsPage() {
               </div>
 
               <div className="px-6 pb-6 pt-4 border-t border-gray-100 flex items-center justify-between shrink-0">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={continueAdd} onChange={e => setContinueAdd(e.target.checked)}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
-                  <span className="text-sm text-gray-600">계속 학생 등록하기</span>
-                </label>
+                {editingStudent ? <span /> : (
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={continueAdd} onChange={e => setContinueAdd(e.target.checked)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+                    <span className="text-sm text-gray-600">계속 학생 등록하기</span>
+                  </label>
+                )}
                 <div className="flex gap-3">
-                  <button type="button" onClick={() => { setShowModal(false); setForm(EMPTY_FORM); setError('') }}
+                  <button type="button" onClick={closeStudentModal}
                     className="border border-gray-300 text-gray-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">
                     취소
                   </button>
                   <button type="submit" disabled={submitting || !form.grade || !form.name || !form.phone}
                     className="bg-indigo-600 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                    {submitting ? '등록 중...' : '등록하기'}
+                    {submitting
+                      ? (editingStudent ? '저장 중...' : '등록 중...')
+                      : (editingStudent ? '저장하기' : '등록하기')}
                   </button>
                 </div>
               </div>

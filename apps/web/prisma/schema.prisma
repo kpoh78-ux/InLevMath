@@ -78,9 +78,10 @@ model Student {
 
   rewardPoints    Int @default(0)
 
-  results          MissionResult[]
-  distributions    WorksheetDistribution[]
-  textbookResults  TextbookResult[]
+  results             MissionResult[]
+  distributions       WorksheetDistribution[]
+  textbookAssignments TextbookAssignment[]
+  textbookResults     TextbookResult[]
   rewards          StudentReward[]
   pointHistory     PointTransaction[]
 
@@ -99,6 +100,7 @@ model Textbook {
 
   problems     TextbookProblem[]
   results      TextbookResult[]
+  assignments  TextbookAssignment[]
   answerImages AnswerImage[]
 
   @@index([teacherId])
@@ -124,6 +126,21 @@ model TextbookProblem {
   @@index([textbookId, bookPage, number], map: "TextbookProblem_page_idx")
   // 단원/유형별 조회 — 문제 수가 수천 개여도 필요한 구간만 읽기 위한 인덱스
   @@index([textbookId, majorUnit, middleUnit, minorUnit, section, subSection], map: "TextbookProblem_unit_idx")
+}
+
+// 교재 배정 — 학습지의 WorksheetDistribution과 같은 역할.
+// 어떤 학생이 어떤 교재를 진행 중인지 저장한다. 채점 결과는 TextbookResult에 따로 쌓인다.
+model TextbookAssignment {
+  id         String   @id @default(cuid())
+  textbookId String
+  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([textbookId, studentId])
+  @@index([studentId])
+  @@index([textbookId])
 }
 
 model TextbookResult {

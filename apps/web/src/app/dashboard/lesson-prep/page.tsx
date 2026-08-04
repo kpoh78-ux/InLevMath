@@ -626,13 +626,27 @@ function LessonPrepPageInner() {
     if (!item) return
 
     if (item.type !== 'worksheet') {
-      // 교재는 아직 배포 API가 없어 화면 상태만 갱신
       if (item.assignedIds.length === 0) {
         showToast('배정할 학생을 먼저 선택하세요.', false)
         return
       }
-      showToast(`"${item.title}" — ${item.assignedIds.length}명에게 배정 완료!`)
-      setItems(prev => prev.map(i => i.key === key ? { ...i, distributed: true } : i))
+      setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: true } : i))
+      try {
+        const res = await apiFetch('/api/textbooks/assign', {
+          method: 'POST',
+          body: JSON.stringify({ textbookId: item.id, studentIds: item.assignedIds }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({})) as { error?: string }
+          showToast(d.error || '교재 배정 실패', false)
+          return
+        }
+        showToast(`"${item.title}" — ${item.assignedIds.length}명에게 배정 완료!`)
+        setItems(prev => prev.map(i =>
+          i.key === key ? { ...i, distributed: true, originalIds: [...i.assignedIds] } : i))
+      } finally {
+        setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: false } : i))
+      }
       return
     }
 

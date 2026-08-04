@@ -15,6 +15,7 @@ ALTER TABLE "AnswerImage"            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Textbook"               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "TextbookProblem"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "TextbookResult"         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TextbookAssignment"     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WorksheetDistribution"  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WorksheetResult"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "MissionResult"          ENABLE ROW LEVEL SECURITY;
@@ -64,6 +65,13 @@ DROP POLICY IF EXISTS "textbook_problems_by_teacher" ON "TextbookProblem";
 CREATE POLICY "textbook_problems_by_teacher" ON "TextbookProblem"
   FOR ALL USING (
     "textbookId" IN (SELECT id FROM "Textbook" WHERE "teacherId" = current_teacher_id())
+  );
+
+DROP POLICY IF EXISTS "textbook_assignment_access" ON "TextbookAssignment";
+CREATE POLICY "textbook_assignment_access" ON "TextbookAssignment"
+  FOR ALL USING (
+    "textbookId" IN (SELECT id FROM "Textbook" WHERE "teacherId" = current_teacher_id())
+    OR "studentId" IN (SELECT id FROM "Student" WHERE "userId" = current_prisma_user_id())
   );
 
 DROP POLICY IF EXISTS "textbook_results_access" ON "TextbookResult";

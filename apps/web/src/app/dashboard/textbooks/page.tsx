@@ -10,6 +10,14 @@ type Textbook = {
   problemCount: number; createdAt: string
 }
 
+// 학생에게 배정된 교재 (+ 채점 상태)
+type AssignedTextbook = {
+  id: string; title: string; grade: string; publisher: string
+  problemCount: number; assignedAt: string
+  graded: boolean; correctRate: number | null
+  wrongCount: number | null; submittedAt: string | null
+}
+
 const GRADE_OPTIONS = ['중1-1', '중1-2', '중2-1', '중2-2', '중3-1', '중3-2', '고1', '고2', '고3']
 
 function TextbooksPageInner() {
@@ -23,6 +31,49 @@ function TextbooksPageInner() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
 
+  // 학생이 선택됐을 때만 쓰는 상태
+  const [assigned, setAssigned] = useState<AssignedTextbook[]>([])
+  const [loadingAssigned, setLoadingAssigned] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [showAssignPicker, setShowAssignPicker] = useState(false)
+
+  const fetchAssigned = useCallback(async () => {
+    if (!selectedStudent) { setAssigned([]); return }
+    setLoadingAssigned(true)
+    try {
+      const res = await apiFetch(`/api/textbooks/assign?studentId=${selectedStudent}`)
+      if (res.ok) setAssigned(await res.json())
+    } finally { setLoadingAssigned(false) }
+  }, [selectedStudent])
+
+  const assignTextbook = async (textbookId: string) => {
+    if (!selectedStudent) return
+    setAssigning(true)
+    try {
+      const res = await apiFetch('/api/textbooks/assign', {
+        method: 'POST',
+        body: JSON.stringify({ textbookId, studentIds: [selectedStudent] }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        alert(d.error || '배정 실패'); return
+      }
+      await fetchAssigned()
+      setShowAssignPicker(false)
+    } finally { setAssigning(false) }
+  }
+
+  const unassignTextbook = async (t: AssignedTextbook) => {
+    if (!selectedStudent) return
+    if (t.graded) { alert('채점이 완료된 교재는 기록 보존을 위해 배정을 해제할 수 없습니다.'); return }
+    if (!confirm(`"${t.title}" 배정을 해제할까요?`)) return
+    const res = await apiFetch('/api/textbooks/assign', {
+      method: 'DELETE',
+      body: JSON.stringify({ textbookId: t.id, studentIds: [selectedStudent] }),
+    })
+    if (res.ok) await fetchAssigned()
+  }
+
   const fetchTextbooks = useCallback(async () => {
     setLoading(true)
     try {
@@ -34,6 +85,7 @@ function TextbooksPageInner() {
   }, [])
 
   useEffect(() => { fetchTextbooks() }, [fetchTextbooks])
+  useEffect(() => { fetchAssigned() }, [fetchAssigned])
 
   const filtered = textbooks.filter(t =>
     t.title.includes(search) || t.grade.includes(search) || t.publisher.includes(search)
@@ -105,7 +157,106 @@ function TextbooksPageInner() {
         />
       </div>
 
-      {/* 교재 목록 */}
+      {/* ── 학생 선택 시: 배정된 교재만 ── */}
+      {selectedStudent ? (
+        <>
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+              <span className="text-sm font-bold text-gray-700">배정된 교재</span>
+              <button
+                onClick={() => setShowAssignPicker(v => !v)}
+                className="text-xs font-semibold text-indigo-600 border border-indigo-200 hover:border-indigo-400 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded transition-colors whitespace-nowrap">
+                {showAssignPicker ? '닫기' : '+ 교재 배정'}
+              </button>
+            </div>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
+                  <th className="px-5 py-3 text-left font-medium">교재명</th>
+                  <th className="px-5 py-3 text-left font-medium w-24">학년</th>
+                  <th className="px-5 py-3 text-left font-medium w-28">문제 수</th>
+                  <th className="px-5 py-3 text-center font-medium w-28">채점</th>
+                  <th className="px-5 py-3 text-center font-medium w-24">정답률</th>
+                  <th className="px-5 py-3 text-left font-medium w-40">작업</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loadingAssigned ? (
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td></tr>
+                ) : assigned.length === 0 ? (
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400 text-sm">
+                    배정된 교재가 없습니다. 위 &ldquo;+ 교재 배정&rdquo;으로 추가하세요.
+                  </td></tr>
+                ) : assigned.map(t => (
+                  <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <Link href={detailHref(t.id)} className="font-semibold text-indigo-600 hover:underline">
+                        {t.title}
+                      </Link>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{t.publisher}</div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap">{t.grade}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-700 font-medium whitespace-nowrap">{t.problemCount}문제</td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
+                        t.graded ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {t.graded ? '채점 완료' : '미채점'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      {t.correctRate !== null ? (
+                        <span className={`text-sm font-black ${
+                          t.correctRate >= 80 ? 'text-emerald-600' : t.correctRate >= 60 ? 'text-amber-500' : 'text-rose-500'
+                        }`}>{t.correctRate}%</span>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex gap-2">
+                        <Link href={detailHref(t.id)}
+                          className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors whitespace-nowrap">
+                          {t.graded ? '재채점' : '채점하기'}
+                        </Link>
+                        <button onClick={() => unassignTextbook(t)} disabled={t.graded}
+                          title={t.graded ? '채점 완료된 교재는 해제할 수 없습니다' : '배정 해제'}
+                          className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors disabled:opacity-40 disabled:hover:border-red-100 whitespace-nowrap">
+                          해제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 배정 추가 — 아직 배정되지 않은 교재 */}
+          {showAssignPicker && (
+            <div className="bg-white border border-indigo-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-indigo-100 bg-indigo-50">
+                <span className="text-sm font-bold text-gray-700">배정할 교재 선택</span>
+              </div>
+              <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
+                {filtered.filter(t => !assigned.some(a => a.id === t.id)).length === 0 ? (
+                  <p className="px-5 py-8 text-center text-gray-400 text-sm">배정할 수 있는 교재가 없습니다.</p>
+                ) : filtered.filter(t => !assigned.some(a => a.id === t.id)).map(t => (
+                  <button key={t.id} onClick={() => assignTextbook(t.id)} disabled={assigning}
+                    className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-indigo-50 transition-colors disabled:opacity-50">
+                    <span className="flex-1 text-sm font-semibold text-gray-800">{t.title}</span>
+                    <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded whitespace-nowrap">{t.grade}</span>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">{t.problemCount}문제</span>
+                    <span className="text-xs font-semibold text-indigo-600 whitespace-nowrap">배정 +</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+      /* 학생 미선택 — 전체 교재 목록 */
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -161,6 +312,7 @@ function TextbooksPageInner() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* 교재 등록 모달 */}
       {showModal && (

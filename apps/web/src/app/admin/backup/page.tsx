@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-async function download(url: string) {
+async function download(url: string): Promise<{ savedPath: string | null }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('teacher_token') : null;
   const headers: HeadersInit = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -10,9 +10,13 @@ async function download(url: string) {
   const res = await fetch(url, { headers });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const msg = body?.error || `Request failed (${res.status})`;
+    // detail에 실제 원인(설치 안내, pg_dump stderr 등)이 담겨 있다
+    const msg = [body?.error, body?.detail].filter(Boolean).join('\n') || `Request failed (${res.status})`;
     throw new Error(msg);
   }
+
+  const rawPath = res.headers.get('X-Backup-Path');
+  const savedPath = rawPath ? decodeURIComponent(rawPath) : null;
 
   const blob = await res.blob();
   const urlObj = URL.createObjectURL(blob);
@@ -29,6 +33,8 @@ async function download(url: string) {
   a.click();
   a.remove();
   URL.revokeObjectURL(urlObj);
+
+  return { savedPath };
 }
 
 type StorageUsage = {
@@ -65,10 +71,13 @@ export default function BackupPage() {
     setLoading(true);
     setMessage(null);
     try {
-      await download(url);
-      setMessage('백업이 완료되어 파일을 다운로드했습니다.');
-    } catch (e: any) {
-      setMessage(`오류: ${e?.message ?? '알 수 없는 오류'}`);
+      const { savedPath } = await download(url);
+      setMessage(
+        '백업이 완료되어 파일을 다운로드했습니다.' +
+        (savedPath ? `\n로컬 보관본: ${savedPath}` : '')
+      );
+    } catch (e) {
+      setMessage(`오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
     } finally {
       setLoading(false);
     }
@@ -90,7 +99,17 @@ export default function BackupPage() {
           주요 데이터(JSON) 다운로드
         </button>
       </div>
-      {message && <p style={{ marginTop: 12 }}>{message}</p>}
+      {message && (
+        <pre style={{
+          marginTop: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, maxWidth: 900,
+          background: message.startsWith('오류') ? '#fef2f2' : '#f0fdf4',
+          border: `1px solid ${message.startsWith('오류') ? '#fecaca' : '#bbf7d0'}`,
+          borderRadius: 8, padding: '10px 12px',
+        }}>
+          {message}
+        </pre>
+      )}
 
       <h2 style={{ marginTop: 32, fontSize: 16 }}>정답 이미지 용량</h2>
       {!usage ? (

@@ -181,14 +181,14 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+            <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
               <th className="px-5 py-3 text-left font-medium">학습지명</th>
-              <th className="px-4 py-3 text-left font-medium">단계</th>
-              <th className="px-4 py-3 text-center font-medium">문제 수</th>
-              <th className="px-4 py-3 text-center font-medium">상태</th>
-              <th className="px-4 py-3 text-center font-medium">정답률</th>
-              <th className="px-4 py-3 text-left font-medium">배포일</th>
-              <th className="px-4 py-3 text-left font-medium">채점</th>
+              <th className="px-4 py-3 text-left font-medium w-28">단계</th>
+              <th className="px-4 py-3 text-center font-medium w-20">문제 수</th>
+              <th className="px-4 py-3 text-center font-medium w-24">상태</th>
+              <th className="px-4 py-3 text-center font-medium w-20">정답률</th>
+              <th className="px-4 py-3 text-left font-medium w-28">배포일</th>
+              <th className="px-4 py-3 text-left font-medium w-28">채점</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -207,13 +207,13 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                     <div className="text-xs text-gray-400 mt-0.5">{d.worksheet.grade} · {d.worksheet.unit}</div>
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[d.worksheet.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                    <span className={`inline-block whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[d.worksheet.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                       {d.worksheet.step}
                     </span>
                   </td>
                   <td className="px-4 py-3.5 text-center text-gray-700 font-medium">{d.worksheet.problemCount}</td>
                   <td className="px-4 py-3.5 text-center">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_BADGE[d.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`inline-block whitespace-nowrap text-xs px-2 py-0.5 rounded font-medium ${STATUS_BADGE[d.status] ?? 'bg-gray-100 text-gray-500'}`}>
                       {STATUS_LABEL[d.status] ?? d.status}
                     </span>
                   </td>
@@ -224,7 +224,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                       </span>
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5 text-gray-400 text-xs">
+                  <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                     {new Date(d.distributedAt).toLocaleDateString('ko-KR')}
                   </td>
                   <td className="px-4 py-3.5">
@@ -619,14 +619,16 @@ function AllWorksheetsView() {
                   {isOpen && (
                     <table className="w-full text-sm border-t border-gray-100">
                       <thead>
-                        <tr className="bg-gray-50 text-xs text-gray-400">
+                        {/* 배지·날짜 칸은 줄바꿈 없이 한 줄로 나오도록 너비를 고정하고,
+                            남는 폭은 학습지명이 가져간다 */}
+                        <tr className="bg-gray-50 text-xs text-gray-400 whitespace-nowrap">
                           <th className="px-5 py-2.5 text-left font-medium">학습지명</th>
-                          <th className="px-4 py-2.5 text-left font-medium">단원</th>
-                          <th className="px-4 py-2.5 text-left font-medium">단계</th>
-                          <th className="px-4 py-2.5 text-center font-medium">문제 수</th>
-                          <th className="px-4 py-2.5 text-center font-medium">정답</th>
-                          <th className="px-4 py-2.5 text-left font-medium">등록일</th>
-                          <th className="px-4 py-2.5 text-left font-medium">관리</th>
+                          <th className="px-4 py-2.5 text-left font-medium w-40">단원</th>
+                          <th className="px-4 py-2.5 text-left font-medium w-28">단계</th>
+                          <th className="px-4 py-2.5 text-center font-medium w-20">문제 수</th>
+                          <th className="px-4 py-2.5 text-center font-medium w-20">정답</th>
+                          <th className="px-4 py-2.5 text-left font-medium w-28">등록일</th>
+                          <th className="px-4 py-2.5 text-left font-medium w-36">관리</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -640,17 +642,17 @@ function AllWorksheetsView() {
                             </td>
                             <td className="px-4 py-3 text-gray-500 text-xs">{w.unit}</td>
                             <td className="px-4 py-3">
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                              <span className={`inline-block whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                 {stepLabel(w)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center text-gray-700 font-medium text-sm">{w.problemCount}</td>
                             <td className="px-4 py-3 text-center">
                               {hasAnswers(w)
-                                ? <span className="text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
-                                : <span className="text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
+                                ? <span className="inline-block whitespace-nowrap text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
+                                : <span className="inline-block whitespace-nowrap text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
                             </td>
-                            <td className="px-4 py-3 text-gray-400 text-xs">{new Date(w.createdAt).toLocaleDateString('ko-KR')}</td>
+                            <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{new Date(w.createdAt).toLocaleDateString('ko-KR')}</td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
                                 <button onClick={() => openAnswers(w)}
@@ -658,7 +660,7 @@ function AllWorksheetsView() {
                                   정답 설정
                                 </button>
                                 <button onClick={() => handleDelete(w)}
-                                  className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors">
+                                  className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors whitespace-nowrap">
                                   삭제
                                 </button>
                               </div>

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
+import { backupDir } from '@/lib/backupDir';
 
 const prisma = new PrismaClient();
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const backupsDir = path.resolve(process.cwd(), 'apps/web/backups');
+    const backupsDir = backupDir();
     fs.mkdirSync(backupsDir, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -63,17 +64,21 @@ export async function GET(req: NextRequest) {
     fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf8');
 
     const fileBuffer = fs.readFileSync(filepath);
-    const res = new NextResponse(fileBuffer, {
+    const res = new NextResponse(new Uint8Array(fileBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        // 다운로드와 별개로 이 경로에 원본이 남는다 (로컬 보관용)
+        'X-Backup-Path': encodeURIComponent(filepath),
+        'Access-Control-Expose-Headers': 'X-Backup-Path',
       },
     });
 
     return res;
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: '주요 데이터 백업에 실패했습니다.', detail }, { status: 500 });
   } finally {
     await prisma.$disconnect();
   }

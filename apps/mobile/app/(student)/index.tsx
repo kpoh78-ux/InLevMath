@@ -12,7 +12,7 @@ import { AbilityBar } from '../../components/AbilityBar'
 import { LevelBadge } from '../../components/LevelBadge'
 import { MissionCard } from '../../components/MissionCard'
 import { Colors } from '../../constants/colors'
-import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore } from '@inlevmath/shared'
+import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore, stepDisplayLabel } from '@inlevmath/shared'
 
 type DistributedWS = {
   distributionId: string
@@ -74,7 +74,7 @@ export default function StudentDashboard() {
   const currentMissionColor = Colors.mission[currentMission]
 
   const wsLabel = (ws: DistributedWS) =>
-    ws.step === '모의고사' && ws.examSubType ? ws.examSubType : ws.step
+    stepDisplayLabel(ws.step, ws.examSubType)
 
   return (
     <SafeAreaView style={styles.safe}>

@@ -73,7 +73,7 @@ export async function PATCH(
   if (str(body.grade)) data.grade = str(body.grade)
   if (body.unit !== undefined) data.unit = str(body.unit) || '종합'
   if (str(body.source)) data.source = str(body.source)
-  // examSubType은 모의고사가 아니면 비운다
+  // examSubType은 세부 유형이 있는 단계(모의고사·기출문제)에서만 값이 온다. 그 외에는 null
   if (body.examSubType !== undefined) data.examSubType = str(body.examSubType) || null
 
   // 문제 수를 바꾸면 저장된 정답 배열 길이도 맞춰야 한다

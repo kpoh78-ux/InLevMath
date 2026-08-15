@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
-import { MISSION_LABELS, MissionType } from '@inlevmath/shared'
+import { MISSION_LABELS, MissionType, stepDisplayLabel } from '@inlevmath/shared'
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
@@ -555,7 +555,7 @@ function NormalDashboard() {
     { label:'채점 완료',   value:distGraded,           unit:'건', sub:`전체의 ${distTotal>0?Math.round(distGraded/distTotal*100):0}%`, color:'text-emerald-600', bg:'border-emerald-100', dot:'bg-emerald-500', href:'/dashboard/worksheets/distribute' },
   ]
 
-  const stepLabel = (d:Distribution) => d.step==='모의고사'&&d.examSubType ? d.examSubType : d.step
+  const stepLabel = (d:Distribution) => stepDisplayLabel(d.step, d.examSubType)
   const correctRate = (d:Distribution) => d.correctProblems!=null ? Math.round(d.correctProblems/d.problemCount*100) : null
 
   return (

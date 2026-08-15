@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../../constants/colors'
-import { STEP_CLEAR_THRESHOLD } from '@inlevmath/shared'
+import { STEP_CLEAR_THRESHOLD, stepDisplayLabel } from '@inlevmath/shared'
 import { apiFetch } from '../../store/api'
 
 const STEP_COLOR_MAP: Record<string, string> = {
@@ -34,7 +34,7 @@ export default function WorksheetGradeScreen() {
   const title = params.title ?? '학습지'
   const threshold = (STEP_CLEAR_THRESHOLD as Record<string, number>)[step] ?? 70
   const stepColor = STEP_COLOR_MAP[step] ?? '#74B9FF'
-  const displayStep = step === '모의고사' && examSubType ? examSubType : step
+  const displayStep = stepDisplayLabel(step, examSubType)
 
   const [answers, setAnswers] = useState<(boolean | null)[]>(Array(total).fill(null))
   const [submitting, setSubmitting] = useState(false)

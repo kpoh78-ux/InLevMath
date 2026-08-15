@@ -120,11 +120,36 @@ export type UnitStep = '기초' | '기본' | '발전' | '최상위'
 export type ExamStep = '최다빈출' | '최다오답' | '서술형' | '모의고사' | '기출문제'
 // 모의고사 세부 유형
 export type MockExamType = '실전모의고사' | '기출모의고사' | '직전대비모의고사'
+// 기출문제 세부 유형 — 이름만 봐도 무엇인지 알도록 '기출'을 붙여 둔다
+export type PastExamType = '학교별기출' | '연도별기출' | '중간고사기출' | '기말고사기출'
 export type WorksheetStep = UnitStep | ExamStep
 
 export const UNIT_STEPS: UnitStep[] = ['기초', '기본', '발전', '최상위']
 export const EXAM_STEPS: ExamStep[] = ['최다빈출', '최다오답', '서술형', '모의고사', '기출문제']
 export const MOCK_EXAM_TYPES: MockExamType[] = ['실전모의고사', '기출모의고사', '직전대비모의고사']
+export const PAST_EXAM_TYPES: PastExamType[] = ['학교별기출', '연도별기출', '중간고사기출', '기말고사기출']
+
+/**
+ * 세부 유형을 고를 수 있는 스텝. 여기 없는 스텝은 examSubType 을 쓰지 않는다.
+ * 스텝이 늘어나면 이 표에만 추가하면 화면·검증이 함께 따라온다.
+ */
+export const STEP_SUB_TYPES: Partial<Record<WorksheetStep, readonly string[]>> = {
+  '모의고사': MOCK_EXAM_TYPES,
+  '기출문제': PAST_EXAM_TYPES,
+}
+
+/** 이 스텝이 세부 유형을 요구하는지 */
+export function stepNeedsSubType(step: string): boolean {
+  return (STEP_SUB_TYPES[step as WorksheetStep]?.length ?? 0) > 0
+}
+
+/**
+ * 화면에 보여줄 단계 이름.
+ * 세부 유형이 있으면 그쪽이 더 구체적이라 대신 보여준다. (예: '모의고사' → '실전모의고사')
+ */
+export function stepDisplayLabel(step: string, examSubType?: string | null): string {
+  return examSubType && stepNeedsSubType(step) ? examSubType : step
+}
 
 // 스텝별 클리어 기준 정답률 (%)
 export const STEP_CLEAR_THRESHOLD: Record<WorksheetStep, number> = {

@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { UNIT_STEPS, EXAM_STEPS, MOCK_EXAM_TYPES } from '@inlevmath/shared'
+import {
+  UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, stepNeedsSubType, stepDisplayLabel,
+  type WorksheetStep,
+} from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
 import { IMAGE_ANSWER_MARKER, isImageAnswer } from '@/lib/answers'
 import {
@@ -470,11 +473,12 @@ function AllWorksheetsView() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.grade) { alert('학년을 선택해주세요.'); return }
-    if (form.step === '모의고사' && !form.examSubType) { alert('모의고사 유형을 선택해주세요.'); return }
+    const needsSub = stepNeedsSubType(form.step)
+    if (needsSub && !form.examSubType) { alert(`${form.step} 유형을 선택해주세요.`); return }
 
     const payload = {
       title: form.title, category: form.category, step: form.step,
-      examSubType: form.step === '모의고사' ? form.examSubType : null,
+      examSubType: needsSub ? form.examSubType : null,
       grade: form.grade, unit: form.unit || '종합',
       problemCount: parseInt(form.problemCount), source: form.source,
     }
@@ -595,8 +599,7 @@ function AllWorksheetsView() {
     } finally { setSavingAnswers(false) }
   }
 
-  const stepLabel = (w: Worksheet) =>
-    w.step === '모의고사' && w.examSubType ? w.examSubType : w.step
+  const stepLabel = (w: Worksheet) => stepDisplayLabel(w.step, w.examSubType)
 
   return (
     <div className="space-y-4">
@@ -823,11 +826,12 @@ function AllWorksheetsView() {
                   ))}
                 </div>
               </div>
-              {form.step === '모의고사' && (
+              {/* 세부 유형이 있는 단계(모의고사·기출문제)만 유형 선택을 보여준다 */}
+              {STEP_SUB_TYPES[form.step as WorksheetStep] && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">모의고사 유형 *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">{form.step} 유형 *</label>
                   <div className="flex flex-wrap gap-2">
-                    {MOCK_EXAM_TYPES.map(t => (
+                    {STEP_SUB_TYPES[form.step as WorksheetStep]!.map(t => (
                       <button key={t} type="button"
                         onClick={() => setForm(f => ({ ...f, examSubType: t }))}
                         className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${form.examSubType === t ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-300 text-gray-600 hover:border-teal-400'}`}>

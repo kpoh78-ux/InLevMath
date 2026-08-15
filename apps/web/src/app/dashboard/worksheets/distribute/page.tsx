@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
+import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, stepDisplayLabel, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
 import { compareWorksheets } from '@/lib/worksheetSort'
 
@@ -130,7 +130,7 @@ export default function DistributePage() {
   const selectedWSData = selectedWS.map(id => worksheets.find(w => w.id === id)).filter((w): w is WS => !!w)
   const threshold = selectedWSData.length === 1 ? STEP_CLEAR_THRESHOLD[selectedWSData[0].step] : null
   const totalProblems = selectedWSData.reduce((n, w) => n + w.problemCount, 0)
-  const wsLabel = (w: WS) => w.step === '모의고사' && w.examSubType ? w.examSubType : w.step
+  const wsLabel = (w: WS) => stepDisplayLabel(w.step, w.examSubType)
 
   return (
     <div className="flex gap-0 -mt-2 -mx-6 -mb-6" style={{ minHeight: 'calc(100vh - 10rem)' }}>

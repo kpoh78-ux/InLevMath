@@ -12,9 +12,10 @@ function RootNavigator() {
     if (!user) {
       router.replace('/(auth)/login')
     } else if (user.role === 'student') {
-      router.replace('/(student)/')
+      // 그룹 경로는 끝에 / 를 붙이지 않는다. '/(student)' 가 그 그룹의 index 화면이다
+      router.replace('/(student)')
     } else {
-      router.replace('/(teacher)/')
+      router.replace('/(teacher)')
     }
   }, [user, isLoading])
 

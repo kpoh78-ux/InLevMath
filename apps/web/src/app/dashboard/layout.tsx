@@ -41,6 +41,24 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
    */
   const navHref = (href: string) =>
     selectedStudent ? `${href}?student=${selectedStudent}` : href
+
+  // 학생 id가 경로에 박히는 상세 화면들.
+  // 여기서는 ?student= 를 붙여도 경로의 학생이 그대로라 화면이 안 바뀐다.
+  const DETAIL_ROUTES = ['/dashboard/students/', '/dashboard/manage/students/']
+  const detailBase = DETAIL_ROUTES.find(
+    base => pathname.startsWith(base) && pathname.slice(base.length).split('/').length === 1
+  )
+  // 상세 화면에서 보고 있는 학생 (사이드바 선택 표시에 함께 쓴다)
+  const detailStudentId = detailBase ? pathname.slice(detailBase.length) : null
+  const activeStudentId = selectedStudent ?? detailStudentId
+
+  /** 사이드바에서 학생을 눌렀을 때 이동할 주소 */
+  const studentHref = (id: string) => {
+    // 상세 화면이면 경로의 학생 id 자체를 바꿔 바로 그 학생 화면으로 간다
+    if (detailBase) return detailBase + id
+    // 목록형 화면이면 같은 학생을 다시 누른 경우 선택 해제
+    return pathname + (selectedStudent === id ? '' : `?student=${id}`)
+  }
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
@@ -203,10 +221,10 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                         {students.map(s => (
                           <button
                             key={s.id}
-                            onClick={() => router.push(pathname + (selectedStudent === s.id ? '' : `?student=${s.id}`))}
+                            onClick={() => router.push(studentHref(s.id))}
                             className={`
                               w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors
-                              ${selectedStudent === s.id
+                              ${activeStudentId === s.id
                                 ? 'bg-indigo-50 border-r-2 border-indigo-500'
                                 : 'hover:bg-gray-50 border-r-2 border-transparent'}
                             `}

@@ -9,6 +9,8 @@ import {
   AnswerLightbox, AnswerThumb, SnapshotHint, SymbolPalette,
   AttachImageButton, RemoveImageButton, useSymbolPalette, useImageAttach,
 } from '@/components/AnswerInput'
+import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
+import type { WorksheetFile } from '@/lib/worksheetFiles'
 
 type WorksheetCategory = '단원별' | '내신대비'
 
@@ -432,6 +434,7 @@ function AllWorksheetsView() {
   const [showAddModal, setShowAddModal] = useState(false)
   // null이면 신규 등록, 값이 있으면 그 학습지 수정
   const [editingWs, setEditingWs] = useState<Worksheet | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
   const [form, setForm] = useState({
     title: '', grade: '', unit: '', problemCount: '',
     source: 'manual' as string,
@@ -618,6 +621,10 @@ function AllWorksheetsView() {
           <h1 className="text-xl font-bold text-gray-900">학습지 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">정답 설정 후 수업준비 → 학습지 배포에서 학생에게 배포하세요</p>
         </div>
+        <button onClick={() => setShowUpload(true)}
+          className="border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors mr-2 whitespace-nowrap">
+          학습지 업로드
+        </button>
         <button onClick={() => { setEditingWs(null); resetForm(); setSaveError(''); setShowAddModal(true) }}
           className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1.5">
           <span className="text-base leading-none">+</span> 학습지 등록
@@ -961,6 +968,19 @@ function AllWorksheetsView() {
             </div>
           </div>
         </div>
+      )}
+
+      {showUpload && (
+        <WorksheetUploadModal
+          onClose={() => setShowUpload(false)}
+          onPick={(f: WorksheetFile) => {
+            // 다음 단계(AI 정답 추출)는 아직 준비 중이다
+            alert(`선택한 파일: ${f.name}
+
+다음 단계(문제/정답 구분, AI 정답 추출)는 준비 중입니다.`)
+            setShowUpload(false)
+          }}
+        />
       )}
 
       <AnswerLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />

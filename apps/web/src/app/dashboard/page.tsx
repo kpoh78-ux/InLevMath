@@ -25,6 +25,7 @@ const STEP_COLOR: Record<string, string> = {
   '발전':'bg-amber-50 text-amber-600 border-amber-200','최상위':'bg-rose-50 text-rose-600 border-rose-200',
   '최다빈출':'bg-violet-50 text-violet-600 border-violet-200','최다오답':'bg-orange-50 text-orange-600 border-orange-200',
   '서술형':'bg-pink-50 text-pink-600 border-pink-200','모의고사':'bg-teal-50 text-teal-600 border-teal-200',
+  '기출문제':'bg-cyan-50 text-cyan-600 border-cyan-200',
 }
 const MISSION_COLOR: Record<string,string> = {
   concept_learning:'text-sky-600', concept_problem:'text-emerald-600',
@@ -337,7 +338,7 @@ function LineChart({ data }: { data: { label: string; correctRate: number | null
 const STEP_COLORS: Record<string, string> = {
   '기초': 'bg-sky-400', '기본': 'bg-emerald-400', '발전': 'bg-amber-400',
   '최상위': 'bg-rose-400', '최다빈출': 'bg-violet-400', '최다오답': 'bg-orange-400',
-  '서술형': 'bg-pink-400', '모의고사': 'bg-teal-400', '교재': 'bg-indigo-400',
+  '서술형': 'bg-pink-400', '모의고사': 'bg-teal-400', '기출문제': 'bg-cyan-400', '교재': 'bg-indigo-400',
 }
 
 // ── 학생 통계 뷰 ──────────────────────────────────────────────────────────────

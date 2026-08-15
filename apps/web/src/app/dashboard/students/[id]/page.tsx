@@ -25,6 +25,7 @@ const STEP_BADGE: Record<string, string> = {
   '최다오답': 'bg-orange-50 text-orange-700',
   '서술형':  'bg-pink-50 text-pink-700',
   '모의고사': 'bg-teal-50 text-teal-700',
+  '기출문제': 'bg-cyan-50 text-cyan-700',
 }
 
 type WsResult = {

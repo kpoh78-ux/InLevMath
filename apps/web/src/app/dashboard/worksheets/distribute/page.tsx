@@ -22,7 +22,11 @@ const STEP_STYLE: Record<string, { bg: string; text: string; dot: string }> = {
   '최다오답': { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
   '서술형':  { bg: 'bg-pink-50',   text: 'text-pink-700',   dot: 'bg-pink-400' },
   '모의고사': { bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-400' },
+  '기출문제': { bg: 'bg-cyan-50',   text: 'text-cyan-700',   dot: 'bg-cyan-400' },
 }
+
+/** 학습지 학년 필터 — 중등·고등 전 학년 */
+const WS_GRADES = ['중1', '중2', '중3', '고1', '고2', '고3']
 
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
@@ -193,7 +197,7 @@ export default function DistributePage() {
             </span>
           )}
           <div className="ml-auto flex gap-1.5">
-            {['', '중1', '중2', '중3', '고1'].map(g => (
+            {['', ...WS_GRADES].map(g => (
               <button key={g} onClick={() => setGradeFilter(g)}
                 className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${gradeFilter === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-500 hover:border-indigo-300'}`}>
                 {g || '전체'}

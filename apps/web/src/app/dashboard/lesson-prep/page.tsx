@@ -71,6 +71,7 @@ const STEP_BADGE: Record<string, string> = {
   '최다오답': 'bg-orange-50 text-orange-600 border-orange-200',
   '서술형': 'bg-pink-50 text-pink-600 border-pink-200',
   '모의고사': 'bg-teal-50 text-teal-600 border-teal-200',
+  '기출문제': 'bg-cyan-50 text-cyan-600 border-cyan-200',
 }
 
 // ── 3개월 꺽은선 그래프 ─────────────────────────────────────────

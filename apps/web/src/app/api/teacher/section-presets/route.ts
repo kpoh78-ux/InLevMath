@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { TEXTBOOK_SECTION_PRESETS, MAX_SECTION_PRESETS, MAX_SECTION_NAME_LENGTH } from '@/lib/answers'
+import { academyTeacher } from '@/lib/academy'
 
 async function getTeacher(req: NextRequest) {
   const auth = await getAuthUser(req)
   if (!auth || auth.role !== 'teacher') return null
-  return prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  return academyTeacher(auth.sub)
 }
 
 const parse = (json: string | null): string[] => {
@@ -19,11 +20,16 @@ const parse = (json: string | null): string[] => {
   }
 }
 
-// GET /api/teacher/section-presets — 문제유형 목록
+// GET /api/teacher/section-presets — 문제유형 목록 (학원 공용)
 export async function GET(req: NextRequest) {
   const teacher = await getTeacher(req)
   if (!teacher) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
-  return NextResponse.json({ presets: parse(teacher.sectionPresetsJson) })
+
+  const row = await prisma.teacher.findUnique({
+    where: { id: teacher.id },
+    select: { sectionPresetsJson: true },
+  })
+  return NextResponse.json({ presets: parse(row?.sectionPresetsJson ?? null) })
 }
 
 // PUT /api/teacher/section-presets — body: { presets: string[] }

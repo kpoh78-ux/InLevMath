@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { STEP_ABILITY_WEIGHT, WorksheetStep } from '@inlevmath/shared'
+import { academyTeacher } from '@/lib/academy'
 
 // POST /api/teacher/grade/[distributionId] — 선생님이 학생 학습지를 O/X 채점
 export async function POST(
@@ -16,7 +17,7 @@ export async function POST(
   const { distributionId } = await params
   const { wrongProblems } = await req.json() as { wrongProblems: number[] }
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const dist = await prisma.worksheetDistribution.findFirst({

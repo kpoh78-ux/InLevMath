@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
 import { APP_LIMITS } from '@inlevmath/shared'
 import * as XLSX from 'xlsx'
+import { academyTeacher } from '@/lib/academy'
 
 const INITIAL_PASSWORD = process.env.STUDENT_INITIAL_PASSWORD ?? 'math1234'
 
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
   }
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: user.sub } })
+  const teacher = await academyTeacher(user.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   // multipart form data에서 파일 추출

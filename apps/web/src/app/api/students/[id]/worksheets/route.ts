@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { academyTeacher } from '@/lib/academy'
 
 // GET /api/students/[id]/worksheets — 학생에게 배포된 학습지 목록 (선생님용)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   // 내 담당 학생인지 확인

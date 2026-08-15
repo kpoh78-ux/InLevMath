@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
+import { academyTeacher } from '@/lib/academy'
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
-  const teacher = await prisma.teacher.findFirst({ where: { userId: payload.sub } })
+  const teacher = await academyTeacher(payload.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보 없음' }, { status: 404 })
 
   // JS getDay(): 0=일,1=월,...6=토 → 내부 0=월,1=화,...6=일 변환

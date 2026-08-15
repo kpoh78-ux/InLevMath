@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { MAX_TEXTBOOK_PROBLEMS } from '@/lib/answers'
+import { academyTeacher } from '@/lib/academy'
 
 // GET /api/textbooks — 내 교재 목록
 export async function GET(req: NextRequest) {
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (!auth || auth.role !== 'teacher') {
     return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
   }
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const textbooks = await prisma.textbook.findMany({
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (!auth || auth.role !== 'teacher') {
     return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
   }
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const { title, grade, publisher, problemCount } = await req.json() as {

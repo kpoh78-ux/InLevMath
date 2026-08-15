@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
+import { academyTeacher } from '@/lib/academy'
 
 function safeParseNames(raw: string): string[] {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [] } catch { return [] }
@@ -14,7 +15,7 @@ async function getTeacher(req: NextRequest) {
   if (!auth) return null
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return null
-  return prisma.teacher.findFirst({ where: { userId: payload.sub } })
+  return academyTeacher(payload.sub)
 }
 
 // PUT /api/schedule/[id] — 수업 수정

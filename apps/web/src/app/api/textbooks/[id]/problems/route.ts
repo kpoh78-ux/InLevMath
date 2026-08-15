@@ -14,11 +14,12 @@ import {
   MAX_TEXTBOOK_PROBLEMS,
   MAX_BOOK_PAGE,
 } from '@/lib/answers'
+import { academyTeacher } from '@/lib/academy'
 
 async function getOwnedTextbook(req: NextRequest, id: string) {
   const auth = await getAuthUser(req)
   if (!auth || auth.role !== 'teacher') return { error: '인증이 필요합니다.', status: 401 as const }
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return { error: '선생님 정보를 찾을 수 없습니다.', status: 404 as const }
   const textbook = await prisma.textbook.findFirst({ where: { id, teacherId: teacher.id } })
   if (!textbook) return { error: '교재를 찾을 수 없습니다.', status: 404 as const }

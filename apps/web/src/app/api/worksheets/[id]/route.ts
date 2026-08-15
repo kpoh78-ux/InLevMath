@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { purgeAnswerImages } from '@/lib/answerImageStore'
+import { academyTeacher } from '@/lib/academy'
 
 async function getTeacherFromReq(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
   if (!auth) return null
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return null
-  const teacher = await prisma.teacher.findFirst({ where: { userId: payload.sub } })
+  const teacher = await academyTeacher(payload.sub)
   return teacher
 }
 

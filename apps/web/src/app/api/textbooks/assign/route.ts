@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { academyTeacher } from '@/lib/academy'
 
 async function getTeacher(req: NextRequest) {
   const auth = await getAuthUser(req)
   if (!auth || auth.role !== 'teacher') return null
-  return prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  return academyTeacher(auth.sub)
 }
 
 /** 교재 소유 확인 */

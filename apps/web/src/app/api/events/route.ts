@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { addClient, removeClient } from '@/lib/sse'
+import { academyTeacher } from '@/lib/academy'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   // teacherId 결정: 선생님이면 자신의 id, 학생이면 소속 선생님 id
   let teacherId: string
   if (user.role === 'teacher') {
-    const teacher = await prisma.teacher.findUnique({ where: { userId: user.sub } })
+    const teacher = await academyTeacher(user.sub)
     if (!teacher) return new Response('Not found', { status: 404 })
     teacherId = teacher.id
   } else {

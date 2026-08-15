@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { academyTeacher } from '@/lib/academy'
 
 // GET /api/textbooks/[id]/results/[studentId] — 학생 1명의 오답 번호 목록
 //
@@ -17,7 +18,7 @@ export async function GET(
   }
   const { id, studentId } = await params
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
+  const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const textbook = await prisma.textbook.findFirst({ where: { id, teacherId: teacher.id } })

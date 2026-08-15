@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth'
 import { APP_LIMITS } from '@inlevmath/shared'
+import { academyTeacher } from '@/lib/academy'
 
 const INITIAL_PASSWORD = process.env.STUDENT_INITIAL_PASSWORD ?? 'math1234'
 
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
   }
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: user.sub } })
+  const teacher = await academyTeacher(user.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   const students = await prisma.student.findMany({
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '핸드폰번호는 11자리 숫자로 입력하세요.' }, { status: 400 })
   }
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: user.sub } })
+  const teacher = await academyTeacher(user.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
   // 학생 수 한도 확인

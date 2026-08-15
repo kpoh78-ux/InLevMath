@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
+import { academyTeacher } from '@/lib/academy'
 
 // 선생님 인증 + 본인 Teacher 레코드 조회 — 실패 시 NextResponse 를 그대로 반환
 async function requireTeacher(req: NextRequest) {
@@ -10,7 +11,7 @@ async function requireTeacher(req: NextRequest) {
   if (!payload || payload.role !== 'teacher') {
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
   }
-  const teacher = await prisma.teacher.findFirst({ where: { userId: payload.sub } })
+  const teacher = await academyTeacher(payload.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보 없음' }, { status: 404 })
   return teacher
 }

@@ -10,13 +10,14 @@ import {
   MAX_ANSWER_IMAGE_BYTES,
   MAX_ANSWER_IMAGE_TOTAL_BYTES,
 } from '@/lib/answers'
+import { academyTeacher } from '@/lib/academy'
 
 async function getTeacher(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
   if (!auth) return null
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return null
-  return prisma.teacher.findFirst({ where: { userId: payload.sub } })
+  return academyTeacher(payload.sub)
 }
 
 // GET /api/worksheets/[id]/answers

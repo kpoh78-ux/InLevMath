@@ -34,6 +34,13 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const selectedStudent = searchParams.get('student')
+
+  /**
+   * 상단 메뉴를 눌러도 좌측에서 고른 학생이 유지되도록 ?student= 를 붙인다.
+   * 메뉴를 옮길 때마다 선택이 풀리면 같은 학생을 매번 다시 찾아야 한다.
+   */
+  const navHref = (href: string) =>
+    selectedStudent ? `${href}?student=${selectedStudent}` : href
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
@@ -104,7 +111,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               return (
                 <Link
                   key={n.href}
-                  href={n.href}
+                  href={navHref(n.href)}
                   className={`
                     relative flex items-center h-full border-b-2 transition-all duration-150
                     ${n.brand

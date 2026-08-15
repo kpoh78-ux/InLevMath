@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { Suspense } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 
 const SIDE_NAV = [
   {
@@ -27,8 +28,12 @@ const SIDE_NAV = [
   },
 ]
 
-export default function ManageLayout({ children }: { children: React.ReactNode }) {
+function ManageLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // 서브메뉴를 옮겨도 선택한 학생이 유지되게 한다
+  const student = searchParams.get('student')
+  const withStudent = (href: string) => student ? `${href}?student=${student}` : href
 
   return (
     <div className="flex gap-0 -mx-6 -my-6 min-h-full">
@@ -46,7 +51,7 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
                 <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">준비중</span>
               </div>
             ) : (
-              <Link key={item.href} href={item.href}
+              <Link key={item.href} href={withStudent(item.href)}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   active
                     ? 'bg-indigo-50 text-indigo-700'
@@ -65,5 +70,13 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
         {children}
       </main>
     </div>
+  )
+}
+
+export default function ManageLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-gray-400 text-sm">불러오는 중...</div>}>
+      <ManageLayoutInner>{children}</ManageLayoutInner>
+    </Suspense>
   )
 }

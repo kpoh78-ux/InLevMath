@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 
@@ -48,7 +49,12 @@ const EMPTY_FORM: FormState = {
   address: '', homePhone: '', birthDate: '', email: '',
 }
 
-export default function ManageStudentsPage() {
+function ManageStudentsPageInner() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // 상단/좌측에서 고른 학생 — 있으면 그 학생만 보여준다
+  const studentParam = searchParams.get('student')
   const [students, setStudents] = useState<Student[]>([])
   const [loadingStudents, setLoadingStudents] = useState(true)
   const [search, setSearch] = useState('')
@@ -113,11 +119,18 @@ export default function ManageStudentsPage() {
 
   useEffect(() => { fetchStudents() }, [fetchStudents])
 
-  const filtered = students.filter(s =>
-    s.status === statusFilter &&
-    (groupFilter === '' || s.gradeGroup === groupFilter) &&
-    (s.name.includes(search) || s.school.includes(search) || s.phone.includes(search))
-  )
+  const selected = studentParam ? students.find(s => s.id === studentParam) ?? null : null
+
+  const filtered = selected
+    // 학생이 지정되면 상태·학년 필터와 무관하게 그 학생만 보여준다
+    ? [selected]
+    : students.filter(s =>
+        s.status === statusFilter &&
+        (groupFilter === '' || s.gradeGroup === groupFilter) &&
+        (s.name.includes(search) || s.school.includes(search) || s.phone.includes(search))
+      )
+
+  const clearStudentFilter = () => router.replace(pathname, { scroll: false })
 
   /** 학생 이름 클릭 — 기존 값을 채워 같은 모달을 수정 모드로 연다 */
   const openEditStudent = (st: Student) => {
@@ -291,11 +304,26 @@ export default function ManageStudentsPage() {
 
   return (
     <div className="space-y-4">
+      {/* 선택된 학생만 보고 있을 때 안내 */}
+      {selected && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center gap-3">
+          <span className="text-sm text-indigo-800">
+            <strong>{selected.name}</strong> 학생만 보고 있습니다.
+          </span>
+          <button onClick={clearStudentFilter}
+            className="ml-auto text-xs font-semibold text-indigo-600 border border-indigo-200 hover:border-indigo-400 bg-white px-2.5 py-1 rounded transition-colors whitespace-nowrap">
+            전체 학생 보기
+          </button>
+        </div>
+      )}
+
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">학생 관리</h1>
-          <p className="text-sm text-gray-500 mt-0.5">재원 학생 {filtered.length}명</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {selected ? `${selected.name} · ${selected.grade}` : `재원 학생 ${filtered.length}명`}
+          </p>
         </div>
         <div className="flex gap-2">
           <button
@@ -871,5 +899,14 @@ export default function ManageStudentsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// useSearchParams는 Suspense 경계 안에서만 쓸 수 있다
+export default function ManageStudentsPage() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-gray-400 text-sm">불러오는 중...</div>}>
+      <ManageStudentsPageInner />
+    </Suspense>
   )
 }

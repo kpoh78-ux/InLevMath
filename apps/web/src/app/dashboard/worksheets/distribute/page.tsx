@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
+import { compareWorksheets } from '@/lib/worksheetSort'
 
 type WS = {
   id: string; title: string; grade: string; unit: string
@@ -30,7 +31,8 @@ export default function DistributePage() {
   const [activeStep, setActiveStep] = useState<WorksheetStep>('기초')
   const [worksheets, setWorksheets] = useState<WS[]>([])
   const [loadingList, setLoadingList] = useState(true)
-  const [selectedWS, setSelectedWS] = useState<string | null>(null)
+  // 학습지를 여러 개 골라 한 번에 배포할 수 있다
+  const [selectedWS, setSelectedWS] = useState<string[]>([])
   const [selectedStudents, setSelectedStudents] = useState<string[]>([])
   const [distributing, setDistributing] = useState(false)
   const [justDistributed, setJustDistributed] = useState<string | null>(null)
@@ -68,10 +70,21 @@ export default function DistributePage() {
 
   const steps = activeCategory === '단원별' ? UNIT_STEPS : EXAM_STEPS
 
-  const filteredWS = worksheets.filter(w =>
-    w.category === activeCategory && w.step === activeStep &&
-    (gradeFilter === '' || w.grade === gradeFilter)
-  )
+  // 서버는 최신 등록순으로 내려주므로 화면에서 단원 번호 오름차순으로 다시 정렬한다
+  const filteredWS = worksheets
+    .filter(w =>
+      w.category === activeCategory && w.step === activeStep &&
+      (gradeFilter === '' || w.grade === gradeFilter)
+    )
+    .sort(compareWorksheets)
+
+  const toggleWS = (id: string) =>
+    setSelectedWS(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id])
+
+  const selectAllWS = () =>
+    setSelectedWS(prev =>
+      prev.length === filteredWS.length ? [] : filteredWS.map(w => w.id)
+    )
 
   const toggleStudent = (id: string) =>
     setSelectedStudents(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
@@ -82,22 +95,27 @@ export default function DistributePage() {
     )
 
   const handleDistribute = async () => {
-    if (!selectedWS || selectedStudents.length === 0) return
-    const ws = worksheets.find(w => w.id === selectedWS)!
+    if (selectedWS.length === 0 || selectedStudents.length === 0) return
+    const titles = selectedWS
+      .map(id => worksheets.find(w => w.id === id)?.title)
+      .filter((t): t is string => !!t)
+
     setDistributing(true)
     try {
       const res = await apiFetch('/api/worksheets/distribute', {
         method: 'POST',
-        body: JSON.stringify({ worksheetId: selectedWS, studentIds: selectedStudents }),
+        body: JSON.stringify({ worksheetIds: selectedWS, studentIds: selectedStudents }),
       })
       if (!res.ok) {
         const data = await res.json()
         alert(data.error || '배포 실패')
         return
       }
-      setDistributedIds(prev => new Set([...prev, selectedWS]))
-      setJustDistributed(ws.title)
-      setSelectedWS(null)
+      setDistributedIds(prev => new Set([...prev, ...selectedWS]))
+      setJustDistributed(
+        titles.length === 1 ? titles[0] : `${titles[0]} 외 ${titles.length - 1}건`
+      )
+      setSelectedWS([])
       setSelectedStudents([])
       setTimeout(() => setJustDistributed(null), 3000)
     } finally {
@@ -105,8 +123,9 @@ export default function DistributePage() {
     }
   }
 
-  const selectedWSData = selectedWS ? worksheets.find(w => w.id === selectedWS) : null
-  const threshold = selectedWSData ? STEP_CLEAR_THRESHOLD[selectedWSData.step] : null
+  const selectedWSData = selectedWS.map(id => worksheets.find(w => w.id === id)).filter((w): w is WS => !!w)
+  const threshold = selectedWSData.length === 1 ? STEP_CLEAR_THRESHOLD[selectedWSData[0].step] : null
+  const totalProblems = selectedWSData.reduce((n, w) => n + w.problemCount, 0)
   const wsLabel = (w: WS) => w.step === '모의고사' && w.examSubType ? w.examSubType : w.step
 
   return (
@@ -119,7 +138,7 @@ export default function DistributePage() {
             <button key={cat} onClick={() => {
               setActiveCategory(cat)
               setActiveStep(cat === '단원별' ? '기초' : '최다빈출')
-              setSelectedWS(null)
+              setSelectedWS([])
             }}
               className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${activeCategory === cat ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
               {cat}
@@ -134,7 +153,7 @@ export default function DistributePage() {
             const style = STEP_STYLE[step] ?? STEP_STYLE['기초']
             const count = worksheets.filter(w => w.category === activeCategory && w.step === step).length
             return (
-              <button key={step} onClick={() => { setActiveStep(step); setSelectedWS(null) }}
+              <button key={step} onClick={() => { setActiveStep(step); setSelectedWS([]) }}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${activeStep === step ? `${style.bg} ${style.text} font-semibold` : 'text-gray-600 hover:bg-gray-50'}`}>
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${activeStep === step ? `${style.dot} text-white` : 'bg-gray-200 text-gray-500'}`}>{idx + 1}</span>
                 <span className="flex-1 text-left">{step}</span>
@@ -162,6 +181,17 @@ export default function DistributePage() {
             {activeCategory} · {activeStep}
           </div>
           {threshold && <span className="text-xs text-gray-400">클리어 기준: {threshold}%</span>}
+          {filteredWS.length > 0 && (
+            <button onClick={selectAllWS}
+              className="text-[11px] font-medium text-indigo-500 hover:text-indigo-700 whitespace-nowrap">
+              {selectedWS.length === filteredWS.length ? '전체 해제' : '전체 선택'}
+            </button>
+          )}
+          {selectedWS.length > 0 && (
+            <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+              {selectedWS.length}개 선택
+            </span>
+          )}
           <div className="ml-auto flex gap-1.5">
             {['', '중1', '중2', '중3', '고1'].map(g => (
               <button key={g} onClick={() => setGradeFilter(g)}
@@ -181,15 +211,20 @@ export default function DistributePage() {
               <p className="text-xs mt-1">학습지 메뉴에서 먼저 등록해주세요.</p>
             </div>
           ) : filteredWS.map(ws => {
-            const isSelected = selectedWS === ws.id
+            const isSelected = selectedWS.includes(ws.id)
             const alreadyDist = distributedIds.has(ws.id)
             const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
             return (
-              <button key={ws.id} onClick={() => setSelectedWS(isSelected ? null : ws.id)}
+              <button key={ws.id} onClick={() => toggleWS(ws.id)}
                 className={`w-full text-left bg-white rounded-xl border-2 px-4 py-3.5 transition-all ${isSelected ? 'border-indigo-500 shadow-md shadow-indigo-100' : 'border-gray-200 hover:border-indigo-200'}`}>
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
-                    {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
+                  <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                    {isSelected && (
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -229,18 +264,29 @@ export default function DistributePage() {
         </div>
 
         {/* 선택한 학습지 요약 + 배포 버튼 — 학생 목록을 스크롤해도 항상 보이도록 상단 고정 */}
-        {selectedWSData && (
+        {selectedWSData.length > 0 && (
           <div className="mx-3 mb-2 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs">
-            <p className="font-semibold text-gray-700 truncate">{selectedWSData.title}</p>
-            <p className="text-gray-400 mt-0.5">{selectedWSData.problemCount}문제 · 클리어 {threshold}%</p>
+            {/* 여러 장을 골랐을 때도 무엇을 보내는지 한눈에 보이도록 목록으로 둔다 */}
+            <div className="max-h-24 overflow-y-auto space-y-0.5">
+              {selectedWSData.map(w => (
+                <p key={w.id} className="font-semibold text-gray-700 truncate">{w.title}</p>
+              ))}
+            </div>
+            <p className="text-gray-400 mt-1 pt-1 border-t border-gray-200">
+              학습지 {selectedWSData.length}장 · 총 {totalProblems}문제
+              {threshold !== null && ` · 클리어 ${threshold}%`}
+            </p>
           </div>
         )}
 
         <div className="px-3 pb-3 border-b border-gray-100">
           <button onClick={handleDistribute}
-            disabled={!selectedWS || selectedStudents.length === 0 || distributing}
+            disabled={selectedWS.length === 0 || selectedStudents.length === 0 || distributing}
             className="w-full bg-indigo-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            {distributing ? '배포 중...' : selectedStudents.length > 0 ? `${selectedStudents.length}명에게 배포` : '학생을 선택하세요'}
+            {distributing ? '배포 중...'
+              : selectedWS.length === 0 ? '학습지를 선택하세요'
+              : selectedStudents.length === 0 ? '학생을 선택하세요'
+              : `학습지 ${selectedWS.length}장 → ${selectedStudents.length}명 배포`}
           </button>
         </div>
 

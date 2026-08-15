@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { compareWorksheets } from '@/lib/worksheetSort'
 
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
@@ -404,10 +405,13 @@ function WorksheetPicker({
   const [search, setSearch] = useState('')
   const [gradeFilter, setGradeFilter] = useState('')
 
-  const filtered = worksheets.filter(w =>
-    (gradeFilter === '' || w.grade === gradeFilter) &&
-    (w.title.includes(search) || w.unit.includes(search))
-  )
+  // 서버는 최신 등록순으로 내려주므로 단원 번호 오름차순으로 다시 정렬한다
+  const filtered = worksheets
+    .filter(w =>
+      (gradeFilter === '' || w.grade === gradeFilter) &&
+      (w.title.includes(search) || w.unit.includes(search))
+    )
+    .sort(compareWorksheets)
   const grades = [...new Set(worksheets.map(w => w.grade))].sort(
     (a, b) => GRADE_ORDER.indexOf(a) - GRADE_ORDER.indexOf(b)
   )

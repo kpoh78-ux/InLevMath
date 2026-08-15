@@ -21,26 +21,43 @@ export async function POST(req: NextRequest) {
   const teacher = await requireTeacher(req)
   if (teacher instanceof NextResponse) return teacher
 
-  const { worksheetId, studentIds } = await req.json()
-  if (!worksheetId || !Array.isArray(studentIds) || studentIds.length === 0) {
+  // worksheetIds(여러 개) 우선, 없으면 worksheetId(한 개) — 기존 호출부 호환
+  const { worksheetId, worksheetIds, studentIds } = await req.json()
+  const ids: string[] = Array.isArray(worksheetIds)
+    ? [...new Set(worksheetIds.filter((v: unknown): v is string => typeof v === 'string' && v !== ''))]
+    : worksheetId ? [worksheetId] : []
+
+  if (ids.length === 0 || !Array.isArray(studentIds) || studentIds.length === 0) {
     return NextResponse.json({ error: '학습지와 학생을 선택하세요.' }, { status: 400 })
   }
 
-  const worksheet = await prisma.worksheet.findFirst({ where: { id: worksheetId, teacherId: teacher.id } })
-  if (!worksheet) return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
+  // 남의 학원 학습지가 섞이면 그 건만 조용히 빠지는 게 아니라 요청 전체를 막는다
+  const owned = await prisma.worksheet.findMany({
+    where: { id: { in: ids }, teacherId: teacher.id },
+    select: { id: true },
+  })
+  if (owned.length !== ids.length) {
+    return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
+  }
 
   // 이미 배포된 학생은 upsert(기존 유지) — 숨김 처리된 건은 재배포 시 다시 노출
   const results = await Promise.all(
-    studentIds.map((studentId: string) =>
-      prisma.worksheetDistribution.upsert({
-        where: { worksheetId_studentId: { worksheetId, studentId } },
-        update: { hiddenAt: null }, // 배포 이력은 유지, 숨김만 해제
-        create: { worksheetId, studentId, status: 'distributed' },
-      })
+    ids.flatMap(wsId =>
+      studentIds.map((studentId: string) =>
+        prisma.worksheetDistribution.upsert({
+          where: { worksheetId_studentId: { worksheetId: wsId, studentId } },
+          update: { hiddenAt: null }, // 배포 이력은 유지, 숨김만 해제
+          create: { worksheetId: wsId, studentId, status: 'distributed' },
+        })
+      )
     )
   )
 
-  return NextResponse.json({ distributed: results.length })
+  return NextResponse.json({
+    distributed: results.length,
+    worksheetCount: ids.length,
+    studentCount: studentIds.length,
+  })
 }
 
 // GET /api/worksheets/distribute?worksheetId=xxx — 배포 현황

@@ -71,6 +71,44 @@ const hasAnswers = (w: Worksheet) => {
 }
 
 
+/**
+ * 학습지 정렬 키 — 제목 앞의 단원 번호와 끝의 회차를 숫자로 읽는다.
+ * 예) "4-2-1.정비례와 반비례(17)" → units [4,2,1], seq 17
+ * 문자열 비교로는 "1-10"이 "1-2"보다 앞서므로 반드시 숫자로 비교해야 한다.
+ */
+function worksheetOrderKey(title: string) {
+  const t = (title ?? '').trim()
+  // 앞쪽 단원 번호: 1 / 1-2 / 1-2-3 (뒤에 . 이나 공백, 한글이 와도 됨)
+  const head = /^(\d+(?:\s*-\s*\d+)*)/.exec(t)
+  const units = head ? head[1].split('-').map(n => parseInt(n.trim(), 10)) : []
+  // 끝의 회차: (17) / (1회) / (3 회)
+  const tail = /\((\d+)\s*회?\s*\)\s*$/.exec(t)
+  const seq = tail ? parseInt(tail[1], 10) : Number.MAX_SAFE_INTEGER
+  return { units, seq }
+}
+
+/** 단원 번호 → 회차 → 제목 순으로 오름차순 */
+function compareWorksheets(a: Worksheet, b: Worksheet) {
+  const ka = worksheetOrderKey(a.title)
+  const kb = worksheetOrderKey(b.title)
+
+  // 번호가 없는 제목은 뒤로 보낸다
+  if (ka.units.length === 0 !== (kb.units.length === 0)) {
+    return ka.units.length === 0 ? 1 : -1
+  }
+
+  const depth = Math.max(ka.units.length, kb.units.length)
+  for (let i = 0; i < depth; i++) {
+    // 짧은 쪽이 먼저 (1-1 이 1-1-1 보다 앞)
+    const x = ka.units[i] ?? -1
+    const y = kb.units[i] ?? -1
+    if (x !== y) return x - y
+  }
+
+  if (ka.seq !== kb.seq) return ka.seq - kb.seq
+  return a.title.localeCompare(b.title, 'ko')
+}
+
 // ── 학생 모드: 학생 배포 학습지 목록 + 채점 ─────────────────────────────────
 
 function StudentWorksheetView({ studentId }: { studentId: string }) {
@@ -622,7 +660,7 @@ function AllWorksheetsView() {
           groups[w.grade].push(w)
         })
         Object.keys(groups).forEach(g => {
-          groups[g].sort((a, b) => a.unit.localeCompare(b.unit, 'ko') || a.title.localeCompare(b.title, 'ko'))
+          groups[g].sort(compareWorksheets)
         })
         const sortedGrades = WS_GRADE_ORDER.filter(g => groups[g])
 

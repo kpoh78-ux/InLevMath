@@ -10,6 +10,7 @@ import {
   AttachImageButton, RemoveImageButton, useSymbolPalette, useImageAttach,
 } from '@/components/AnswerInput'
 import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
+import { WorksheetAiAnswersModal } from '@/components/WorksheetAiAnswersModal'
 import type { WorksheetFile } from '@/lib/worksheetFiles'
 
 type WorksheetCategory = '단원별' | '내신대비'
@@ -435,6 +436,9 @@ function AllWorksheetsView() {
   // null이면 신규 등록, 값이 있으면 그 학습지 수정
   const [editingWs, setEditingWs] = useState<Worksheet | null>(null)
   const [showUpload, setShowUpload] = useState(false)
+  // AI 정답 추출 대상 파일. 검수를 마치면 정답이 pendingAnswers로 넘어온다
+  const [aiFile, setAiFile] = useState<WorksheetFile | null>(null)
+  const [pendingAnswers, setPendingAnswers] = useState<string[] | null>(null)
   const [form, setForm] = useState({
     title: '', grade: '', unit: '', problemCount: '',
     source: 'manual' as string,
@@ -482,6 +486,7 @@ function AllWorksheetsView() {
     setShowAddModal(false)
     setEditingWs(null)
     setSaveError('')
+    setPendingAnswers(null)
     resetForm()
   }
 
@@ -525,9 +530,23 @@ function AllWorksheetsView() {
         editingWs ? `/api/worksheets/${editingWs.id}` : '/api/worksheets',
         { method: editingWs ? 'PATCH' : 'POST', body: JSON.stringify(payload) }
       )
-      let data: { error?: string } = {}
+      let data: { id?: string; error?: string } = {}
       try { data = await res.json() } catch { /* empty */ }
       if (!res.ok) { setSaveError(data.error || (editingWs ? '수정 실패' : '등록 실패')); return }
+
+      // AI로 읽은 정답이 있으면 이어서 저장한다 (문제 수에 맞춰 자르거나 채움)
+      if (pendingAnswers && data.id) {
+        const fitted = Array.from({ length: payload.problemCount }, (_, i) => pendingAnswers[i] ?? '')
+        const ansRes = await apiFetch(`/api/worksheets/${data.id}/answers`, {
+          method: 'PUT',
+          body: JSON.stringify({ answers: fitted }),
+        })
+        if (!ansRes.ok) {
+          const d = await ansRes.json().catch(() => ({})) as { error?: string }
+          alert(`학습지는 등록됐지만 정답 저장에 실패했습니다.\n${d.error || ''}\n정답 설정에서 다시 입력해주세요.`)
+        }
+      }
+
       await fetchWorksheets()
       closeWsModal()
     } finally { setSaving(false) }
@@ -770,6 +789,12 @@ function AllWorksheetsView() {
               <h2 className="text-lg font-bold text-gray-900">{editingWs ? '학습지 수정' : '학습지 등록'}</h2>
               <button onClick={closeWsModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
+            {pendingAnswers && (
+              <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs text-emerald-800 leading-relaxed">
+                AI로 읽은 정답 <strong>{pendingAnswers.length}문항</strong>이 등록과 함께 저장됩니다.<br />
+                학년·단원·단계를 고르고 등록해주세요.
+              </div>
+            )}
             <form onSubmit={handleAdd} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-2">출처 *</label>
@@ -973,12 +998,26 @@ function AllWorksheetsView() {
       {showUpload && (
         <WorksheetUploadModal
           onClose={() => setShowUpload(false)}
-          onPick={(f: WorksheetFile) => {
-            // 다음 단계(AI 정답 추출)는 아직 준비 중이다
-            alert(`선택한 파일: ${f.name}
+          onPick={(f: WorksheetFile) => { setShowUpload(false); setAiFile(f) }}
+        />
+      )}
 
-다음 단계(문제/정답 구분, AI 정답 추출)는 준비 중입니다.`)
-            setShowUpload(false)
+      {aiFile && (
+        <WorksheetAiAnswersModal
+          file={aiFile}
+          onClose={() => setAiFile(null)}
+          onConfirm={({ title, answers }) => {
+            // 검수를 마친 정답을 들고 학습지 등록 폼으로 넘어간다.
+            // 학년·단원·단계는 파일만으로 알 수 없어 선생님이 직접 고른다.
+            setAiFile(null)
+            setPendingAnswers(answers)
+            setEditingWs(null)
+            setSaveError('')
+            setForm({
+              title, grade: '', unit: '', problemCount: String(answers.length),
+              source: 'manual', category: '단원별', step: '기초', examSubType: '',
+            })
+            setShowAddModal(true)
           }}
         />
       )}

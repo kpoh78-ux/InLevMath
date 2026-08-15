@@ -389,39 +389,39 @@ function ManageStudentsPageInner() {
         <table className="w-full text-sm whitespace-nowrap">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-400 font-medium">
-              <th className="px-4 py-3 text-left w-14">학년</th>
-              <th className="px-4 py-3 text-left w-16">상태</th>
-              <th className="px-4 py-3 text-left">학생 이름</th>
-              <th className="px-4 py-3 text-left">학교</th>
-              <th className="px-4 py-3 text-left">핸드폰 (로그인 ID)</th>
-              <th className="px-4 py-3 text-left">보호자</th>
-              <th className="px-4 py-3 text-left">보호자 연락처</th>
-              <th className="px-4 py-3 text-left">수업시작일</th>
-              <th className="px-4 py-3 text-center">비밀번호</th>
-              <th className="px-4 py-3 text-center">학습내역</th>
-              <th className="px-4 py-3 w-8" />
+              <th className="px-3 py-3 text-left w-14">학년</th>
+              <th className="px-3 py-3 text-left w-16">상태</th>
+              <th className="px-3 py-3 text-left">이름</th>
+              <th className="px-3 py-3 text-left">학교</th>
+              <th className="px-3 py-3 text-left">핸드폰 (ID)</th>
+              <th className="px-3 py-3 text-left">보호자</th>
+              <th className="px-3 py-3 text-left">보호자 연락처</th>
+              <th className="px-3 py-3 text-left">시작일</th>
+              <th className="px-3 py-3 text-center">관리</th>
+              <th className="px-3 py-3 text-center">내역</th>
+              {isAdmin && <th className="px-2 py-3 w-8" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loadingStudents ? (
               <tr>
-                <td colSpan={11} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td>
+                <td colSpan={isAdmin ? 11 : 10} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-5 py-12 text-center text-gray-400">등록된 학생이 없습니다.</td>
+                <td colSpan={isAdmin ? 11 : 10} className="px-5 py-12 text-center text-gray-400">등록된 학생이 없습니다.</td>
               </tr>
             ) : filtered.map(s => (
               <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s.grade}</span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                     s.status === '재원' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'
                   }`}>{s.status}</span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <button
                     onClick={() => openEditStudent(s)}
                     title="클릭하면 학생 정보를 수정할 수 있습니다"
@@ -429,16 +429,16 @@ function ManageStudentsPageInner() {
                     {s.name}
                   </button>
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{s.school || '-'}</td>
-                <td className="px-4 py-3 font-mono text-gray-600 text-xs">
+                <td className="px-3 py-3 text-gray-500 text-xs">{s.school || '-'}</td>
+                <td className="px-3 py-3 font-mono text-gray-600 text-xs">
                   {s.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3')}
                 </td>
-                <td className="px-4 py-3 text-gray-600 text-xs">{s.parentName || '-'}</td>
-                <td className="px-4 py-3 font-mono text-gray-500 text-xs">
+                <td className="px-3 py-3 text-gray-600 text-xs">{s.parentName || '-'}</td>
+                <td className="px-3 py-3 font-mono text-gray-500 text-xs">
                   {s.parentPhone ? s.parentPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') : '-'}
                 </td>
-                <td className="px-4 py-3 text-gray-400 text-xs">{s.startDate || '-'}</td>
-                <td className="px-4 py-3 text-center">
+                <td className="px-3 py-3 text-gray-400 text-xs">{s.startDate || '-'}</td>
+                <td className="px-3 py-3 text-center">
                   <div className="flex items-center justify-center gap-1">
                     {isAdmin && (s.status === '재원' ? (
                       <button onClick={() => setWithdrawTarget(s)}
@@ -457,20 +457,20 @@ function ManageStudentsPageInner() {
                     </button>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="px-3 py-3 text-center">
                   <Link href={`/dashboard/students/${s.id}`}
                     className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors">
                     보기
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-center">
+                {isAdmin && <td className="px-2 py-3 text-center">
                   <button onClick={() => setDeleteTarget(s)} className="text-gray-300 hover:text-red-400 transition-colors" title="삭제">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>

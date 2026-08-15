@@ -71,7 +71,8 @@ function ManageLayoutInner({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* 콘텐츠 영역 */}
-      <main className="flex-1 px-8 py-6 bg-gray-50 overflow-auto">
+      {/* min-w-0 이 없으면 표가 flex 항목을 밀어내 가로 스크롤이 먹지 않는다 */}
+      <main className="flex-1 min-w-0 px-8 py-6 bg-gray-50 overflow-auto">
         {children}
       </main>
     </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { supabaseAdmin, phoneToEmail } from '@/lib/supabase'
 import { prisma } from '@/lib/db'
+import { getTeacherAuth } from '@/lib/teacherAuth'
 
 // PATCH /api/students/[id]
 //   { status } 만 보내면 재원/퇴원 처리
@@ -16,8 +17,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json() as Record<string, unknown>
   const status = body.status as 'active' | 'withdrawn' | undefined
 
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
-  if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
+  const me = await getTeacherAuth(req)
+  if (!me) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
+
+  // 퇴원 / 재원 복귀는 관리자 전용
+  if (status && !me.isAdmin) {
+    return NextResponse.json(
+      { error: '학생 퇴원 처리는 관리자만 할 수 있습니다.' }, { status: 403 }
+    )
+  }
+
+  const teacher = { id: me.teacherId }
 
   const student = await prisma.student.findFirst({
     where: { id, teacherId: teacher.id },
@@ -108,9 +118,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params
 
-  // 본인 담당 학생인지 확인
-  const teacher = await prisma.teacher.findUnique({ where: { userId: auth.sub } })
-  if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
+  // 본인 담당 학생인지 확인 — 완전 삭제는 관리자 전용
+  const me = await getTeacherAuth(req)
+  if (!me) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
+  if (!me.isAdmin) {
+    return NextResponse.json(
+      { error: '학생 삭제는 관리자만 할 수 있습니다.' }, { status: 403 }
+    )
+  }
+  const teacher = { id: me.teacherId }
 
   const student = await prisma.student.findFirst({
     where: { id, teacherId: teacher.id },

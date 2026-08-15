@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { useMe } from '@/lib/useMe'
 
 type Student = {
   id: string
@@ -55,6 +56,8 @@ function ManageStudentsPageInner() {
   const searchParams = useSearchParams()
   // 상단/좌측에서 고른 학생 — 있으면 그 학생만 보여준다
   const studentParam = searchParams.get('student')
+  // 퇴원/복귀는 관리자 전용이라 버튼 노출도 여기에 맞춘다
+  const { isAdmin } = useMe()
   const [students, setStudents] = useState<Student[]>([])
   const [loadingStudents, setLoadingStudents] = useState(true)
   const [search, setSearch] = useState('')
@@ -437,7 +440,7 @@ function ManageStudentsPageInner() {
                 <td className="px-4 py-3 text-gray-400 text-xs">{s.startDate || '-'}</td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-1">
-                    {s.status === '재원' ? (
+                    {isAdmin && (s.status === '재원' ? (
                       <button onClick={() => setWithdrawTarget(s)}
                         className="text-xs text-rose-500 hover:text-rose-600 border border-rose-200 hover:border-rose-400 px-2 py-1 rounded transition-colors">
                         퇴원
@@ -447,7 +450,7 @@ function ManageStudentsPageInner() {
                         className="text-xs text-indigo-500 hover:text-indigo-600 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors">
                         복귀
                       </button>
-                    )}
+                    ))}
                     <button onClick={() => setResetTarget(s)}
                       className="text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-400 px-2 py-1 rounded transition-colors">
                       비번초기화

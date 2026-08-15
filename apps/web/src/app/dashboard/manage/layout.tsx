@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { useMe } from '@/lib/useMe'
 
 const SIDE_NAV = [
   {
@@ -24,7 +25,7 @@ const SIDE_NAV = [
           d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
       </svg>
     ),
-    disabled: true,
+    adminOnly: true,
   },
 ]
 
@@ -34,6 +35,8 @@ function ManageLayoutInner({ children }: { children: React.ReactNode }) {
   // 서브메뉴를 옮겨도 선택한 학생이 유지되게 한다
   const student = searchParams.get('student')
   const withStudent = (href: string) => student ? `${href}?student=${student}` : href
+  // 선생님 관리는 관리자에게만 열어 준다
+  const { isAdmin } = useMe()
 
   return (
     <div className="flex gap-0 -mx-6 -my-6 min-h-full">
@@ -42,13 +45,15 @@ function ManageLayoutInner({ children }: { children: React.ReactNode }) {
         <p className="px-5 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">관리</p>
         <nav className="space-y-0.5 px-2">
           {SIDE_NAV.map(item => {
-            const active = !item.disabled && pathname.startsWith(item.href)
-            return item.disabled ? (
+            const locked = item.adminOnly === true && !isAdmin
+            const active = !locked && pathname.startsWith(item.href)
+            return locked ? (
               <div key={item.href}
+                title="관리자만 사용할 수 있습니다"
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-300 cursor-not-allowed select-none">
                 {item.icon}
                 <span>{item.label}</span>
-                <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">준비중</span>
+                <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">관리자</span>
               </div>
             ) : (
               <Link key={item.href} href={withStudent(item.href)}

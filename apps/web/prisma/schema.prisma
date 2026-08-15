@@ -27,6 +27,9 @@ model Teacher {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // 관리자 권한 — 선생님 계정 등록·삭제와 학생 퇴원 처리는 관리자만 할 수 있다
+  isAdmin Boolean @default(false)
+
   // 문제집 문제유형(구역) 목록 — 선생님이 직접 추가·삭제한다.
   // null이면 TEXTBOOK_SECTION_PRESETS 기본값을 쓴다. JSON: ["A단계","필수유형",...]
   sectionPresetsJson String?

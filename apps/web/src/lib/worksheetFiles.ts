@@ -153,3 +153,32 @@ export async function readFile(f: WorksheetFile): Promise<File> {
 
 export const formatSize = (n: number) =>
   n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`
+// ── 인쇄 ────────────────────────────────────────────────────────────────────
+//
+// 브라우저는 프린터 목록을 읽거나 특정 프린터를 지정할 수 없다(그런 JS API가 없다).
+// 프린터 선택·매수·페이지 범위·양면 설정은 모두 브라우저 인쇄 대화상자에서 한다.
+// 앱은 파일을 열고 그 대화상자를 띄워주는 역할만 한다.
+
+/**
+ * 학습지를 새 탭에서 열고 인쇄 대화상자를 띄운다.
+ * @param pageFrom PDF 뷰어를 해당 쪽부터 열어 준다 (인쇄 범위는 대화상자에서 지정)
+ */
+export async function printWorksheetFile(f: WorksheetFile, pageFrom?: number) {
+  const file = await readFile(f)
+  const url = URL.createObjectURL(file)
+  const href = pageFrom && pageFrom > 0 ? `${url}#page=${pageFrom}` : url
+
+  const win = window.open(href, '_blank')
+  if (!win) {
+    URL.revokeObjectURL(url)
+    throw new Error('팝업이 차단되었습니다. 주소창 오른쪽의 팝업 차단을 해제해주세요.')
+  }
+
+  // 뷰어가 뜬 뒤 인쇄 대화상자를 연다. 자동 호출이 막히면 사용자가 Ctrl+P로 열면 된다.
+  win.addEventListener('load', () => {
+    try { win.print() } catch { /* 뷰어가 막으면 Ctrl+P 안내로 대체 */ }
+  })
+
+  // 탭이 파일을 다 읽을 때까지 유지했다가 정리한다
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}

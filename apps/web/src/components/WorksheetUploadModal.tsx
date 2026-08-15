@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   supportsFolderAccess, pickWorksheetFolder, getSavedFolder, requestSavedFolder,
-  forgetWorksheetFolder, listWorksheetFiles, formatSize,
+  forgetWorksheetFolder, listWorksheetFiles, formatSize, printWorksheetFile,
   type WorksheetFile,
 } from '@/lib/worksheetFiles'
 
@@ -25,6 +25,17 @@ export function WorksheetUploadModal({
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [needsPermission, setNeedsPermission] = useState(false)
+  // 인쇄 시작 쪽 (비우면 1쪽부터). 실제 인쇄 범위·프린터는 브라우저 대화상자에서 고른다
+  const [printFrom, setPrintFrom] = useState('')
+
+  const print = async (f: WorksheetFile) => {
+    setError('')
+    try {
+      await printWorksheetFile(f, parseInt(printFrom) || undefined)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '인쇄를 시작하지 못했습니다.')
+    }
+  }
 
   const supported = supportsFolderAccess()
 
@@ -136,11 +147,24 @@ export function WorksheetUploadModal({
             {/* 파일 검색 */}
             {folder && (
               <div className="px-6 pt-3">
-                <input
-                  type="text" value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="파일명 검색"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text" value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="파일명 검색"
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <input
+                    type="number" min={1} value={printFrom}
+                    onChange={e => setPrintFrom(e.target.value)}
+                    placeholder="시작 쪽"
+                    title="PDF를 이 쪽부터 열어 줍니다 (인쇄 범위는 인쇄 대화상자에서 지정)"
+                    className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  인쇄를 누르면 새 탭에서 파일이 열리고 인쇄 대화상자가 뜹니다.
+                  거기서 <strong className="text-gray-500">프린터·매수·페이지 범위</strong>를 고르세요.
+                </p>
               </div>
             )}
 
@@ -163,15 +187,22 @@ export function WorksheetUploadModal({
               ) : (
                 <div className="border border-gray-200 rounded-xl divide-y divide-gray-50 overflow-hidden">
                   {shown.map(f => (
-                    <button key={f.name} onClick={() => onPick(f)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors">
+                    <div key={f.name}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
                       <span className="text-base shrink-0">
                         {f.name.toLowerCase().endsWith('.pdf') ? '📄' : '🖼️'}
                       </span>
                       <span className="flex-1 text-sm text-gray-800 truncate">{f.name}</span>
                       <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">{formatSize(f.size)}</span>
-                      <span className="text-xs font-semibold text-indigo-600 shrink-0 whitespace-nowrap">선택 →</span>
-                    </button>
+                      <button onClick={() => print(f)}
+                        className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-indigo-400 hover:text-indigo-600 px-2.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap">
+                        인쇄
+                      </button>
+                      <button onClick={() => onPick(f)}
+                        className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap">
+                        선택
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

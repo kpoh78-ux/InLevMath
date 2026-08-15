@@ -24,11 +24,14 @@ export default function ManageTeachersPage() {
   const [error, setError] = useState('')
   const [created, setCreated] = useState<{ name: string; password: string } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // 서버가 관리자가 아니라고 답하면 화면을 잠근다 (useMe 캐시가 어긋나는 경우 대비)
+  const [denied, setDenied] = useState(false)
 
   const fetchTeachers = useCallback(async () => {
     setLoading(true)
     try {
       const res = await apiFetch('/api/admin/teachers')
+      if (res.status === 401 || res.status === 403) { setDenied(true); return }
       if (res.ok) setTeachers(await res.json())
     } finally { setLoading(false) }
   }, [])
@@ -96,7 +99,7 @@ export default function ManageTeachersPage() {
     return <div className="py-20 text-center text-gray-400 text-sm">불러오는 중...</div>
   }
 
-  if (!isAdmin) {
+  if (!isAdmin || denied) {
     return (
       <div className="bg-white border border-gray-200 rounded-xl px-6 py-16 text-center">
         <p className="text-3xl mb-3">🔒</p>

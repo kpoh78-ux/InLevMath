@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState, Suspense } from 'react'
+import { clearMeCache } from '@/lib/useMe'
 
 const NAV: { href: string; label: string; brand?: true }[] = [
   { href: '/dashboard',              label: 'InLevMath', brand: true },
@@ -98,6 +99,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const handleLogout = () => {
     localStorage.removeItem('teacher_token')
     localStorage.removeItem('teacher_name')
+    // 클라이언트 이동이라 모듈 캐시가 살아남는다 — 다음 사용자에게
+    // 이전 로그인 계정의 관리자 여부가 남지 않도록 비운다
+    clearMeCache()
     router.push('/')
   }
 

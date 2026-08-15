@@ -61,8 +61,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (await prisma.user.findUnique({ where: { phone } })) {
-    return NextResponse.json({ error: '이미 사용 중인 핸드폰번호입니다.' }, { status: 409 })
+  const existing = await prisma.user.findUnique({
+    where: { phone },
+    select: { name: true, role: true },
+  })
+  if (existing) {
+    return NextResponse.json(
+      {
+        error: existing.role === 'teacher'
+          ? `이미 등록된 선생님입니다. (${existing.name}) 목록을 새로고침해 확인하세요.`
+          : `이 번호는 학생 ${existing.name}의 로그인 아이디로 사용 중입니다.`,
+      },
+      { status: 409 }
+    )
   }
 
   // 비밀번호를 안 주면 학생과 같은 초기 비밀번호를 쓴다
@@ -77,14 +88,24 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // 로그인할 수 있도록 Supabase Auth 계정도 함께 만든다
-  await ensureSupabaseUser(user.id, user.phone)
+  // Supabase Auth 계정도 만들어 두되, 실패해도 등록 자체는 성공으로 둔다.
+  // Supabase가 막혀 있어도 로그인은 로컬 JWT로 폴백되고, 다음 로그인 때 다시 시도된다.
+  // (여기서 예외가 나면 User/Teacher만 남아 재등록이 막히는 반쪽 계정이 생긴다)
+  let authReady = true
+  try {
+    await ensureSupabaseUser(user.id, user.phone)
+  } catch (e) {
+    authReady = false
+    console.warn('[admin/teachers] Supabase 계정 생성 실패 — 로컬 JWT로 로그인합니다:',
+      e instanceof Error ? e.message : e)
+  }
 
   return NextResponse.json(
     {
       ok: true,
       teacher: { id: user.id, name: user.name, phone: user.phone, isAdmin: isAdmin === true },
       initialPassword,
+      authReady,
     },
     { status: 201 }
   )

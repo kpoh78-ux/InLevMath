@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
+import { TextbookAiAnswersModal } from '@/components/TextbookAiAnswersModal'
+import type { WorksheetFile } from '@/lib/worksheetFiles'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
@@ -107,6 +110,9 @@ function TextbookDetailPageInner() {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
   // 구역 추가 폼
+  // AI 정답 업로드 — 폴더에서 정답 PDF를 고르면 AI가 읽어 채운다
+  const [showAiPicker, setShowAiPicker] = useState(false)
+  const [aiFile, setAiFile] = useState<WorksheetFile | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [addForm, setAddForm] = useState({
     bookPage: '', majorUnit: '', middleUnit: '', minorUnit: '', section: '', subSection: '', count: '10',
@@ -491,6 +497,10 @@ function TextbookDetailPageInner() {
             {overview.problemCount > 0 && ` (${Math.round(overview.answeredCount / overview.problemCount * 100)}%)`}
           </p>
         </div>
+        <button onClick={() => setShowAiPicker(true)}
+          className="ml-auto border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+          🤖 AI 정답 업로드
+        </button>
       </div>
 
       {/* 탭 */}
@@ -1097,6 +1107,29 @@ function TextbookDetailPageInner() {
           )}
         </div>
       </div>
+
+      {/* AI 정답 업로드 — 폴더에서 정답 PDF 고르기 */}
+      {showAiPicker && (
+        <WorksheetUploadModal
+          onClose={() => setShowAiPicker(false)}
+          onPick={(f: WorksheetFile) => { setShowAiPicker(false); setAiFile(f) }}
+        />
+      )}
+
+      {aiFile && (
+        <TextbookAiAnswersModal
+          textbookId={id}
+          textbookTitle={overview.title}
+          file={aiFile}
+          onClose={() => setAiFile(null)}
+          onSaved={async (n) => {
+            setAiFile(null)
+            alert(`${n}문항을 저장했습니다.`)
+            await fetchOverview()
+            await fetchProblems()
+          }}
+        />
+      )}
 
       <AnswerLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />
     </div>

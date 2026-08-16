@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 
 const RARITY_STYLE: Record<string, { border: string; bg: string; label: string; glow: string }> = {
@@ -26,7 +27,21 @@ const EMOJIS = ['🎁','🏆','⭐','🎖️','💎','🌟','🔥','👑','🎯'
 
 const ITEM_FORM_INIT = { name: '', description: '', emoji: '🎁', type: 'virtual', rarity: 'common', pointValue: 0 }
 
-export default function RewardsPage() {
+/** /api/students 응답에서 필요한 부분만 */
+type StudentRow = {
+  id: string; grade: string; status?: string
+  rewardPoints?: number
+  user?: { name?: string }
+}
+
+/** 학년 표시 순서 (초1 → 고3) */
+const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
+
+function RewardsPageInner() {
+  // 상단 메뉴에서 고른 학생을 그대로 이어받는다 (?student=)
+  const searchParams = useSearchParams()
+  const navStudentId = searchParams.get('student')
+
   const [items, setItems]           = useState<RewardItem[]>([])
   const [students, setStudents]     = useState<Student[]>([])
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
@@ -40,7 +55,8 @@ export default function RewardsPage() {
   const [grantReason, setGrantReason] = useState('')
   const [grantItemId, setGrantItemId] = useState('')
   const [saving, setSaving]         = useState(false)
-  const [tab, setTab]               = useState<'items' | 'students'>('items')
+  // 학생 보관창고가 보상관리의 기본 화면이다
+  const [tab, setTab]               = useState<'students' | 'items'>('students')
 
   const loadItems = useCallback(async () => {
     const res = await apiFetch('/api/rewards/items')
@@ -49,12 +65,23 @@ export default function RewardsPage() {
 
   const loadStudents = useCallback(async () => {
     const res = await apiFetch('/api/students')
-    if (res.ok) {
-      const data = await res.json()
-      setStudents(data.filter((s: any) => s.status !== 'withdrawn').map((s: any) => ({
-        id: s.id, name: s.name, grade: s.grade, rewardPoints: s.rewardPoints ?? 0,
-      })))
-    }
+    if (!res.ok) return
+    const data = await res.json() as StudentRow[]
+    // 이름은 user 안에 있다. s.name 으로 읽으면 목록이 통째로 빈칸이 된다
+    setStudents(
+      data
+        .filter(s => s.status !== 'withdrawn')
+        .map(s => ({
+          id: s.id,
+          name: s.user?.name ?? '(이름 없음)',
+          grade: s.grade,
+          rewardPoints: s.rewardPoints ?? 0,
+        }))
+        .sort((a, b) =>
+          GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) ||
+          a.name.localeCompare(b.name, 'ko')
+        )
+    )
   }, [])
 
   const loadInventory = useCallback(async (studentId: string) => {
@@ -73,6 +100,19 @@ export default function RewardsPage() {
 
   useEffect(() => { loadItems(); loadStudents() }, [loadItems, loadStudents])
   useEffect(() => { if (selectedStudent) loadInventory(selectedStudent.id) }, [selectedStudent, loadInventory])
+
+  // 좌측 사이드바(?student=)에서 고른 학생을 보관창고에 그대로 띄운다.
+  // 사이드바 선택이 없으면 첫 학생을 열어 빈 화면으로 시작하지 않게 한다.
+  useEffect(() => {
+    if (students.length === 0) return
+    const target = navStudentId
+      ? students.find(s => s.id === navStudentId)
+      : (selectedStudent ? students.find(s => s.id === selectedStudent.id) : students[0])
+    if (target && target.id !== selectedStudent?.id) {
+      setSelectedStudent(target)
+      setTab('students')
+    }
+  }, [navStudentId, students, selectedStudent])
 
   // 아이템 생성
   const handleCreateItem = async () => {
@@ -133,10 +173,11 @@ export default function RewardsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">보상 관리</h1>
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
-          {(['items','students'] as const).map(t => (
+          {/* 학생 보관창고가 기본 화면이라 왼쪽에 둔다 */}
+          {(['students','items'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 font-medium transition-colors ${tab===t ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-              {t === 'items' ? '🎁 아이템 관리' : '👥 학생 보관창고'}
+              {t === 'students' ? '👥 학생 보관창고' : '🎁 아이템 관리'}
             </button>
           ))}
         </div>
@@ -451,5 +492,14 @@ export default function RewardsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// useSearchParams 는 Suspense 안에서만 쓸 수 있다
+export default function RewardsPage() {
+  return (
+    <Suspense>
+      <RewardsPageInner />
+    </Suspense>
   )
 }

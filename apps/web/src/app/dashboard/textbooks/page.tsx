@@ -14,6 +14,7 @@ type Textbook = {
 type AssignedTextbook = {
   id: string; title: string; grade: string; publisher: string
   problemCount: number; assignedAt: string
+  completedAt: string | null
   graded: boolean; correctRate: number | null
   wrongCount: number | null; submittedAt: string | null
 }
@@ -72,6 +73,31 @@ function TextbooksPageInner() {
       body: JSON.stringify({ textbookId: t.id, studentIds: [selectedStudent] }),
     })
     if (res.ok) await fetchAssigned()
+  }
+
+  /**
+   * 교재 완료 처리 — 끝낸 교재는 등급 계산에 30%만 반영된다.
+   * 진도 중인 교재는 70%라 다 푼 교재를 그대로 두면 최근 실력이 가려진다.
+   */
+  const toggleCompleted = async (t: AssignedTextbook) => {
+    if (!selectedStudent) return
+    const next = t.completedAt === null
+    if (next && !confirm(
+      `"${t.title}"을 다 푼 교재로 표시할까요?
+
+`
+      + '끝낸 교재는 등급 계산에 30%만 반영됩니다. (진도 중은 70%)'
+    )) return
+
+    const res = await apiFetch('/api/textbooks/assign', {
+      method: 'PATCH',
+      body: JSON.stringify({ textbookId: t.id, studentId: selectedStudent, completed: next }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string }
+      alert(d.error || '처리 실패'); return
+    }
+    await fetchAssigned()
   }
 
   const fetchTextbooks = useCallback(async () => {
@@ -201,11 +227,19 @@ function TextbooksPageInner() {
                     </td>
                     <td className="px-5 py-3.5 text-gray-700 font-medium whitespace-nowrap">{t.problemCount}문제</td>
                     <td className="px-5 py-3.5 text-center">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
-                        t.graded ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {t.graded ? '채점 완료' : '미채점'}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
+                          t.graded ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          {t.graded ? '채점 완료' : '미채점'}
+                        </span>
+                        {/* 등급 계산 비중 — 진도 중 70% / 다 푼 교재 30% */}
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${
+                          t.completedAt ? 'bg-gray-100 text-gray-500' : 'bg-indigo-50 text-indigo-600'
+                        }`}>
+                          {t.completedAt ? '완료 · 30%' : '진도중 · 70%'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       {t.correctRate !== null ? (
@@ -220,6 +254,15 @@ function TextbooksPageInner() {
                           className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors whitespace-nowrap">
                           {t.graded ? '재채점' : '채점하기'}
                         </Link>
+                        <button onClick={() => toggleCompleted(t)}
+                          title={t.completedAt ? '다시 진도 중으로 되돌립니다' : '다 푼 교재로 표시합니다'}
+                          className={`text-xs border px-2 py-1 rounded transition-colors whitespace-nowrap ${
+                            t.completedAt
+                              ? 'text-gray-500 border-gray-200 hover:border-gray-400'
+                              : 'text-emerald-600 border-emerald-200 hover:border-emerald-400'
+                          }`}>
+                          {t.completedAt ? '진도중으로' : '교재 완료'}
+                        </button>
                         <button onClick={() => unassignTextbook(t)} disabled={t.graded}
                           title={t.graded ? '채점 완료된 교재는 해제할 수 없습니다' : '배정 해제'}
                           className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors disabled:opacity-40 disabled:hover:border-red-100 whitespace-nowrap">

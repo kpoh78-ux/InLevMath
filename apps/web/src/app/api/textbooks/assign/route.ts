@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
+import { tryRecalcStudentLevel } from '@/lib/studentLevel'
 
 async function getTeacher(req: NextRequest) {
   const auth = await getAuthUser(req)
@@ -73,6 +74,7 @@ export async function GET(req: NextRequest) {
       orderBy: { assignedAt: 'desc' },
       select: {
         assignedAt: true,
+        completedAt: true,
         textbook: {
           select: {
             id: true, title: true, grade: true, publisher: true,
@@ -101,6 +103,7 @@ export async function GET(req: NextRequest) {
         publisher: r.textbook.publisher,
         problemCount: total,
         assignedAt: r.assignedAt,
+        completedAt: r.completedAt,
         graded: !!res,
         correctRate: res && total > 0 ? Math.round(((total - wrongCount) / total) * 100) : null,
         wrongCount: res ? wrongCount : null,
@@ -149,4 +152,35 @@ export async function DELETE(req: NextRequest) {
     removed: targets.length,
     blocked: [...gradedIds],   // 채점 완료라 해제하지 못한 학생
   })
+}
+
+// PATCH /api/textbooks/assign — 교재 완료 처리 / 완료 해제
+// body: { textbookId, studentId, completed: boolean }
+//
+// 교재를 끝내면 그 성적은 '지난 과정'이 되어 등급 계산에 30%만 반영된다.
+// 진도 중인 교재는 70%다. (lib/studentLevel.ts)
+export async function PATCH(req: NextRequest) {
+  const teacher = await getTeacher(req)
+  if (!teacher) return NextResponse.json({ error: '권한 없음' }, { status: 403 })
+
+  const { textbookId, studentId, completed } = await req.json().catch(() => ({}))
+  if (!textbookId || !studentId) {
+    return NextResponse.json({ error: '교재와 학생을 선택하세요.' }, { status: 400 })
+  }
+  if (!await ownedTextbook(teacher.id, textbookId)) {
+    return NextResponse.json({ error: '교재를 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  const { count } = await prisma.textbookAssignment.updateMany({
+    where: { textbookId, studentId },
+    data: { completedAt: completed === false ? null : new Date() },
+  })
+  if (count === 0) {
+    return NextResponse.json({ error: '배정 기록을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  // 비중이 70% ↔ 30% 로 옮겨가므로 등급을 다시 계산한다
+  const level = await tryRecalcStudentLevel(studentId)
+
+  return NextResponse.json({ ok: true, completed: completed !== false, level })
 }

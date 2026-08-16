@@ -84,14 +84,9 @@ model Student {
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
 
-  // 평균 정답률(%) — 채점 기록이 없으면 null (칭호 '수학 입문자')
-  avgCorrectRate  Float?
-  // 학년·학기·교재 과정이 바뀌기 직전까지의 평균. 새 과정에서 30%만 반영한다
-  carryRate       Float?
-  // 현재 과정이 시작된 시각. 이 이후 채점만 이번 과정 평균에 들어간다
-  courseStartedAt DateTime?
-  // 과정 식별자 (학생 학년). 이 값이 바뀌면 과정 전환으로 본다
-  courseKey       String    @default("")
+  // 평균 정답률(%) — 채점 기록이 없으면 null (칭호 '수학 입문자').
+  // 진행 중 교재·최근 90일 학습지 70% + 끝낸 교재·오래된 학습지 30%
+  avgCorrectRate Float?
 
   comprehension Float @default(0)
   reasoning     Float @default(0)
@@ -153,12 +148,15 @@ model TextbookProblem {
 // 교재 배정 — 학습지의 WorksheetDistribution과 같은 역할.
 // 어떤 학생이 어떤 교재를 진행 중인지 저장한다. 채점 결과는 TextbookResult에 따로 쌓인다.
 model TextbookAssignment {
-  id         String   @id @default(cuid())
-  textbookId String
-  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  studentId  String
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  assignedAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  textbookId  String
+  textbook    Textbook  @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime  @default(now())
+  // 교재를 끝낸 시점. null이면 아직 진도를 나가는 중이다.
+  // 진행 중 교재는 등급 계산에 70%, 끝낸 교재는 30% 반영된다 (lib/studentLevel.ts)
+  completedAt DateTime?
 
   @@unique([textbookId, studentId])
   @@index([studentId])

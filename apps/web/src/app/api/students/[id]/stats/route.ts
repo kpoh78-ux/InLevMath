@@ -137,10 +137,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       grade: student.grade,
       currentLevel: student.currentLevel,
       currentMission: student.currentMission,
-      // 레벨·칭호의 근거가 되는 값 (lib/studentLevel.ts)
+      // 레벨·칭호의 근거가 되는 평균 정답률 (lib/studentLevel.ts)
       levelRate: student.avgCorrectRate,
-      carryRate: student.carryRate,
-      courseKey: student.courseKey,
       comprehension: student.comprehension,
       reasoning: student.reasoning,
       calculation: student.calculation,

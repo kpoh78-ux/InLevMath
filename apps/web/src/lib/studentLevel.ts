@@ -2,16 +2,20 @@
 //
 // 레벨은 평균 정답률 하나로 정해진다. 등급표와 칭호는 packages/shared 에 있다.
 //
-// 과정(학년·학기·교재)이 바뀌면 평균을 지우지 않는다.
-//   · 바뀌는 순간의 평균을 carryRate 에 넣어 두고 courseStartedAt 을 지금으로 옮긴다
-//   · 이후 평균 = carryRate * 30% + (새 과정 채점 평균) * 70%
-//   · 새 과정에 채점이 아직 없으면 carryRate 를 그대로 쓴다
+// 최근 학습에 무게를 둔다.
+//   현재 과정 (70%) — 지금 진도를 나가는 교재 + 최근 90일 안에 푼 학습지
+//   지난 과정 (30%) — 끝낸 교재 + 90일이 지난 학습지
+//
+// 교재를 끝내면(TextbookAssignment.completedAt) 그 교재 성적은 30% 쪽으로 옮겨간다.
+// 학습지는 채점일이 90일을 넘기면 자동으로 30% 쪽으로 넘어간다.
+// 한쪽 기록이 없으면 있는 쪽만 그대로 쓴다.
 //
 // 평균은 누적해서 더하지 않고 매번 채점 기록에서 다시 계산한다.
-// 선생님이 같은 학습지를 다시 채점해도 두 번 반영되지 않는다.
+// 선생님이 같은 학습지를 다시 채점해도 두 번 반영되지 않고,
+// 날짜가 지나면 별도 처리 없이 저절로 비중이 옮겨간다.
 
 import { prisma } from '@/lib/db'
-import { blendedRate, levelInfoOf } from '@inlevmath/shared'
+import { blendedRate, levelInfoOf, RECENT_WORKSHEET_DAYS } from '@inlevmath/shared'
 
 export type LevelSnapshot = {
   /** 반영된 평균 정답률(%). 채점 기록이 전혀 없으면 null */
@@ -20,50 +24,72 @@ export type LevelSnapshot = {
   grade: number
   title: string
   unranked: boolean
-  /** 이번 과정만의 평균 (없으면 null) */
-  courseRate: number | null
-  carryRate: number | null
+  /** 현재 과정(70%) 평균 */
+  currentRate: number | null
+  /** 지난 과정(30%) 평균 */
+  pastRate: number | null
   totalProblems: number
 }
 
-/** 이번 과정의 채점 결과를 모아 평균 정답률(%)을 낸다 */
-async function courseAverage(studentId: string, since: Date | null) {
-  const when = since ? { gte: since } : undefined
+/** 맞은 개수·전체 개수를 모으는 통 */
+class Bucket {
+  correct = 0
+  total = 0
+  add(correct: number, total: number) {
+    if (total <= 0) return
+    this.total += total
+    this.correct += Math.max(0, Math.min(correct, total))
+  }
+  get rate(): number | null {
+    return this.total > 0 ? (this.correct / this.total) * 100 : null
+  }
+}
 
-  // 학습지 — 채점된 배포만
+/** 현재/지난 과정으로 나눠 정답률을 계산한다 */
+async function splitAverages(studentId: string) {
+  const current = new Bucket()
+  const past = new Bucket()
+
+  const cutoff = new Date(Date.now() - RECENT_WORKSHEET_DAYS * 24 * 60 * 60 * 1000)
+
+  // ── 학습지 — 채점일이 90일 이내면 현재, 지나면 지난 과정 ──
   const dists = await prisma.worksheetDistribution.findMany({
-    where: {
-      studentId,
-      result: { is: when ? { submittedAt: when } : {} },
-    },
+    where: { studentId, result: { isNot: null } },
     select: {
       worksheet: { select: { problemCount: true } },
-      result: { select: { correctProblems: true } },
+      result: { select: { correctProblems: true, submittedAt: true } },
     },
   })
-
-  let correct = 0
-  let total = 0
   for (const d of dists) {
     if (!d.result) continue
-    total += d.worksheet.problemCount
-    correct += Math.max(0, Math.min(d.result.correctProblems, d.worksheet.problemCount))
+    const bucket = d.result.submittedAt >= cutoff ? current : past
+    bucket.add(d.result.correctProblems, d.worksheet.problemCount)
   }
 
-  // 교재 — 문제 수는 교재별로 세어 온다 (3000문제 교재를 통째로 읽지 않는다)
+  // ── 교재 — 끝냈으면 지난 과정, 진도 중이면 현재 과정 ──
   const tResults = await prisma.textbookResult.findMany({
-    where: { studentId, ...(when ? { submittedAt: when } : {}) },
+    where: { studentId },
     select: { textbookId: true, wrongProblemsJson: true },
   })
 
   if (tResults.length > 0) {
     const ids = [...new Set(tResults.map(r => r.textbookId))]
+
+    // 문제 수는 개수만 센다 (3000문제 교재를 통째로 읽지 않는다)
     const groups = await prisma.textbookProblem.groupBy({
       by: ['textbookId'],
       where: { textbookId: { in: ids } },
       _count: { _all: true },
     })
     const countOf = new Map(groups.map(g => [g.textbookId, g._count._all]))
+
+    const assignments = await prisma.textbookAssignment.findMany({
+      where: { studentId, textbookId: { in: ids } },
+      select: { textbookId: true, completedAt: true },
+    })
+    const completed = new Set(
+      assignments.filter(a => a.completedAt !== null).map(a => a.textbookId)
+    )
 
     for (const r of tResults) {
       const n = countOf.get(r.textbookId) ?? 0
@@ -72,16 +98,15 @@ async function courseAverage(studentId: string, since: Date | null) {
       try {
         const arr = JSON.parse(r.wrongProblemsJson) as number[]
         wrong = Array.isArray(arr) ? arr.filter(v => v >= 1 && v <= n).length : 0
-      } catch { /* 손상된 값은 전부 맞은 것으로 보지 않고 0으로 둔다 */ }
-      total += n
-      correct += n - wrong
+      } catch { /* 손상된 값은 틀린 문제 0개로 본다 */ }
+
+      // 배정 기록이 없는 교재는 아직 진도 중인 것으로 본다
+      const bucket = completed.has(r.textbookId) ? past : current
+      bucket.add(n - wrong, n)
     }
   }
 
-  return {
-    rate: total > 0 ? (correct / total) * 100 : null,
-    totalProblems: total,
-  }
+  return { current, past }
 }
 
 /**
@@ -89,33 +114,32 @@ async function courseAverage(studentId: string, since: Date | null) {
  * 저장 실패가 채점을 막지 않도록 호출부에서 감싸 쓴다(tryRecalcStudentLevel).
  */
 export async function recalcStudentLevel(studentId: string): Promise<LevelSnapshot | null> {
-  const student = await prisma.student.findUnique({
-    where: { id: studentId },
-    select: { carryRate: true, courseStartedAt: true },
+  const exists = await prisma.student.findUnique({
+    where: { id: studentId }, select: { id: true },
   })
-  if (!student) return null
+  if (!exists) return null
 
-  const { rate: courseRate, totalProblems } = await courseAverage(studentId, student.courseStartedAt)
-  const avg = blendedRate(student.carryRate, courseRate)
+  const { current, past } = await splitAverages(studentId)
+  const avg = blendedRate(past.rate, current.rate)
   const info = levelInfoOf(avg)
+  const rounded = avg === null ? null : Math.round(avg * 10) / 10
 
   await prisma.student.update({
     where: { id: studentId },
-    data: {
-      avgCorrectRate: avg === null ? null : Math.round(avg * 10) / 10,
-      currentLevel: info.level,
-    },
+    data: { avgCorrectRate: rounded, currentLevel: info.level },
   })
 
+  const r1 = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10)
+
   return {
-    avgCorrectRate: avg === null ? null : Math.round(avg * 10) / 10,
+    avgCorrectRate: rounded,
     level: info.level,
     grade: info.grade,
     title: info.title,
     unranked: info.unranked,
-    courseRate: courseRate === null ? null : Math.round(courseRate * 10) / 10,
-    carryRate: student.carryRate,
-    totalProblems,
+    currentRate: r1(current.rate),
+    pastRate: r1(past.rate),
+    totalProblems: current.total + past.total,
   }
 }
 
@@ -127,27 +151,4 @@ export async function tryRecalcStudentLevel(studentId: string): Promise<LevelSna
     console.error('[studentLevel]', e)
     return null
   }
-}
-
-/**
- * 과정 전환 — 지금까지의 평균을 30% 몫으로 넘기고 새 과정을 시작한다.
- * 학년이 바뀌면 자동으로, 학기·교재 교체는 선생님이 버튼으로 부른다.
- *
- * @param courseKey 새 과정 식별자 (보통 학생 학년)
- */
-export async function rolloverCourse(studentId: string, courseKey: string) {
-  // 끝나는 과정의 최종 평균을 먼저 확정한다
-  const before = await recalcStudentLevel(studentId)
-
-  await prisma.student.update({
-    where: { id: studentId },
-    data: {
-      carryRate: before?.avgCorrectRate ?? null,
-      courseStartedAt: new Date(),
-      courseKey,
-    },
-  })
-
-  // 새 과정엔 아직 채점이 없어 carryRate 가 그대로 평균이 된다
-  return recalcStudentLevel(studentId)
 }

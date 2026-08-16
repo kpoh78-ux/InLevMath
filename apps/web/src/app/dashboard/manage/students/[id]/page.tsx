@@ -35,7 +35,7 @@ type Stats = {
   student: {
     id: string; name: string; grade: string
     currentLevel: number; currentMission: string
-    levelRate: number | null; carryRate: number | null; courseKey: string
+    levelRate: number | null
     comprehension: number; reasoning: number; calculation: number
   }
   summary: {
@@ -253,9 +253,7 @@ export default function StudentDetailPage() {
             {!levelInfo.unranked && (
               <span className="text-[11px] ml-auto" style={{ color: '#a0c4e8' }}>
                 평균 정답률 {student.levelRate?.toFixed(1)}%
-                {student.carryRate !== null && (
-                  <span className="ml-1 opacity-70">(직전 과정 {student.carryRate.toFixed(1)}% 30% 반영)</span>
-                )}
+                <span className="ml-1 opacity-70">(최근 70% + 지난 과정 30%)</span>
               </span>
             )}
           </div>

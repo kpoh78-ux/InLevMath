@@ -3,7 +3,6 @@ import { getAuthUser } from '@/lib/auth'
 import { supabaseAdmin, phoneToEmail } from '@/lib/supabase'
 import { prisma } from '@/lib/db'
 import { getTeacherAuth } from '@/lib/teacherAuth'
-import { rolloverCourse } from '@/lib/studentLevel'
 
 // PATCH /api/students/[id]
 //   { status } 만 보내면 재원/퇴원 처리
@@ -94,16 +93,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { user: { select: { name: true, phone: true } } },
   })
 
-  // 학년이 바뀌면 새 과정으로 넘어간다.
-  // 평균을 지우지 않고 직전 평균을 30% 몫으로 넘긴다 (lib/studentLevel.ts)
-  const newGrade = str(body.grade)
-  if (newGrade !== undefined && newGrade !== student.grade) {
-    try {
-      await rolloverCourse(id, newGrade)
-    } catch (e) {
-      console.error('[rolloverCourse]', e)   // 학생 정보 수정 자체는 막지 않는다
-    }
-  }
 
   return NextResponse.json({
     ok: true,

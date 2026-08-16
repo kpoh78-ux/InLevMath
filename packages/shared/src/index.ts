@@ -67,9 +67,10 @@ export const MISSION_LEVEL: Record<MissionType, number> = {
 // 레벨은 학생이 지금까지 푼 문제의 평균 정답률 하나로 정해진다.
 // 채점 기록이 아직 없으면 레벨을 매길 수 없으므로 '수학 입문자'로 시작한다.
 //
-// 학년·학기·교재 과정이 바뀌면 평균을 완전히 지우지 않고
-// 직전 과정 평균을 30%만 남기고 새 과정 채점 결과를 70% 반영한다.
-// (COURSE_CARRY_WEIGHT / COURSE_NEW_WEIGHT)
+// 최근 학습에 무게를 둔다.
+//   70% — 지금 진도를 나가는 교재 + 최근 90일 안에 푼 학습지
+//   30% — 끝낸 교재 + 90일이 지난 학습지
+// 교재를 끝내면 그 교재는 '지난 과정'으로 넘어가 30% 쪽으로 옮겨간다.
 
 export type LevelTier = {
   level: number      // Lv.1 ~ Lv.9
@@ -94,10 +95,12 @@ export const LEVEL_TIERS: LevelTier[] = [
 /** 채점 기록이 없을 때 쓰는 칭호 */
 export const START_TITLE = '수학 입문자'
 
-/** 과정이 바뀔 때 직전 평균을 남기는 비중 */
-export const COURSE_CARRY_WEIGHT = 0.3
-/** 새 과정 채점 결과를 반영하는 비중 */
-export const COURSE_NEW_WEIGHT = 0.7
+/** 지난 과정(끝낸 교재 + 오래된 학습지) 반영 비중 */
+export const PAST_WEIGHT = 0.3
+/** 현재 과정(진행 중 교재 + 최근 학습지) 반영 비중 */
+export const CURRENT_WEIGHT = 0.7
+/** 학습지를 '최근'으로 볼 기간 (일) */
+export const RECENT_WORKSHEET_DAYS = 90
 
 /** 평균 정답률(%) → 레벨 단계. 기록이 없으면(null) 입문자 단계 */
 export function levelTierOf(avgRate: number | null | undefined): LevelTier | null {
@@ -118,17 +121,19 @@ export function levelInfoOf(avgRate: number | null | undefined) {
 }
 
 /**
- * 과정이 바뀐 뒤의 평균 정답률.
- * @param carryRate 직전 과정까지의 평균 (없으면 null)
- * @param courseRate 이번 과정의 평균 (채점 기록이 없으면 null)
+ * 등급에 쓰는 평균 정답률.
+ * 한쪽 기록이 없으면 있는 쪽만 그대로 쓴다(비중을 억지로 나누지 않는다).
+ *
+ * @param pastRate    끝낸 교재 + 90일 지난 학습지의 평균 (없으면 null)
+ * @param currentRate 진행 중 교재 + 최근 90일 학습지의 평균 (없으면 null)
  */
 export function blendedRate(
-  carryRate: number | null,
-  courseRate: number | null
+  pastRate: number | null,
+  currentRate: number | null
 ): number | null {
-  if (courseRate === null) return carryRate
-  if (carryRate === null) return courseRate
-  return carryRate * COURSE_CARRY_WEIGHT + courseRate * COURSE_NEW_WEIGHT
+  if (currentRate === null) return pastRate
+  if (pastRate === null) return currentRate
+  return pastRate * PAST_WEIGHT + currentRate * CURRENT_WEIGHT
 }
 
 // ── 능력치 ──────────────────────────────────────────────────────────────────

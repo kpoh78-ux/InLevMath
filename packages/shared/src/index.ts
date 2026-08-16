@@ -102,21 +102,60 @@ export const CURRENT_WEIGHT = 0.7
 /** 학습지를 '최근'으로 볼 기간 (일) */
 export const RECENT_WORKSHEET_DAYS = 90
 
+/**
+ * 푼 문제 수에 따른 칭호 상한.
+ * 몇 문제 안 풀고 우연히 높은 정답률이 나온 학생이 상위 칭호를 가져가지 못하게 한다.
+ * 표는 문제 수가 적은 쪽부터 본다.
+ */
+export const TITLE_CAPS: { maxProblems: number; capLevel: number }[] = [
+  { maxProblems: 300, capLevel: 1 },  // 300문제 미만 — 비긴너까지
+  { maxProblems: 600, capLevel: 4 },  // 600문제 미만 — 스텐다드까지
+  { maxProblems: 900, capLevel: 7 },  // 900문제 미만 — 마스터까지
+]
+/** 이 문제 수부터는 정답률만으로 모든 칭호가 열린다 */
+export const TITLE_CAP_FREE_AT = 900
+
+/** 푼 문제 수로 정해지는 레벨 상한 (제한 없으면 9) */
+export function levelCapFor(totalProblems: number): number {
+  const cap = TITLE_CAPS.find(c => totalProblems < c.maxProblems)
+  return cap ? cap.capLevel : 9
+}
+
 /** 평균 정답률(%) → 레벨 단계. 기록이 없으면(null) 입문자 단계 */
 export function levelTierOf(avgRate: number | null | undefined): LevelTier | null {
   if (avgRate === null || avgRate === undefined || Number.isNaN(avgRate)) return null
   return LEVEL_TIERS.find(t => avgRate >= t.minRate) ?? LEVEL_TIERS[LEVEL_TIERS.length - 1]
 }
 
-/** 화면에 쓸 레벨/등급/칭호 한 벌 */
-export function levelInfoOf(avgRate: number | null | undefined) {
+/**
+ * 화면에 쓸 레벨/등급/칭호 한 벌.
+ *
+ * @param avgRate       평균 정답률(%). 기록이 없으면 null → '수학 입문자'
+ * @param totalProblems 지금까지 푼 문제 수. 적으면 칭호에 상한이 걸린다
+ */
+export function levelInfoOf(
+  avgRate: number | null | undefined,
+  totalProblems = TITLE_CAP_FREE_AT
+) {
   const tier = levelTierOf(avgRate)
+  if (!tier) {
+    return { level: 1, grade: 9, title: START_TITLE, unranked: true, capped: false, capLevel: 9 }
+  }
+
+  const capLevel = levelCapFor(totalProblems)
+  const capped = tier.level > capLevel
+  const shown = capped
+    ? LEVEL_TIERS.find(t => t.level === capLevel) ?? tier
+    : tier
+
   return {
-    level: tier?.level ?? 1,
-    grade: tier?.grade ?? 9,
-    title: tier?.title ?? START_TITLE,
-    /** 아직 채점 기록이 없어 레벨을 매기지 못한 상태 */
-    unranked: tier === null,
+    level: shown.level,
+    grade: shown.grade,
+    title: shown.title,
+    unranked: false,
+    /** 정답률로는 더 높지만 푼 문제 수가 모자라 상한에 걸린 상태 */
+    capped,
+    capLevel,
   }
 }
 

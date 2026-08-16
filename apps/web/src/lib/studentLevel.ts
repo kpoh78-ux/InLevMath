@@ -10,6 +10,10 @@
 // 학습지는 채점일이 90일을 넘기면 자동으로 30% 쪽으로 넘어간다.
 // 한쪽 기록이 없으면 있는 쪽만 그대로 쓴다.
 //
+// 푼 문제 수가 적으면 칭호에 상한이 걸린다 (TITLE_CAPS).
+// 300문제 미만은 비긴너, 600문제 미만은 스텐다드, 900문제 미만은 마스터까지다.
+// 몇 문제 안 풀고 나온 높은 정답률이 상위 칭호로 이어지지 않게 한다.
+//
 // 평균은 누적해서 더하지 않고 매번 채점 기록에서 다시 계산한다.
 // 선생님이 같은 학습지를 다시 채점해도 두 번 반영되지 않고,
 // 날짜가 지나면 별도 처리 없이 저절로 비중이 옮겨간다.
@@ -24,6 +28,10 @@ export type LevelSnapshot = {
   grade: number
   title: string
   unranked: boolean
+  /** 정답률로는 더 높지만 푼 문제 수가 모자라 상한에 걸린 상태 */
+  capped: boolean
+  /** 지금 푼 문제 수로 열리는 최대 레벨 */
+  capLevel: number
   /** 현재 과정(70%) 평균 */
   currentRate: number | null
   /** 지난 과정(30%) 평균 */
@@ -121,7 +129,9 @@ export async function recalcStudentLevel(studentId: string): Promise<LevelSnapsh
 
   const { current, past } = await splitAverages(studentId)
   const avg = blendedRate(past.rate, current.rate)
-  const info = levelInfoOf(avg)
+  // 칭호 상한은 지금까지 푼 전체 문제 수로 정해진다
+  const totalProblems = current.total + past.total
+  const info = levelInfoOf(avg, totalProblems)
   const rounded = avg === null ? null : Math.round(avg * 10) / 10
 
   await prisma.student.update({
@@ -137,9 +147,11 @@ export async function recalcStudentLevel(studentId: string): Promise<LevelSnapsh
     grade: info.grade,
     title: info.title,
     unranked: info.unranked,
+    capped: info.capped,
+    capLevel: info.capLevel,
     currentRate: r1(current.rate),
     pastRate: r1(past.rate),
-    totalProblems: current.total + past.total,
+    totalProblems,
   }
 }
 

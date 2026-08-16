@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
-import { MISSION_LABELS, MissionType, levelInfoOf } from '@inlevmath/shared'
+import {
+  MISSION_LABELS, MissionType, levelInfoOf, TITLE_CAPS, TITLE_CAP_FREE_AT,
+} from '@inlevmath/shared'
 
 // ── 레벨별 색 (Lv.1 → Lv.9) ─────────────────────────────────────
 // 칭호와 등급표는 packages/shared 의 LEVEL_TIERS 하나로 관리한다.
@@ -22,6 +24,10 @@ const LEVEL_COLORS = [
 
 const getLevelColor = (level: number) =>
   LEVEL_COLORS[Math.min(Math.max(level, 1), 9) - 1]
+
+/** 칭호 상한이 다음으로 풀리는 문제 수 */
+const nextCapAt = (total: number) =>
+  TITLE_CAPS.find(c => total < c.maxProblems)?.maxProblems ?? TITLE_CAP_FREE_AT
 
 const MISSION_COLOR: Record<string, string> = {
   concept_learning: '#6ee7b7',
@@ -171,7 +177,8 @@ export default function StudentDetailPage() {
   const missionLabel = MISSION_LABELS[student.currentMission as MissionType] ?? student.currentMission
   const missionColor = MISSION_COLOR[student.currentMission] ?? '#94a3b8'
   // 레벨·칭호는 평균 정답률에서 나온다. 채점 기록이 없으면 '수학 입문자'
-  const levelInfo    = levelInfoOf(student.levelRate)
+  // 푼 문제 수가 적으면 상한이 걸린다 (300/600/900문제)
+  const levelInfo    = levelInfoOf(student.levelRate, summary.totalProblems)
   const levelColor   = getLevelColor(levelInfo.level)
   const title        = levelInfo.title
   const noActivity   = summary.totalProblems === 0
@@ -251,9 +258,15 @@ export default function StudentDetailPage() {
             <span className="font-bold" style={{ color: '#fbbf24' }}>「{title}」</span>
             {/* 레벨을 정한 근거 — 과정이 바뀌면 직전 평균이 30%만 남는다 */}
             {!levelInfo.unranked && (
-              <span className="text-[11px] ml-auto" style={{ color: '#a0c4e8' }}>
+              <span className="text-[11px] ml-auto text-right" style={{ color: '#a0c4e8' }}>
                 평균 정답률 {student.levelRate?.toFixed(1)}%
                 <span className="ml-1 opacity-70">(최근 70% + 지난 과정 30%)</span>
+                {/* 정답률로는 더 높지만 푼 문제 수가 모자란 경우 */}
+                {levelInfo.capped && (
+                  <span className="block" style={{ color: '#fbbf24' }}>
+                    {summary.totalProblems}문제 풀이 — {nextCapAt(summary.totalProblems)}문제부터 상위 칭호가 열립니다
+                  </span>
+                )}
               </span>
             )}
           </div>

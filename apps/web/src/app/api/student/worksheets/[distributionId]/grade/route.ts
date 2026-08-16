@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { STEP_ABILITY_WEIGHT, STEP_CLEAR_THRESHOLD, WorksheetStep } from '@inlevmath/shared'
+import { tryApplyAutoReward } from '@/lib/autoReward'
 
 // POST /api/student/worksheets/[distributionId]/grade — 채점 제출 + 능력치 반영
 export async function POST(
@@ -60,11 +61,21 @@ export async function POST(
   const correctRate = Math.round(rate * 100)
   const cleared = correctRate >= STEP_CLEAR_THRESHOLD[step]
 
+  // 학생 데이터의 teacherId 는 학원 대표 계정을 가리킨다 (lib/academy.ts)
+  const autoReward = await tryApplyAutoReward({
+    teacherId: student.teacherId,
+    studentId: student.id,
+    sourceType: 'worksheet',
+    sourceId: distributionId,
+    correctRate,
+  })
+
   return NextResponse.json({
     correctProblems: correct,
     totalProblems: total,
     correctRate,
     cleared,
+    autoReward,
     abilityDelta: { comprehension: dComp, reasoning: dReas, calculation: dCalc },
     newAbility: {
       comprehension: updatedStudent.comprehension,

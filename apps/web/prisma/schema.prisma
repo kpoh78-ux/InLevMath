@@ -9,17 +9,17 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  phone       String   @unique  // 11자리 핸드폰번호 = 로그인 아이디
-  password    String
-  role        Role
-  supabaseId  String?  @unique  // Supabase Auth UUID (auth.users.id)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  phone      String   @unique // 11자리 핸드폰번호 = 로그인 아이디
+  password   String
+  role       Role
+  supabaseId String?  @unique // Supabase Auth UUID (auth.users.id)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  teacher   Teacher?
-  student   Student?
+  teacher Teacher?
+  student Student?
 }
 
 model Teacher {
@@ -34,11 +34,12 @@ model Teacher {
   // null이면 TEXTBOOK_SECTION_PRESETS 기본값을 쓴다. JSON: ["A단계","필수유형",...]
   sectionPresetsJson String?
 
-  students     Student[]
-  worksheets   Worksheet[]
-  textbooks    Textbook[]
-  schedules    ClassSchedule[]
-  rewardItems  RewardItem[]
+  students    Student[]
+  worksheets  Worksheet[]
+  textbooks   Textbook[]
+  schedules   ClassSchedule[]
+  rewardItems RewardItem[]
+  rewardRules RewardRule[]
 
   @@index([userId])
 }
@@ -48,36 +49,36 @@ model ClassSchedule {
   id           String  @id @default(cuid())
   teacherId    String
   teacher      Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  dayOfWeek    Int     // 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일
-  startTime    String  // "09:00"
-  endTime      String  // "10:30"
-  subject      String  // 수업 과목명
-  grade        String  // 학년 (예: 중1, 고2)
+  dayOfWeek    Int // 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일
+  startTime    String // "09:00"
+  endTime      String // "10:30"
+  subject      String // 수업 과목명
+  grade        String // 학년 (예: 중1, 고2)
   studentNames String  @default("[]") // JSON 배열 ["홍길동","김철수"]
 
   @@index([teacherId, dayOfWeek])
 }
 
 model Student {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teacherId  String
-  teacher    Teacher  @relation(fields: [teacherId], references: [id])
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
 
-  school      String   @default("")   // 학교명
-  grade       String   @default("")   // 학년 (예: 중1, 고2)
-  parentName  String   @default("")   // 보호자 이름
-  parentPhone String   @default("")   // 보호자 연락처
-  startDate   String   @default("")   // 수업시작일 (YYYY-MM-DD)
-  status      String   @default("active")  // "active" | "withdrawn"
+  school      String @default("") // 학교명
+  grade       String @default("") // 학년 (예: 중1, 고2)
+  parentName  String @default("") // 보호자 이름
+  parentPhone String @default("") // 보호자 연락처
+  startDate   String @default("") // 수업시작일 (YYYY-MM-DD)
+  status      String @default("active") // "active" | "withdrawn"
 
   // 선택 입력 — 학생 상세 정보 팝업에서 수정한다
-  address     String   @default("")   // 집 주소
-  homePhone   String   @default("")   // 집 전화
-  birthDate   String   @default("")   // 생년월일 (YYYY-MM-DD)
-  email       String   @default("")   // 학생 이메일
-  memo        String   @default("")   // 특이사항 메모
+  address   String @default("") // 집 주소
+  homePhone String @default("") // 집 전화
+  birthDate String @default("") // 생년월일 (YYYY-MM-DD)
+  email     String @default("") // 학생 이메일
+  memo      String @default("") // 특이사항 메모
 
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
@@ -86,27 +87,28 @@ model Student {
   reasoning     Float @default(0)
   calculation   Float @default(0)
 
-  rewardPoints    Int @default(0)
+  rewardPoints Int @default(0)
 
   results             MissionResult[]
   distributions       WorksheetDistribution[]
   textbookAssignments TextbookAssignment[]
   textbookResults     TextbookResult[]
-  rewards          StudentReward[]
-  pointHistory     PointTransaction[]
+  rewards             StudentReward[]
+  pointHistory        PointTransaction[]
+  autoRewardLogs      AutoRewardLog[]
 
   @@index([teacherId])
 }
 
 // ── 교재 ────────────────────────────────────────────────────────────────────
 model Textbook {
-  id          String   @id @default(cuid())
-  title       String
-  grade       String
-  publisher   String   @default("직접 출제")
-  teacherId   String
-  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  title     String
+  grade     String
+  publisher String   @default("직접 출제")
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
   problems     TextbookProblem[]
   results      TextbookResult[]
@@ -121,14 +123,14 @@ model TextbookProblem {
   textbookId String
   textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
   number     Int
-  bookPage   Int      @default(0)   // 교재 쪽번호 (0 = 미지정)
-  majorUnit  String   @default("")  // 대단원
-  middleUnit String   @default("")  // 중단원
-  minorUnit  String   @default("")  // 소단원
-  section    String   @default("")  // 문제유형/단계: '필수유형'|'확인 체크'|'대표문제'|'서술형' 등 자유 입력
-  subSection String   @default("")  // 문제유형의 하위 단계: '유형 1'|'심화'|'(1)' 등 교재별 자유 입력
-  type       String   @default("multiple")  // "multiple" | "short" | "image"
-  answer     String   @default("")          // type='image'이면 IMAGE_ANSWER_MARKER
+  bookPage   Int      @default(0) // 교재 쪽번호 (0 = 미지정)
+  majorUnit  String   @default("") // 대단원
+  middleUnit String   @default("") // 중단원
+  minorUnit  String   @default("") // 소단원
+  section    String   @default("") // 문제유형/단계: '필수유형'|'확인 체크'|'대표문제'|'서술형' 등 자유 입력
+  subSection String   @default("") // 문제유형의 하위 단계: '유형 1'|'심화'|'(1)' 등 교재별 자유 입력
+  type       String   @default("multiple") // "multiple" | "short" | "image"
+  answer     String   @default("") // type='image'이면 IMAGE_ANSWER_MARKER
 
   @@unique([textbookId, number])
   @@index([textbookId, number])
@@ -171,15 +173,15 @@ model TextbookResult {
 model Worksheet {
   id           String   @id @default(cuid())
   title        String
-  category     String   // '단원별' | '내신대비'
-  step         String   // '기초'|'기본'|'발전'|'최상위'|'최다빈출'|'최다오답'|'서술형'|'모의고사'
-  examSubType  String?  // 모의고사 세부: '실전모의고사'|'기출모의고사'|'직전대비모의고사'
-  grade        String   // '중1'|'중2' 등
+  category     String // '단원별' | '내신대비'
+  step         String // '기초'|'기본'|'발전'|'최상위'|'최다빈출'|'최다오답'|'서술형'|'모의고사'
+  examSubType  String? // 모의고사 세부: '실전모의고사'|'기출모의고사'|'직전대비모의고사'
+  grade        String // '중1'|'중2' 등
   unit         String   @default("종합")
   problemCount Int
   source       String   @default("manual") // 'mathflat'|'manual'
-  answersJson  String?  // JSON: ["①","15","2x+3","__img__",...] 문제별 정답 배열
-                        // "__img__" = 서술형 이미지 정답 → WorksheetAnswerImage에 저장됨
+  answersJson  String? // JSON: ["①","15","2x+3","__img__",...] 문제별 정답 배열
+  // "__img__" = 서술형 이미지 정답 → WorksheetAnswerImage에 저장됨
   teacherId    String
   teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
@@ -203,12 +205,12 @@ model AnswerImage {
   worksheet   Worksheet? @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
   textbookId  String?
   textbook    Textbook?  @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  problemNo   Int        // 1-based 문제 번호
+  problemNo   Int // 1-based 문제 번호
   mimeType    String     @default("image/webp")
-  storage     String     @default("db")   // 'db' | 'object'
-  data        String?    // storage='db'일 때 base64 본문
-  objectKey   String?    // storage='object'일 때 버킷 내 경로
-  bytes       Int        @default(0)      // 원본 바이트 수 (용량 집계용)
+  storage     String     @default("db") // 'db' | 'object'
+  data        String? // storage='db'일 때 base64 본문
+  objectKey   String? // storage='object'일 때 버킷 내 경로
+  bytes       Int        @default(0) // 원본 바이트 수 (용량 집계용)
   updatedAt   DateTime   @updatedAt
 
   @@unique([worksheetId, problemNo])
@@ -218,16 +220,16 @@ model AnswerImage {
 }
 
 model WorksheetDistribution {
-  id           String   @id @default(cuid())
-  worksheetId  String
-  worksheet    Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
-  studentId    String
-  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  status       DistributionStatus @default(distributed)
-  distributedAt DateTime @default(now())
-  hiddenAt     DateTime?   // 선생님 배포목록에서만 숨김. 학생앱·학습이력·집계에는 영향 없음
+  id            String             @id @default(cuid())
+  worksheetId   String
+  worksheet     Worksheet          @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status        DistributionStatus @default(distributed)
+  distributedAt DateTime           @default(now())
+  hiddenAt      DateTime? // 선생님 배포목록에서만 숨김. 학생앱·학습이력·집계에는 영향 없음
 
-  result       WorksheetResult?
+  result WorksheetResult?
 
   @@unique([worksheetId, studentId])
   @@index([studentId])
@@ -236,13 +238,13 @@ model WorksheetDistribution {
 }
 
 model WorksheetResult {
-  id               String   @id @default(cuid())
-  distributionId   String   @unique
-  distribution     WorksheetDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
-  correctProblems  Int
-  wrongProblemsJson String  @default("[]")  // JSON: 틀린 문제 번호 배열 [2, 5, 8]
-  gradedBy         String  @default("student")  // "student" | "teacher"
-  submittedAt      DateTime @default(now())
+  id                String                @id @default(cuid())
+  distributionId    String                @unique
+  distribution      WorksheetDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  correctProblems   Int
+  wrongProblemsJson String                @default("[]") // JSON: 틀린 문제 번호 배열 [2, 5, 8]
+  gradedBy          String                @default("student") // "student" | "teacher"
+  submittedAt       DateTime              @default(now())
 }
 
 enum DistributionStatus {
@@ -291,12 +293,13 @@ model RewardItem {
   name        String
   description String   @default("")
   emoji       String   @default("🎁")
-  type        String   @default("virtual")   // "virtual" | "physical"
-  rarity      String   @default("common")    // "common" | "rare" | "epic" | "legendary"
-  pointValue  Int      @default(0)           // 지급시 함께 부여할 포인트
+  type        String   @default("virtual") // "virtual" | "physical"
+  rarity      String   @default("common") // "common" | "rare" | "epic" | "legendary"
+  pointValue  Int      @default(0) // 지급시 함께 부여할 포인트
   createdAt   DateTime @default(now())
 
   grants StudentReward[]
+  rules  RewardRule[]
 
   @@index([teacherId])
 }
@@ -309,7 +312,7 @@ model StudentReward {
   itemId     String
   item       RewardItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   quantity   Int        @default(1)
-  status     String     @default("owned")    // "owned" | "redeemed"
+  status     String     @default("owned") // "owned" | "redeemed"
   reason     String     @default("")
   grantedAt  DateTime   @default(now())
   redeemedAt DateTime?
@@ -325,8 +328,46 @@ model PointTransaction {
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   amount    Int
   reason    String
-  type      String   @default("manual")  // "quest" | "exam" | "manual" | "redeem"
+  type      String   @default("manual") // "quest" | "exam" | "manual" | "redeem"
   createdAt DateTime @default(now())
 
+  @@index([studentId])
+}
+
+// ── 자동 보상 ────────────────────────────────────────────────────────────────
+// 학습지·교재 채점이 들어오면 정답률에 따라 자동으로 포인트/아이템을 준다.
+// 여러 규칙이 걸리면 기준 정답률이 가장 높은 것 하나만 적용한다(등급제).
+
+model RewardRule {
+  id        String  @id @default(cuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  enabled   Boolean     @default(true)
+  source    String      @default("any") // "worksheet" | "textbook" | "any"
+  minRate   Int         @default(80) // 이 정답률(%) 이상일 때 지급
+  points    Int         @default(0) // 지급 포인트
+  itemId    String? // 함께 줄 아이템 (없으면 포인트만)
+  item      RewardItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  label     String      @default("") // 지급 사유에 쓸 이름 (예: 만점 보상)
+  createdAt DateTime    @default(now())
+
+  @@index([teacherId])
+  @@index([itemId])
+}
+
+// 이미 자동 보상을 준 채점 건. 재채점해도 두 번 주지 않기 위한 기록이다.
+model AutoRewardLog {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sourceType String // "worksheet" | "textbook"
+  sourceId   String // 배포 id 또는 교재 id
+  ruleId     String
+  points     Int      @default(0)
+  itemId     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([sourceType, sourceId, studentId])
   @@index([studentId])
 }

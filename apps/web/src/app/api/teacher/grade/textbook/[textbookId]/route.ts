@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
+import { tryApplyAutoReward } from '@/lib/autoReward'
 
 // POST /api/teacher/grade/textbook/[textbookId]
 // body: { studentId, wrongProblems: number[] }
@@ -71,10 +72,19 @@ export async function POST(
     }),
   ])
 
+  const autoReward = await tryApplyAutoReward({
+    teacherId: teacher.id,
+    studentId,
+    sourceType: 'textbook',
+    sourceId: textbookId,
+    correctRate: Math.round(rate * 100),
+  })
+
   return NextResponse.json({
     correctProblems: correctCount,
     totalProblems,
     correctRate: Math.round(rate * 100),
+    autoReward,
     wrongProblems: validWrong,
     newAbility: {
       comprehension: updatedStudent.comprehension,

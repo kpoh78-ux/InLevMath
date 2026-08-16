@@ -28,6 +28,19 @@ const EMOJIS = ['🎁','🏆','⭐','🎖️','💎','🌟','🔥','👑','🎯'
 
 const ITEM_FORM_INIT = { name: '', description: '', emoji: '🎁', type: 'virtual', rarity: 'common', pointValue: 0 }
 
+/** 자동 보상 규칙 — 채점 정답률이 minRate 이상이면 지급 */
+type RewardRule = {
+  id: string; enabled: boolean; source: 'worksheet' | 'textbook' | 'any'
+  minRate: number; points: number; label: string; itemId: string | null
+  item: { id: string; name: string; emoji: string; pointValue: number } | null
+}
+
+const RULE_FORM_INIT = { source: 'any' as RewardRule['source'], minRate: '90', points: '10', label: '', itemId: '' }
+
+const SOURCE_LABEL: Record<RewardRule['source'], string> = {
+  any: '학습지 + 교재', worksheet: '학습지만', textbook: '교재만',
+}
+
 /** /api/students 응답에서 필요한 부분만 */
 type StudentRow = {
   id: string; grade: string; status?: string
@@ -81,7 +94,11 @@ function RewardsPageInner() {
   const [targetId, setTargetId]     = useState('')
   const [saving, setSaving]         = useState(false)
   // 학생 보관창고가 보상관리의 기본 화면이다
-  const [tab, setTab]               = useState<'students' | 'items'>('students')
+  const [tab, setTab]               = useState<'students' | 'items' | 'rules'>('students')
+  // 자동 보상 규칙
+  const [rules, setRules]           = useState<RewardRule[]>([])
+  const [ruleForm, setRuleForm]     = useState(RULE_FORM_INIT)
+  const [ruleError, setRuleError]   = useState('')
 
   const loadItems = useCallback(async () => {
     const res = await apiFetch('/api/rewards/items')
@@ -120,7 +137,12 @@ function RewardsPageInner() {
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, rewardPoints: d.rewardPoints } : s))
   }, [])
 
-  useEffect(() => { loadItems(); loadStudents() }, [loadItems, loadStudents])
+  const loadRules = useCallback(async () => {
+    const res = await apiFetch('/api/rewards/rules')
+    if (res.ok) setRules(await res.json())
+  }, [])
+
+  useEffect(() => { loadItems(); loadStudents(); loadRules() }, [loadItems, loadStudents, loadRules])
   useEffect(() => { if (navStudentId) loadInventory(navStudentId) }, [navStudentId, loadInventory])
 
   /** 보상 팝업을 연다. 대상은 보고 있던 학생으로 채우되 팝업에서 바꿀 수 있다 */
@@ -185,6 +207,44 @@ function RewardsPageInner() {
     loadInventory(selectedStudent.id)
   }
 
+  // ── 자동 보상 규칙 ──
+  const handleAddRule = async () => {
+    setRuleError('')
+    const points = parseInt(ruleForm.points) || 0
+    if (points <= 0 && !ruleForm.itemId) {
+      setRuleError('지급할 포인트나 아이템 중 하나는 정해주세요.'); return
+    }
+    setSaving(true)
+    const res = await apiFetch('/api/rewards/rules', {
+      method: 'POST',
+      body: JSON.stringify({
+        source: ruleForm.source,
+        minRate: parseInt(ruleForm.minRate) || 0,
+        points, label: ruleForm.label, itemId: ruleForm.itemId || null,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string }
+      setRuleError(d.error || '규칙을 추가하지 못했습니다.'); return
+    }
+    setRuleForm(RULE_FORM_INIT)
+    loadRules()
+  }
+
+  const toggleRule = async (r: RewardRule) => {
+    await apiFetch('/api/rewards/rules', {
+      method: 'PATCH', body: JSON.stringify({ id: r.id, enabled: !r.enabled }),
+    })
+    loadRules()
+  }
+
+  const deleteRule = async (r: RewardRule) => {
+    if (!confirm('이 규칙을 삭제할까요?')) return
+    await apiFetch('/api/rewards/rules', { method: 'DELETE', body: JSON.stringify({ id: r.id }) })
+    loadRules()
+  }
+
   const rs = (r: string) => RARITY_STYLE[r] ?? RARITY_STYLE.common
 
   return (
@@ -193,10 +253,10 @@ function RewardsPageInner() {
         <h1 className="text-xl font-bold text-gray-900">보상 관리</h1>
         <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
           {/* 학생 보관창고가 기본 화면이라 왼쪽에 둔다 */}
-          {(['students','items'] as const).map(t => (
+          {(['students','items','rules'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 font-medium transition-colors ${tab===t ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
-              {t === 'students' ? '👥 학생 보관창고' : '🎁 아이템 관리'}
+              {t === 'students' ? '👥 학생 보관창고' : t === 'items' ? '🎁 아이템 관리' : '⚙️ 자동 보상 설정'}
             </button>
           ))}
         </div>
@@ -440,6 +500,131 @@ function RewardsPageInner() {
                 )}
               </>
           )}
+        </div>
+      )}
+
+      {/* ── 자동 보상 설정 탭 ── */}
+      {tab === 'rules' && (
+        <div className="space-y-4">
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-xs text-indigo-800 leading-relaxed">
+            학습지·교재 채점이 들어오면 <strong>정답률에 따라 자동으로 보상</strong>이 나갑니다.
+            선생님이 채점한 경우와 학생이 직접 채점한 경우 모두 적용됩니다.
+            <div className="mt-1.5 text-indigo-700/80">
+              · 여러 규칙이 걸리면 <strong>기준 정답률이 가장 높은 규칙 하나만</strong> 지급합니다 (등급제).<br />
+              · 같은 채점 건은 한 번만 지급합니다. 다시 채점해도 중복 지급되지 않습니다.<br />
+              · 아이템에 포인트 값이 설정돼 있으면 규칙 포인트와 <strong>합산</strong>되어 지급됩니다.
+            </div>
+          </div>
+
+          {/* 규칙 추가 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <p className="text-sm font-bold text-gray-800">규칙 추가</p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">적용 대상</label>
+                <select value={ruleForm.source}
+                  onChange={e => setRuleForm(f => ({ ...f, source: e.target.value as RewardRule['source'] }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {(['any','worksheet','textbook'] as const).map(v => (
+                    <option key={v} value={v}>{SOURCE_LABEL[v]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">정답률 기준</label>
+                <div className="flex items-center gap-1">
+                  <input type="number" min={0} max={100} value={ruleForm.minRate}
+                    onChange={e => setRuleForm(f => ({ ...f, minRate: e.target.value }))}
+                    className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <span className="text-sm text-gray-500">% 이상</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">지급 포인트</label>
+                <input type="number" min={0} value={ruleForm.points}
+                  onChange={e => setRuleForm(f => ({ ...f, points: e.target.value }))}
+                  className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">함께 줄 아이템</label>
+                <select value={ruleForm.itemId}
+                  onChange={e => setRuleForm(f => ({ ...f, itemId: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm max-w-48">
+                  <option value="">없음 (포인트만)</option>
+                  {items.map(i => (
+                    <option key={i.id} value={i.id}>{i.emoji} {i.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 min-w-40">
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  이름 <span className="text-gray-400 font-normal">(지급 사유에 표시)</span>
+                </label>
+                <input type="text" value={ruleForm.label} maxLength={40}
+                  onChange={e => setRuleForm(f => ({ ...f, label: e.target.value }))}
+                  placeholder="예) 만점 보상"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <button onClick={handleAddRule} disabled={saving}
+                className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap">
+                {saving ? '추가 중...' : '+ 추가'}
+              </button>
+            </div>
+            {ruleError && <p className="text-xs text-red-600">{ruleError}</p>}
+          </div>
+
+          {/* 규칙 목록 */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+              <p className="text-xs font-bold text-gray-500">등록된 규칙 {rules.length}개</p>
+              <span className="text-[11px] text-gray-400">— 위에 있을수록 먼저 적용됩니다</span>
+            </div>
+            {rules.length === 0 ? (
+              <div className="py-14 text-center text-gray-400 text-sm">
+                등록된 규칙이 없습니다. 위에서 추가하면 채점 시 자동으로 보상이 나갑니다.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {rules.map(r => (
+                  <div key={r.id}
+                    className={`flex items-center gap-4 px-5 py-3 ${r.enabled ? '' : 'bg-gray-50/70'}`}>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-lg shrink-0 ${
+                      r.enabled ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {r.minRate}% 이상
+                    </span>
+                    <span className="text-xs text-gray-500 shrink-0 w-24">{SOURCE_LABEL[r.source]}</span>
+                    <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                      {r.points > 0 && (
+                        <span className="text-sm font-bold text-amber-600">+{r.points}P</span>
+                      )}
+                      {r.item && (
+                        <span className="text-sm text-gray-700">
+                          {r.item.emoji} {r.item.name}
+                          {r.item.pointValue > 0 && (
+                            <span className="text-xs text-amber-600 ml-1">(+{r.item.pointValue}P)</span>
+                          )}
+                        </span>
+                      )}
+                      {r.label && <span className="text-xs text-gray-400">· {r.label}</span>}
+                    </div>
+                    <button onClick={() => toggleRule(r)}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded border transition-colors shrink-0 whitespace-nowrap ${
+                        r.enabled
+                          ? 'border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                          : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+                      }`}>
+                      {r.enabled ? '켜짐' : '꺼짐'}
+                    </button>
+                    <button onClick={() => deleteRule(r)}
+                      className="text-xs text-gray-400 hover:text-rose-600 shrink-0">
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { STEP_ABILITY_WEIGHT, WorksheetStep } from '@inlevmath/shared'
 import { academyTeacher } from '@/lib/academy'
+import { tryApplyAutoReward } from '@/lib/autoReward'
 
 // POST /api/teacher/grade/[distributionId] — 선생님이 학생 학습지를 O/X 채점
 export async function POST(
@@ -67,10 +68,20 @@ export async function POST(
     }),
   ])
 
+  // 정답률에 따른 자동 보상 (규칙이 없으면 아무 일도 없다)
+  const autoReward = await tryApplyAutoReward({
+    teacherId: teacher.id,
+    studentId: dist.student.id,
+    sourceType: 'worksheet',
+    sourceId: distributionId,
+    correctRate: Math.round(rate * 100),
+  })
+
   return NextResponse.json({
     correctProblems: result.correctProblems,
     totalProblems: total,
     correctRate: Math.round(rate * 100),
+    autoReward,
     wrongProblems: JSON.parse(result.wrongProblemsJson),
     abilityDelta: { comprehension: dComp, reasoning: dReas, calculation: dCalc },
     newAbility: {

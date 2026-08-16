@@ -192,6 +192,9 @@ const clean = (v: unknown, max = 40) =>
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩'
 function normalizeChoice(answer: string): string {
   const t = answer.trim()
+  // 빈 값을 그냥 두면 아래 indexOf('') 가 0을 돌려줘 '1' 이 된다.
+  // AI가 못 읽은 문항이 정답 1번으로 저장돼 정답지가 틀어진다.
+  if (t === '') return ''
   const idx = CIRCLED.indexOf(t)
   if (idx >= 0) return String(idx + 1)
   // "3번", "(3)", "3." 처럼 적힌 경우도 숫자만 남긴다

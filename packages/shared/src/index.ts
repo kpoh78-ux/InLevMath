@@ -205,6 +205,94 @@ export const MISSION_CLEAR_THRESHOLD: Record<MissionType, number> = {
   top_problem: 85,
 }
 
+// ── 학생 답안 채점 ──────────────────────────────────────────────────────────
+//
+// 학생이 OMR·수식 키패드로 넣은 답을 저장된 정답과 맞춰 1차 채점한다.
+// 사람이 보기엔 같은 답인데 표기가 달라 오답이 되는 일이 없도록 표기를 통일한다.
+// 그래도 애매한 단답형은 pending 으로 남겨 선생님이 최종 판단한다.
+
+export type ProblemAnswerType = 'multiple' | 'short'
+
+const CIRCLED_DIGITS = '①②③④⑤⑥⑦⑧⑨⑩'
+
+/** 학습지 정답에는 유형 정보가 없어 정답 모양으로 객관식/단답형을 가른다 */
+export function inferAnswerType(answer: string): ProblemAnswerType {
+  const t = (answer ?? '').trim()
+  if (CIRCLED_DIGITS.includes(t)) return 'multiple'
+  return /^[1-5]$/.test(t) ? 'multiple' : 'short'
+}
+
+/** 비교용 표기 통일 — 공백·단위·동그라미 숫자를 정리한다 */
+export function normalizeForCompare(value: string): string {
+  let t = (value ?? '').normalize('NFKC').trim()
+
+  // ①②③ → 1,2,3
+  const circled = CIRCLED_DIGITS.indexOf(t)
+  if (circled >= 0) return String(circled + 1)
+
+  t = t.toLowerCase()
+  t = t.replace(/\s+/g, '')            // 모든 공백 제거
+  t = t.replace(/[,]/g, '')             // 1,000 → 1000
+  // 학생에게 단위를 빼고 쓰라고 안내하지만 붙여 쓰는 경우가 있어 뒤쪽 단위를 떼어낸다
+  t = t.replace(/(cm2|cm3|m2|m3|cm|mm|km|kg|g|ml|l|개|명|원|점|초|분|시간|도|배|쪽|권|자루)$/u, '')
+  t = t.replace(/[.]$/, '')             // 끝의 마침표
+  return t
+}
+
+/**
+ * 학생 답이 정답과 같은지.
+ * 판정할 수 없으면 null 을 돌려준다 (정답이 비어 있거나 이미지인 경우).
+ */
+export function answersMatch(
+  studentAnswer: string,
+  correctAnswer: string
+): boolean | null {
+  const correct = (correctAnswer ?? '').trim()
+  if (correct === '' || correct === IMAGE_ANSWER_MARKER) return null
+
+  const a = normalizeForCompare(studentAnswer)
+  const b = normalizeForCompare(correct)
+  if (a === '') return false
+  if (a === b) return true
+
+  // 12 와 12.0 처럼 값은 같고 표기만 다른 경우
+  const na = Number(a), nb = Number(b)
+  if (Number.isFinite(na) && Number.isFinite(nb) && na === nb) return true
+
+  // "x=5" 와 "5" — 좌변이 같은 미지수면 값만 비교한다
+  const strip = (v: string) => /^[a-z]=(.+)$/.exec(v)?.[1] ?? v
+  return strip(a) === strip(b)
+}
+
+/** 정답 이미지 자리표시자 — apps/web 의 lib/answers.ts 와 같은 값이어야 한다 */
+export const IMAGE_ANSWER_MARKER = '__img__'
+
+export type AutoGradeResult = {
+  /** 맞은 문제 번호 (1-based) */
+  correct: number[]
+  /** 틀린 문제 번호 */
+  wrong: number[]
+  /** 자동으로 판정하지 못해 선생님 확인이 필요한 문제 번호 */
+  pending: number[]
+}
+
+/** 학생 답안 배열과 정답 배열을 맞춰 1차 채점한다 */
+export function autoGrade(
+  studentAnswers: string[],
+  correctAnswers: string[],
+  total: number
+): AutoGradeResult {
+  const result: AutoGradeResult = { correct: [], wrong: [], pending: [] }
+  for (let i = 0; i < total; i++) {
+    const verdict = answersMatch(studentAnswers[i] ?? '', correctAnswers[i] ?? '')
+    const no = i + 1
+    if (verdict === null) result.pending.push(no)
+    else if (verdict) result.correct.push(no)
+    else result.wrong.push(no)
+  }
+  return result
+}
+
 // ── 학습 결과 입력 ───────────────────────────────────────────────────────────
 export type ResultSource = 'mathflat' | 'manual'  // 매쓰플랫 자동 or 수동 입력
 

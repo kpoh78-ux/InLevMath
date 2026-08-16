@@ -253,6 +253,11 @@ model WorksheetResult {
   wrongProblemsJson String                @default("[]") // JSON: 틀린 문제 번호 배열 [2, 5, 8]
   gradedBy          String                @default("student") // "student" | "teacher"
   submittedAt       DateTime              @default(now())
+
+  // 학생이 OMR·수식 키패드로 낸 답 (JSON 문자열 배열, 1번부터 순서대로)
+  studentAnswersJson  String @default("[]")
+  // 자동 채점이 판정하지 못한 문제 번호. 선생님이 최종 판단한다 (이미지 정답 등)
+  pendingProblemsJson String @default("[]")
 }
 
 enum DistributionStatus {

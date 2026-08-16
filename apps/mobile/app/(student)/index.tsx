@@ -158,14 +158,9 @@ export default function StudentDashboard() {
                   if (isDone) return
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   ;(router.push as any)({
-                    pathname: '/(student)/worksheet-grade',
-                    params: {
-                      distributionId: ws.distributionId,
-                      title: ws.title,
-                      step: ws.step,
-                      examSubType: ws.examSubType ?? '',
-                      total: ws.totalProblems,
-                    },
+                    // 답안(OMR) 입력 화면. 제출하면 서버가 정답과 맞춰 채점한다
+                    pathname: '/(student)/worksheet-omr',
+                    params: { distributionId: ws.distributionId },
                   })
                 }}
                 activeOpacity={isDone ? 1 : 0.75}

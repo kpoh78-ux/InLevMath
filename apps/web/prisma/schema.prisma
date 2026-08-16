@@ -80,8 +80,18 @@ model Student {
   email     String @default("") // 학생 이메일
   memo      String @default("") // 특이사항 메모
 
+  // 레벨(Lv.1~9)과 칭호는 평균 정답률에서 계산된다. lib/studentLevel.ts 참고
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
+
+  // 평균 정답률(%) — 채점 기록이 없으면 null (칭호 '수학 입문자')
+  avgCorrectRate  Float?
+  // 학년·학기·교재 과정이 바뀌기 직전까지의 평균. 새 과정에서 30%만 반영한다
+  carryRate       Float?
+  // 현재 과정이 시작된 시각. 이 이후 채점만 이번 과정 평균에 들어간다
+  courseStartedAt DateTime?
+  // 과정 식별자 (학생 학년). 이 값이 바뀌면 과정 전환으로 본다
+  courseKey       String    @default("")
 
   comprehension Float @default(0)
   reasoning     Float @default(0)

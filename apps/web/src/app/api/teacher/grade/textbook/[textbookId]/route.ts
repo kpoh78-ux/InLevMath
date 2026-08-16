@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
 import { tryApplyAutoReward } from '@/lib/autoReward'
+import { tryRecalcStudentLevel } from '@/lib/studentLevel'
 
 // POST /api/teacher/grade/textbook/[textbookId]
 // body: { studentId, wrongProblems: number[] }
@@ -72,6 +73,9 @@ export async function POST(
     }),
   ])
 
+  // 평균 정답률이 바뀌었으니 레벨·칭호를 다시 계산한다
+  const level = await tryRecalcStudentLevel(studentId)
+
   const autoReward = await tryApplyAutoReward({
     teacherId: teacher.id,
     studentId,
@@ -85,6 +89,7 @@ export async function POST(
     totalProblems,
     correctRate: Math.round(rate * 100),
     autoReward,
+    level,
     wrongProblems: validWrong,
     newAbility: {
       comprehension: updatedStudent.comprehension,

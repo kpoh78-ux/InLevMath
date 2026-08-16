@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { STEP_ABILITY_WEIGHT, STEP_CLEAR_THRESHOLD, WorksheetStep } from '@inlevmath/shared'
 import { tryApplyAutoReward } from '@/lib/autoReward'
+import { tryRecalcStudentLevel } from '@/lib/studentLevel'
 
 // POST /api/student/worksheets/[distributionId]/grade — 채점 제출 + 능력치 반영
 export async function POST(
@@ -62,6 +63,9 @@ export async function POST(
   const cleared = correctRate >= STEP_CLEAR_THRESHOLD[step]
 
   // 학생 데이터의 teacherId 는 학원 대표 계정을 가리킨다 (lib/academy.ts)
+  // 평균 정답률이 바뀌었으니 레벨·칭호를 다시 계산한다
+  const level = await tryRecalcStudentLevel(student.id)
+
   const autoReward = await tryApplyAutoReward({
     teacherId: student.teacherId,
     studentId: student.id,
@@ -76,6 +80,7 @@ export async function POST(
     correctRate,
     cleared,
     autoReward,
+    level,
     abilityDelta: { comprehension: dComp, reasoning: dReas, calculation: dCalc },
     newAbility: {
       comprehension: updatedStudent.comprehension,

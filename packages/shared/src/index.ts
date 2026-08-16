@@ -62,6 +62,75 @@ export const MISSION_LEVEL: Record<MissionType, number> = {
   top_problem: 5,
 }
 
+// ── 레벨·칭호 (평균 정답률 기반) ────────────────────────────────────────────
+//
+// 레벨은 학생이 지금까지 푼 문제의 평균 정답률 하나로 정해진다.
+// 채점 기록이 아직 없으면 레벨을 매길 수 없으므로 '수학 입문자'로 시작한다.
+//
+// 학년·학기·교재 과정이 바뀌면 평균을 완전히 지우지 않고
+// 직전 과정 평균을 30%만 남기고 새 과정 채점 결과를 70% 반영한다.
+// (COURSE_CARRY_WEIGHT / COURSE_NEW_WEIGHT)
+
+export type LevelTier = {
+  level: number      // Lv.1 ~ Lv.9
+  grade: number      // 9등급 ~ 1등급 (레벨이 높을수록 등급 숫자는 작다)
+  title: string
+  minRate: number    // 이 정답률(%) 이상
+}
+
+/** 레벨이 높은 것부터 — 정답률로 찾을 때 위에서부터 보면 된다 */
+export const LEVEL_TIERS: LevelTier[] = [
+  { level: 9, grade: 1, title: '프라임 마스터', minRate: 96 },
+  { level: 8, grade: 2, title: '그랜드 마스터', minRate: 92 },
+  { level: 7, grade: 3, title: '마스터',       minRate: 88 },
+  { level: 6, grade: 4, title: '엘리트',       minRate: 82 },
+  { level: 5, grade: 5, title: '어드밴스',     minRate: 76 },
+  { level: 4, grade: 6, title: '스텐다드',     minRate: 70 },
+  { level: 3, grade: 7, title: '트레이니',     minRate: 60 },
+  { level: 2, grade: 8, title: '루키',         minRate: 40 },
+  { level: 1, grade: 9, title: '비긴너',       minRate: 0 },
+]
+
+/** 채점 기록이 없을 때 쓰는 칭호 */
+export const START_TITLE = '수학 입문자'
+
+/** 과정이 바뀔 때 직전 평균을 남기는 비중 */
+export const COURSE_CARRY_WEIGHT = 0.3
+/** 새 과정 채점 결과를 반영하는 비중 */
+export const COURSE_NEW_WEIGHT = 0.7
+
+/** 평균 정답률(%) → 레벨 단계. 기록이 없으면(null) 입문자 단계 */
+export function levelTierOf(avgRate: number | null | undefined): LevelTier | null {
+  if (avgRate === null || avgRate === undefined || Number.isNaN(avgRate)) return null
+  return LEVEL_TIERS.find(t => avgRate >= t.minRate) ?? LEVEL_TIERS[LEVEL_TIERS.length - 1]
+}
+
+/** 화면에 쓸 레벨/등급/칭호 한 벌 */
+export function levelInfoOf(avgRate: number | null | undefined) {
+  const tier = levelTierOf(avgRate)
+  return {
+    level: tier?.level ?? 1,
+    grade: tier?.grade ?? 9,
+    title: tier?.title ?? START_TITLE,
+    /** 아직 채점 기록이 없어 레벨을 매기지 못한 상태 */
+    unranked: tier === null,
+  }
+}
+
+/**
+ * 과정이 바뀐 뒤의 평균 정답률.
+ * @param carryRate 직전 과정까지의 평균 (없으면 null)
+ * @param courseRate 이번 과정의 평균 (채점 기록이 없으면 null)
+ */
+export function blendedRate(
+  carryRate: number | null,
+  courseRate: number | null
+): number | null {
+  if (courseRate === null) return carryRate
+  if (carryRate === null) return courseRate
+  return carryRate * COURSE_CARRY_WEIGHT + courseRate * COURSE_NEW_WEIGHT
+}
+
 // ── 능력치 ──────────────────────────────────────────────────────────────────
 export interface AbilityScore {
   comprehension: number  // 이해력 (0~100)

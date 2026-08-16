@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // 미션 클리어 판정 및 레벨업
+  // 미션 클리어 판정 — 다음 미션으로 넘어간다.
+  // 레벨(Lv.1~9)은 평균 정답률에서만 나오므로 여기서 올리지 않는다.
+  // 예전처럼 미션 클리어마다 +1 하면 정답률로 계산한 레벨과 서로 덮어쓴다.
   let missionCleared = false
   const threshold = MISSION_CLEAR_THRESHOLD[missionType as MissionType]
   if (rate >= threshold) {
@@ -65,10 +67,7 @@ export async function POST(req: NextRequest) {
       missionCleared = true
       await prisma.student.update({
         where: { id: student.id },
-        data: {
-          currentMission: nextMission as MissionType,
-          currentLevel: { increment: 1 },
-        },
+        data: { currentMission: nextMission as MissionType },
       })
     }
   }

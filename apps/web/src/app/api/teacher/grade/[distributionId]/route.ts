@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { STEP_ABILITY_WEIGHT, WorksheetStep } from '@inlevmath/shared'
 import { academyTeacher } from '@/lib/academy'
 import { tryApplyAutoReward } from '@/lib/autoReward'
+import { tryRecalcStudentLevel } from '@/lib/studentLevel'
 
 // POST /api/teacher/grade/[distributionId] — 선생님이 학생 학습지를 O/X 채점
 export async function POST(
@@ -69,6 +70,9 @@ export async function POST(
   ])
 
   // 정답률에 따른 자동 보상 (규칙이 없으면 아무 일도 없다)
+  // 평균 정답률이 바뀌었으니 레벨·칭호를 다시 계산한다
+  const level = await tryRecalcStudentLevel(dist.student.id)
+
   const autoReward = await tryApplyAutoReward({
     teacherId: teacher.id,
     studentId: dist.student.id,
@@ -82,6 +86,7 @@ export async function POST(
     totalProblems: total,
     correctRate: Math.round(rate * 100),
     autoReward,
+    level,
     wrongProblems: JSON.parse(result.wrongProblemsJson),
     abilityDelta: { comprehension: dComp, reasoning: dReas, calculation: dCalc },
     newAbility: {

@@ -4,26 +4,24 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
-import { MISSION_LABELS, MissionType } from '@inlevmath/shared'
+import { MISSION_LABELS, MissionType, levelInfoOf } from '@inlevmath/shared'
 
-// ── 레벨별 칭호 ──────────────────────────────────────────────────
-function getTitle(level: number): string {
-  if (level <= 1)  return '수학 입문자'
-  if (level <= 3)  return '수학 탐험가'
-  if (level <= 5)  return '수학 전사'
-  if (level <= 7)  return '수학 마법사'
-  if (level <= 10) return '수학 영웅'
-  if (level <= 15) return '수학 마스터'
-  return '수학 전설'
-}
+// ── 레벨별 색 (Lv.1 → Lv.9) ─────────────────────────────────────
+// 칭호와 등급표는 packages/shared 의 LEVEL_TIERS 하나로 관리한다.
+const LEVEL_COLORS = [
+  '#94a3b8', // Lv.1 비긴너
+  '#6ee7b7', // Lv.2 루키
+  '#34d399', // Lv.3 트레이니
+  '#60a5fa', // Lv.4 스텐다드
+  '#818cf8', // Lv.5 어드밴스
+  '#c084fc', // Lv.6 엘리트
+  '#f472b6', // Lv.7 마스터
+  '#f97316', // Lv.8 그랜드 마스터
+  '#fbbf24', // Lv.9 프라임 마스터
+]
 
-function getLevelColor(level: number): string {
-  if (level <= 3)  return '#6ee7b7'
-  if (level <= 5)  return '#60a5fa'
-  if (level <= 7)  return '#c084fc'
-  if (level <= 10) return '#f97316'
-  return '#fbbf24'
-}
+const getLevelColor = (level: number) =>
+  LEVEL_COLORS[Math.min(Math.max(level, 1), 9) - 1]
 
 const MISSION_COLOR: Record<string, string> = {
   concept_learning: '#6ee7b7',
@@ -37,6 +35,7 @@ type Stats = {
   student: {
     id: string; name: string; grade: string
     currentLevel: number; currentMission: string
+    levelRate: number | null; carryRate: number | null; courseKey: string
     comprehension: number; reasoning: number; calculation: number
   }
   summary: {
@@ -171,8 +170,10 @@ export default function StudentDetailPage() {
   const xpRate  = Math.min(종합수학능력, 100)
   const missionLabel = MISSION_LABELS[student.currentMission as MissionType] ?? student.currentMission
   const missionColor = MISSION_COLOR[student.currentMission] ?? '#94a3b8'
-  const levelColor   = getLevelColor(student.currentLevel)
-  const title        = getTitle(student.currentLevel)
+  // 레벨·칭호는 평균 정답률에서 나온다. 채점 기록이 없으면 '수학 입문자'
+  const levelInfo    = levelInfoOf(student.levelRate)
+  const levelColor   = getLevelColor(levelInfo.level)
+  const title        = levelInfo.title
   const noActivity   = summary.totalProblems === 0
 
   // 분배가능 포인트 = 레벨업마다 3포인트씩 누적 (임시 규칙)
@@ -229,7 +230,12 @@ export default function StudentDetailPage() {
           <div className="flex gap-2 justify-end">
             <span style={{ color: '#a0c4e8' }}>레벨 :</span>
             <span className="font-black" style={{ color: levelColor, textShadow: `0 0 8px ${levelColor}` }}>
-              {student.currentLevel}
+              {levelInfo.unranked ? '-' : `${levelInfo.level}`}
+              {!levelInfo.unranked && (
+                <span className="ml-1.5 text-[11px] font-bold" style={{ color: '#a0c4e8', textShadow: 'none' }}>
+                  {levelInfo.grade}등급
+                </span>
+              )}
             </span>
           </div>
           <div className="flex gap-2">
@@ -240,9 +246,18 @@ export default function StudentDetailPage() {
             <span style={{ color: '#a0c4e8' }}>피로도 :</span>
             <span className="font-bold" style={{ color: '#6ee7b7' }}>0</span>
           </div>
-          <div className="col-span-2 flex gap-2">
+          <div className="col-span-2 flex gap-2 items-center">
             <span style={{ color: '#a0c4e8' }}>칭호 :</span>
             <span className="font-bold" style={{ color: '#fbbf24' }}>「{title}」</span>
+            {/* 레벨을 정한 근거 — 과정이 바뀌면 직전 평균이 30%만 남는다 */}
+            {!levelInfo.unranked && (
+              <span className="text-[11px] ml-auto" style={{ color: '#a0c4e8' }}>
+                평균 정답률 {student.levelRate?.toFixed(1)}%
+                {student.carryRate !== null && (
+                  <span className="ml-1 opacity-70">(직전 과정 {student.carryRate.toFixed(1)}% 30% 반영)</span>
+                )}
+              </span>
+            )}
           </div>
           <div className="col-span-2 flex gap-2">
             <span style={{ color: '#a0c4e8' }}>현재 미션 :</span>

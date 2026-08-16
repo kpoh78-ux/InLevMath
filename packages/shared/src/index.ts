@@ -65,7 +65,7 @@ export const MISSION_LEVEL: Record<MissionType, number> = {
 // ── 레벨·칭호 (평균 정답률 기반) ────────────────────────────────────────────
 //
 // 레벨은 학생이 지금까지 푼 문제의 평균 정답률 하나로 정해진다.
-// 채점 기록이 아직 없으면 레벨을 매길 수 없으므로 '수학 입문자'로 시작한다.
+// 채점 기록이 아직 없으면 맨 아래 단계인 Lv.1 비긴너에서 시작한다.
 //
 // 최근 학습에 무게를 둔다.
 //   70% — 지금 진도를 나가는 교재 + 최근 90일 안에 푼 학습지
@@ -92,8 +92,8 @@ export const LEVEL_TIERS: LevelTier[] = [
   { level: 1, grade: 9, title: '비긴너',       minRate: 0 },
 ]
 
-/** 채점 기록이 없을 때 쓰는 칭호 */
-export const START_TITLE = '수학 입문자'
+/** 채점 기록이 없는 학생도 Lv.1 비긴너에서 시작한다 */
+export const START_LEVEL = 1
 
 /** 지난 과정(끝낸 교재 + 오래된 학습지) 반영 비중 */
 export const PAST_WEIGHT = 0.3
@@ -139,7 +139,12 @@ export function levelInfoOf(
 ) {
   const tier = levelTierOf(avgRate)
   if (!tier) {
-    return { level: 1, grade: 9, title: START_TITLE, unranked: true, capped: false, capLevel: 9 }
+    // 아직 채점 기록이 없다 — 맨 아래 단계(비긴너)에서 시작한다
+    const start = LEVEL_TIERS.find(t => t.level === START_LEVEL) ?? LEVEL_TIERS[LEVEL_TIERS.length - 1]
+    return {
+      level: start.level, grade: start.grade, title: start.title,
+      unranked: true, capped: false, capLevel: levelCapFor(totalProblems),
+    }
   }
 
   const capLevel = levelCapFor(totalProblems)

@@ -237,12 +237,10 @@ export default function StudentDetailPage() {
           <div className="flex gap-2 justify-end">
             <span style={{ color: '#a0c4e8' }}>레벨 :</span>
             <span className="font-black" style={{ color: levelColor, textShadow: `0 0 8px ${levelColor}` }}>
-              {levelInfo.unranked ? '-' : `${levelInfo.level}`}
-              {!levelInfo.unranked && (
-                <span className="ml-1.5 text-[11px] font-bold" style={{ color: '#a0c4e8', textShadow: 'none' }}>
-                  {levelInfo.grade}등급
-                </span>
-              )}
+              {levelInfo.level}
+              <span className="ml-1.5 text-[11px] font-bold" style={{ color: '#a0c4e8', textShadow: 'none' }}>
+                {levelInfo.grade}등급
+              </span>
             </span>
           </div>
           <div className="flex gap-2">
@@ -256,8 +254,12 @@ export default function StudentDetailPage() {
           <div className="col-span-2 flex gap-2 items-center">
             <span style={{ color: '#a0c4e8' }}>칭호 :</span>
             <span className="font-bold" style={{ color: '#fbbf24' }}>「{title}」</span>
-            {/* 레벨을 정한 근거 — 과정이 바뀌면 직전 평균이 30%만 남는다 */}
-            {!levelInfo.unranked && (
+            {/* 레벨을 정한 근거 */}
+            {levelInfo.unranked ? (
+              <span className="text-[11px] ml-auto opacity-70" style={{ color: '#a0c4e8' }}>
+                채점 기록이 없습니다
+              </span>
+            ) : (
               <span className="text-[11px] ml-auto text-right" style={{ color: '#a0c4e8' }}>
                 평균 정답률 {student.levelRate?.toFixed(1)}%
                 <span className="ml-1 opacity-70">(최근 70% + 지난 과정 30%)</span>

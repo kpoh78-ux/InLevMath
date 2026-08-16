@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 
 const RARITY_STYLE: Record<string, { border: string; bg: string; label: string; glow: string }> = {
@@ -40,11 +40,16 @@ const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','�
 function RewardsPageInner() {
   // 상단 메뉴에서 고른 학생을 그대로 이어받는다 (?student=)
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const navStudentId = searchParams.get('student')
 
   const [items, setItems]           = useState<RewardItem[]>([])
   const [students, setStudents]     = useState<Student[]>([])
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  // 선택은 id 만 들고, 표시할 학생은 목록에서 찾아 쓴다.
+  // 학생 객체를 따로 복사해 두면 포인트가 바뀔 때 목록과 헤더가 어긋난다.
+  const [selectedId, setSelectedId]  = useState<string | null>(null)
+  const selectedStudent = students.find(s => s.id === selectedId) ?? null
   const [inventory, setInventory]   = useState<InventoryEntry[]>([])
   const [pointHistory, setPointHistory] = useState<{ id:string;amount:number;reason:string;type:string;createdAt:string }[]>([])
   const [showItemForm, setShowItemForm] = useState(false)
@@ -86,33 +91,47 @@ function RewardsPageInner() {
 
   const loadInventory = useCallback(async (studentId: string) => {
     const res = await apiFetch(`/api/rewards/students/${studentId}/inventory`)
-    if (res.ok) {
-      const d = await res.json()
-      setInventory(d.rewards ?? [])
-      setPointHistory(d.pointHistory ?? [])
-      // 포인트 갱신
-      setStudents(prev => prev.map(s => s.id === studentId ? { ...s, rewardPoints: d.rewardPoints } : s))
-      if (selectedStudent?.id === studentId) {
-        setSelectedStudent(prev => prev ? { ...prev, rewardPoints: d.rewardPoints } : prev)
-      }
-    }
-  }, [selectedStudent?.id])
+    if (!res.ok) return
+    const d = await res.json()
+    setInventory(d.rewards ?? [])
+    setPointHistory(d.pointHistory ?? [])
+    // 목록만 갱신하면 헤더는 목록에서 찾아 쓰므로 함께 최신이 된다
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, rewardPoints: d.rewardPoints } : s))
+  }, [])
 
   useEffect(() => { loadItems(); loadStudents() }, [loadItems, loadStudents])
-  useEffect(() => { if (selectedStudent) loadInventory(selectedStudent.id) }, [selectedStudent, loadInventory])
+  useEffect(() => { if (selectedId) loadInventory(selectedId) }, [selectedId, loadInventory])
 
-  // 좌측 사이드바(?student=)에서 고른 학생을 보관창고에 그대로 띄운다.
-  // 사이드바 선택이 없으면 첫 학생을 열어 빈 화면으로 시작하지 않게 한다.
+  /**
+   * 학생 선택은 URL(?student=)을 단일 기준으로 삼는다.
+   *
+   * 가운데 목록도 상태를 직접 바꾸지 않고 URL만 바꾼다.
+   * 양쪽에서 각자 상태를 건드리면 아래 동기화 effect가 URL 쪽 학생으로 되돌려
+   * 목록을 눌러도 화면이 안 바뀌는 문제가 생긴다.
+   */
+  const pickStudent = (id: string) => {
+    setTab('students')
+    if (id === navStudentId) { setSelectedId(id); return }
+    router.replace(`${pathname}?student=${id}`, { scroll: false })
+  }
+
+  // URL의 학생을 화면에 반영한다. 이미 그 학생이면 아무것도 하지 않으므로
+  // 포인트 갱신 등으로 목록이 새로 만들어져도 선택이 흔들리지 않는다.
   useEffect(() => {
     if (students.length === 0) return
-    const target = navStudentId
-      ? students.find(s => s.id === navStudentId)
-      : (selectedStudent ? students.find(s => s.id === selectedStudent.id) : students[0])
-    if (target && target.id !== selectedStudent?.id) {
-      setSelectedStudent(target)
-      setTab('students')
+
+    if (navStudentId) {
+      const target = students.find(s => s.id === navStudentId)
+      if (target && target.id !== selectedId) {
+        setSelectedId(target.id)
+        setTab('students')
+      }
+      return
     }
-  }, [navStudentId, students, selectedStudent])
+
+    // 사이드바 선택이 없으면 첫 학생을 열어 빈 화면으로 시작하지 않게 한다
+    if (!selectedId) setSelectedId(students[0].id)
+  }, [navStudentId, students, selectedId])
 
   // 아이템 생성
   const handleCreateItem = async () => {
@@ -306,7 +325,7 @@ function RewardsPageInner() {
               <p className="text-xs font-bold text-gray-500">학생 선택</p>
             </div>
             {students.map(s => (
-              <button key={s.id} onClick={() => setSelectedStudent(s)}
+              <button key={s.id} onClick={() => pickStudent(s.id)}
                 className={`w-full flex items-center justify-between px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors text-left
                   ${selectedStudent?.id === s.id ? 'bg-indigo-50' : ''}`}>
                 <div>

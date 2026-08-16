@@ -90,8 +90,13 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
   // 채점 모달
   const [gradingDist, setGradingDist] = useState<Distribution | null>(null)
+  // 채점 상태는 세 가지다: 미채점 / O(맞음) / X(틀림)
+  //   marked  — 선생님이 판정을 내린 문제
+  //   wrongSet— 그중 틀린 문제
+  // 예전엔 wrongSet 하나뿐이라 '미채점'을 나타낼 수 없었고,
+  // 그래서 '전체 취소'가 '전체 정답'과 똑같이 동작했다.
   const [wrongSet, setWrongSet] = useState<Set<number>>(new Set())
-  const [initialWrongSet, setInitialWrongSet] = useState<Set<number>>(new Set())
+  const [markedSet, setMarkedSet] = useState<Set<number>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [gradedResult, setGradedResult] = useState<{ correctRate: number; newAbility: { comprehension: number; reasoning: number; calculation: number } } | null>(null)
   const [answerImages, setAnswerImages] = useState<Record<number, string>>({})
@@ -116,7 +121,10 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   const openGrading = async (dist: Distribution) => {
     const existing: number[] = dist.result ? JSON.parse(dist.result.wrongProblemsJson) : []
     setWrongSet(new Set(existing))
-    setInitialWrongSet(new Set(existing))
+    // 이미 채점된 학습지는 모든 문제에 판정이 있는 상태로 연다
+    setMarkedSet(dist.result
+      ? new Set(Array.from({ length: dist.worksheet.problemCount }, (_, i) => i + 1))
+      : new Set())
     setGradedResult(null)
     setAnswerImages({})
     setGradingDist(dist)
@@ -129,24 +137,41 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
     }
   }
 
+  /** 미채점 → O(맞음) → X(틀림) → 미채점 순으로 돈다 */
   const toggleProblem = (num: number) => {
-    setWrongSet(prev => {
-      const next = new Set(prev)
-      if (next.has(num)) next.delete(num)
-      else next.add(num)
-      return next
-    })
+    const marked = markedSet.has(num)
+    const wrong = wrongSet.has(num)
+
+    if (!marked) {                     // 미채점 → O
+      setMarkedSet(prev => new Set(prev).add(num))
+      setWrongSet(prev => { const n = new Set(prev); n.delete(num); return n })
+    } else if (!wrong) {               // O → X
+      setWrongSet(prev => new Set(prev).add(num))
+    } else {                           // X → 미채점
+      setMarkedSet(prev => { const n = new Set(prev); n.delete(num); return n })
+      setWrongSet(prev => { const n = new Set(prev); n.delete(num); return n })
+    }
   }
 
-  const allCorrect = () => setWrongSet(new Set())
-  const allWrong = () => {
-    if (!gradingDist) return
-    setWrongSet(new Set(Array.from({ length: gradingDist.worksheet.problemCount }, (_, i) => i + 1)))
-  }
-  const resetGrading = () => setWrongSet(new Set(initialWrongSet))
+  const allNums = () =>
+    new Set(Array.from({ length: gradingDist?.worksheet.problemCount ?? 0 }, (_, i) => i + 1))
+
+  const allCorrect = () => { setMarkedSet(allNums()); setWrongSet(new Set()) }
+  const allWrong = () => { setMarkedSet(allNums()); setWrongSet(allNums()) }
+
+  /** 전체 취소 — 판정을 모두 지워 미채점으로 되돌린다 */
+  const resetGrading = () => { setMarkedSet(new Set()); setWrongSet(new Set()) }
 
   const submitGrade = async () => {
     if (!gradingDist) return
+
+    // 미채점이 남아 있으면 맞은 것으로 처리된다. 모르고 넘어가지 않게 확인받는다
+    const unmarked = gradingDist.worksheet.problemCount - markedSet.size
+    if (unmarked > 0 && !confirm(
+      `아직 채점하지 않은 문제가 ${unmarked}개 있습니다.
+맞은 것으로 처리하고 저장할까요?`
+    )) return
+
     setSubmitting(true)
     try {
       const res = await apiFetch(`/api/teacher/grade/${gradingDist.id}`, {
@@ -268,8 +293,9 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                   {student?.name} · 총 {gradingDist.worksheet.problemCount}문제
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  맞은 문제는 <span className="text-emerald-600 font-medium">O</span>,
-                  틀린 문제는 <span className="text-rose-500 font-medium">X</span>를 눌러 표시하세요
+                  누를 때마다 <span className="text-gray-400 font-medium">미채점</span> →
+                  <span className="text-emerald-600 font-medium"> O</span> →
+                  <span className="text-rose-500 font-medium"> X</span> 순으로 바뀝니다
                 </p>
               </div>
               <button onClick={() => { setGradingDist(null); setGradedResult(null) }}
@@ -326,7 +352,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                   <div className="grid grid-cols-2 gap-2">
                     {Array.from({ length: gradingDist.worksheet.problemCount }, (_, i) => {
                       const num = i + 1
-                      const isWrong = wrongSet.has(num)
+                      const isMarked = markedSet.has(num)
+                      const isWrong = isMarked && wrongSet.has(num)
                       const answer = answers[i] ?? ''
                       const img = isImageAnswer(answer) ? answerImages[num] : undefined
                       return (
@@ -339,13 +366,15 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProblem(num) }
                           }}
                           className={`flex items-center gap-3 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer min-h-[46px]
-                            ${isWrong
-                              ? 'border-rose-400 bg-rose-50'
-                              : 'border-emerald-300 bg-emerald-50'}`}
+                            ${!isMarked
+                              ? 'border-gray-200 bg-white'
+                              : isWrong
+                                ? 'border-rose-400 bg-rose-50'
+                                : 'border-emerald-300 bg-emerald-50'}`}
                         >
                           <span className={`text-lg font-black w-6 text-center leading-none shrink-0
-                            ${isWrong ? 'text-rose-500' : 'text-emerald-500'}`}>
-                            {isWrong ? 'X' : 'O'}
+                            ${!isMarked ? 'text-gray-300' : isWrong ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {!isMarked ? '·' : isWrong ? 'X' : 'O'}
                           </span>
                           <span className="text-xs font-semibold text-gray-500 w-8 tabular-nums shrink-0">{num}번</span>
                           {img ? (
@@ -365,13 +394,21 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">맞은 문제</span>
                     <span className="font-bold text-emerald-600">
-                      {gradingDist.worksheet.problemCount - wrongSet.size}개
+                      {markedSet.size - wrongSet.size}개
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">틀린 문제</span>
                     <span className="font-bold text-rose-500">{wrongSet.size}개</span>
                   </div>
+                  {gradingDist.worksheet.problemCount - markedSet.size > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">미채점</span>
+                      <span className="font-bold text-gray-400">
+                        {gradingDist.worksheet.problemCount - markedSet.size}개
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-3 pt-1">
                     <button onClick={() => { setGradingDist(null); setGradedResult(null) }}
                       className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">

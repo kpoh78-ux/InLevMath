@@ -7,6 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { STEP_CLEAR_THRESHOLD, stepDisplayLabel } from '@inlevmath/shared'
 import { apiFetch } from '../../store/api'
+import { OmrSheet, type OmrItem } from '../../components/OmrSheet'
 
 // 학습지 답안 입력 (OMR)
 //
@@ -16,15 +17,6 @@ import { apiFetch } from '../../store/api'
 //
 // 다 못 풀었으면 푼 만큼만 내도 된다.
 // 낸 문항은 잠겨서 학생이 못 고치고(고치려면 선생님), 남은 문항은 나중에 이어서 낸다.
-
-const CHOICES = ['1', '2', '3', '4', '5']
-
-/** 단답형 입력 키패드 — 숫자와 자주 쓰는 수학 기호 */
-const KEYPAD_ROWS: string[][] = [
-  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-  ['/', '.', '-', '+', '=', 'x', 'y', '^', '(', ')'],
-  ['√', 'π', '±', '<', '>', '≤', '≥', ',', '°', '∞'],
-]
 
 type Sheet = {
   title: string
@@ -56,7 +48,6 @@ export default function WorksheetOmrScreen() {
   const [sheet, setSheet] = useState<Sheet | null>(null)
   const [loading, setLoading] = useState(true)
   const [answers, setAnswers] = useState<string[]>([])
-  const [focused, setFocused] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
   // 이미 낸 문항 — 학생은 고칠 수 없다
@@ -89,16 +80,6 @@ export default function WorksheetOmrScreen() {
   const setAnswer = (i: number, v: string) => {
     if (locked.has(i)) return    // 낸 답은 학생이 못 고친다
     setAnswers(prev => { const n = [...prev]; n[i] = v; return n })
-  }
-
-  /** 단답형 키패드 입력 — 포커스된 문항 뒤에 붙인다 */
-  const press = (key: string) => {
-    if (focused === null) return
-    setAnswer(focused, (answers[focused] ?? '') + key)
-  }
-  const backspace = () => {
-    if (focused === null) return
-    setAnswer(focused, (answers[focused] ?? '').slice(0, -1))
   }
 
   const answered = answers.filter(a => a.trim() !== '').length
@@ -199,7 +180,14 @@ export default function WorksheetOmrScreen() {
 
   // ── 답안 입력 ──
   const displayStep = stepDisplayLabel(sheet.step, sheet.examSubType)
-  const focusedIsShort = focused !== null && sheet.types[focused] === 'short'
+
+  // 학습지는 1번부터 이어지는 번호라 배열 인덱스 = 번호-1 이다
+  const items: OmrItem[] = answers.map((v, i) => ({
+    no: i + 1,
+    type: sheet.types[i] === 'short' ? 'short' : 'multiple',
+    value: v,
+    locked: locked.has(i),
+  }))
 
   return (
     <SafeAreaView style={s.container}>
@@ -219,83 +207,7 @@ export default function WorksheetOmrScreen() {
         </View>
       )}
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 24 }}>
-        {answers.map((v, i) => {
-          const isShort = sheet.types[i] === 'short'
-          const isFocused = focused === i
-          const isLocked = locked.has(i)
-          return (
-            <View key={i} style={[s.row, isFocused && s.rowFocused, isLocked && s.rowLocked]}>
-              <Text style={s.no}>{i + 1}</Text>
-
-              {isShort ? (
-                <TouchableOpacity
-                  style={[s.shortBox, isFocused && s.shortBoxFocused, isLocked && s.boxLocked]}
-                  onPress={() => { if (!isLocked) setFocused(i) }}
-                  activeOpacity={isLocked ? 1 : 0.7}
-                >
-                  <Text style={v ? s.shortText : s.shortPlaceholder}>
-                    {v || '눌러서 입력 (단위 생략)'}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={s.choices}>
-                  {CHOICES.map(c => {
-                    const on = v === c
-                    return (
-                      <TouchableOpacity
-                        key={c}
-                        style={[s.bubble, on && s.bubbleOn, isLocked && s.bubbleLocked]}
-                        onPress={() => {
-                          if (isLocked) return
-                          setFocused(i); setAnswer(i, on ? '' : c)
-                        }}
-                        activeOpacity={isLocked ? 1 : 0.7}
-                      >
-                        <Text style={[s.bubbleText, on && s.bubbleTextOn]}>{c}</Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-              )}
-              {isLocked && <Text style={s.lockTag}>제출됨</Text>}
-            </View>
-          )
-        })}
-      </ScrollView>
-
-      {/* 단답형 키패드 — 단답형 칸을 눌렀을 때만 올라온다 */}
-      {focusedIsShort && (
-        <View style={s.keypad}>
-          <View style={s.keypadHead}>
-            <Text style={s.keypadTitle}>{(focused ?? 0) + 1}번 답 입력</Text>
-            <TouchableOpacity onPress={() => setFocused(null)}>
-              <Text style={s.keypadClose}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-          {KEYPAD_ROWS.map((row, r) => (
-            <View key={r} style={s.keyRow}>
-              {row.map(k => (
-                <TouchableOpacity key={k} style={s.key} onPress={() => press(k)} activeOpacity={0.7}>
-                  <Text style={s.keyText}>{k}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ))}
-          <View style={s.keyRow}>
-            <TouchableOpacity style={[s.key, s.keyWide]} onPress={backspace} activeOpacity={0.7}>
-              <Text style={s.keyText}>⌫ 지우기</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.key, s.keyWide]}
-              onPress={() => setAnswer(focused as number, '')}
-              activeOpacity={0.7}
-            >
-              <Text style={s.keyText}>전체 지우기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      <OmrSheet items={items} onChange={(no, v) => setAnswer(no - 1, v)} />
 
       <View style={s.footer}>
         <TouchableOpacity

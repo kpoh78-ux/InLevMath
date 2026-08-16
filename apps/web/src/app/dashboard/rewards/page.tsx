@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 
 const RARITY_STYLE: Record<string, { border: string; bg: string; label: string; glow: string }> = {
@@ -16,7 +17,7 @@ type RewardItem = {
   type: string; rarity: string; pointValue: number; createdAt: string
 }
 
-type Student = { id: string; name: string; grade: string; rewardPoints: number }
+type Student = { id: string; name: string; grade: string; rewardPoints: number; currentLevel: number }
 
 type InventoryEntry = {
   id: string; quantity: number; status: string; reason: string; grantedAt: string; redeemedAt: string | null
@@ -30,7 +31,7 @@ const ITEM_FORM_INIT = { name: '', description: '', emoji: '🎁', type: 'virtua
 /** /api/students 응답에서 필요한 부분만 */
 type StudentRow = {
   id: string; grade: string; status?: string
-  rewardPoints?: number
+  rewardPoints?: number; currentLevel?: number
   user?: { name?: string }
 }
 
@@ -100,6 +101,7 @@ function RewardsPageInner() {
           name: s.user?.name ?? '(이름 없음)',
           grade: s.grade,
           rewardPoints: s.rewardPoints ?? 0,
+          currentLevel: s.currentLevel ?? 1,
         }))
         .sort((a, b) =>
           GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) ||
@@ -320,9 +322,22 @@ function RewardsPageInner() {
           {/* 헤더 — 학생을 고르지 않아도 보상은 줄 수 있다 (팝업에서 대상 선택) */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
             {selectedStudent ? (
-              <div>
-                <h2 className="font-bold text-gray-900">{selectedStudent.name} 학생의 보관창고</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{selectedStudent.grade}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-black text-white">Lv{selectedStudent.currentLevel}</span>
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900">
+                    {selectedStudent.name}
+                    <span className="ml-2 text-xs font-normal text-gray-500">{selectedStudent.grade}</span>
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">학생의 보관창고</p>
+                </div>
+                {/* 학생의 능력치·학습이력 상태창으로 바로 이동 */}
+                <Link href={`/dashboard/manage/students/${selectedStudent.id}`}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline ml-1 whitespace-nowrap">
+                  상태창 보기 →
+                </Link>
               </div>
             ) : (
               <div>

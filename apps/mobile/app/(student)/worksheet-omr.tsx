@@ -10,9 +10,12 @@ import { apiFetch } from '../../store/api'
 
 // 학습지 답안 입력 (OMR)
 //
-// 객관식은 ①~⑤ 를 눌러 고르고, 단답형은 아래 수식 키패드로 입력한다.
+// 객관식은 1~5 를 눌러 고르고, 단답형은 아래 수식 키패드로 입력한다.
 // 제출하면 서버가 저장된 정답과 맞춰 1차 채점 결과를 바로 돌려준다.
 // 정답이 그림인 문항은 자동 판정이 안 되므로 '선생님 확인'으로 표시된다.
+//
+// 다 못 풀었으면 푼 만큼만 내도 된다.
+// 낸 문항은 잠겨서 학생이 못 고치고(고치려면 선생님), 남은 문항은 나중에 이어서 낸다.
 
 const CHOICES = ['1', '2', '3', '4', '5']
 
@@ -31,11 +34,16 @@ type Sheet = {
   types: ('multiple' | 'short')[]
   answersReady: boolean
   alreadyGraded: boolean
+  /** 이미 낸 답. 빈 문자열이면 아직 안 낸 문항이다 */
+  submittedAnswers: string[]
 }
 
 type Result = {
   correctProblems: number
   totalProblems: number
+  submittedCount: number
+  remaining: number
+  complete: boolean
   correctRate: number
   cleared: boolean
   wrongProblems: number[]
@@ -51,6 +59,8 @@ export default function WorksheetOmrScreen() {
   const [focused, setFocused] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
+  // 이미 낸 문항 — 학생은 고칠 수 없다
+  const [locked, setLocked] = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,7 +69,12 @@ export default function WorksheetOmrScreen() {
       if (!res.ok) throw new Error('답안지를 불러오지 못했습니다.')
       const d: Sheet = await res.json()
       setSheet(d)
-      setAnswers(Array(d.problemCount).fill(''))
+      const prev = d.submittedAnswers ?? []
+      setAnswers(Array.from({ length: d.problemCount }, (_, i) => prev[i] ?? ''))
+      setLocked(new Set(
+        Array.from({ length: d.problemCount }, (_, i) => ((prev[i] ?? '') !== '' ? i : -1))
+          .filter(i => i >= 0)
+      ))
     } catch (e) {
       Alert.alert('오류', e instanceof Error ? e.message : '불러오기 실패', [
         { text: '확인', onPress: () => router.back() },
@@ -71,8 +86,10 @@ export default function WorksheetOmrScreen() {
 
   useEffect(() => { load() }, [load])
 
-  const setAnswer = (i: number, v: string) =>
+  const setAnswer = (i: number, v: string) => {
+    if (locked.has(i)) return    // 낸 답은 학생이 못 고친다
     setAnswers(prev => { const n = [...prev]; n[i] = v; return n })
+  }
 
   /** 단답형 키패드 입력 — 포커스된 문항 뒤에 붙인다 */
   const press = (key: string) => {
@@ -85,6 +102,7 @@ export default function WorksheetOmrScreen() {
   }
 
   const answered = answers.filter(a => a.trim() !== '').length
+  const newly = answers.filter((a, i) => a.trim() !== '' && !locked.has(i)).length
 
   const submit = () => {
     if (!sheet) return
@@ -105,13 +123,20 @@ export default function WorksheetOmrScreen() {
         setSubmitting(false)
       }
     }
+    if (newly === 0) {
+      Alert.alert('낼 답이 없습니다', '새로 푼 문제를 입력한 뒤 제출해주세요.')
+      return
+    }
     if (blank > 0) {
-      Alert.alert('제출할까요?', `아직 ${blank}문제를 안 풀었습니다. 빈칸은 오답으로 처리됩니다.`, [
-        { text: '더 풀기', style: 'cancel' },
-        { text: '제출', onPress: go },
-      ])
+      Alert.alert(
+        '지금까지 푼 만큼 낼까요?',
+        `${newly}문제를 냅니다. 남은 ${blank}문제는 나중에 이어서 낼 수 있습니다.
+`
+        + '한 번 낸 답은 고칠 수 없습니다.',
+        [{ text: '더 풀기', style: 'cancel' }, { text: '제출', onPress: go }]
+      )
     } else {
-      Alert.alert('제출할까요?', '제출하면 바로 채점됩니다.', [
+      Alert.alert('제출할까요?', '한 번 낸 답은 고칠 수 없습니다.', [
         { text: '취소', style: 'cancel' },
         { text: '제출', onPress: go },
       ])
@@ -138,8 +163,13 @@ export default function WorksheetOmrScreen() {
             {result.correctRate}%
           </Text>
           <Text style={s.resultSub}>
-            {result.totalProblems}문제 중 {result.correctProblems}문제 정답
+            낸 {result.submittedCount}문제 중 {result.correctProblems}문제 정답
           </Text>
+          {!result.complete && (
+            <Text style={s.remain}>
+              남은 {result.remaining}문제는 나중에 이어서 낼 수 있습니다
+            </Text>
+          )}
           {result.cleared && <Text style={s.cleared}>🎉 클리어! (기준 {threshold}%)</Text>}
 
           {result.wrongProblems.length > 0 && (
@@ -193,15 +223,16 @@ export default function WorksheetOmrScreen() {
         {answers.map((v, i) => {
           const isShort = sheet.types[i] === 'short'
           const isFocused = focused === i
+          const isLocked = locked.has(i)
           return (
-            <View key={i} style={[s.row, isFocused && s.rowFocused]}>
+            <View key={i} style={[s.row, isFocused && s.rowFocused, isLocked && s.rowLocked]}>
               <Text style={s.no}>{i + 1}</Text>
 
               {isShort ? (
                 <TouchableOpacity
-                  style={[s.shortBox, isFocused && s.shortBoxFocused]}
-                  onPress={() => setFocused(i)}
-                  activeOpacity={0.7}
+                  style={[s.shortBox, isFocused && s.shortBoxFocused, isLocked && s.boxLocked]}
+                  onPress={() => { if (!isLocked) setFocused(i) }}
+                  activeOpacity={isLocked ? 1 : 0.7}
                 >
                   <Text style={v ? s.shortText : s.shortPlaceholder}>
                     {v || '눌러서 입력 (단위 생략)'}
@@ -214,9 +245,12 @@ export default function WorksheetOmrScreen() {
                     return (
                       <TouchableOpacity
                         key={c}
-                        style={[s.bubble, on && s.bubbleOn]}
-                        onPress={() => { setFocused(i); setAnswer(i, on ? '' : c) }}
-                        activeOpacity={0.7}
+                        style={[s.bubble, on && s.bubbleOn, isLocked && s.bubbleLocked]}
+                        onPress={() => {
+                          if (isLocked) return
+                          setFocused(i); setAnswer(i, on ? '' : c)
+                        }}
+                        activeOpacity={isLocked ? 1 : 0.7}
                       >
                         <Text style={[s.bubbleText, on && s.bubbleTextOn]}>{c}</Text>
                       </TouchableOpacity>
@@ -224,6 +258,7 @@ export default function WorksheetOmrScreen() {
                   })}
                 </View>
               )}
+              {isLocked && <Text style={s.lockTag}>제출됨</Text>}
             </View>
           )
         })}
@@ -269,7 +304,11 @@ export default function WorksheetOmrScreen() {
           disabled={submitting || !sheet.answersReady}
         >
           <Text style={s.primaryBtnText}>
-            {submitting ? '채점 중...' : `제출하고 채점받기 (${answered}/${sheet.problemCount})`}
+            {submitting
+              ? '채점 중...'
+              : newly > 0
+                ? `${newly}문제 제출하고 채점받기 (${answered}/${sheet.problemCount})`
+                : `제출할 답을 입력하세요 (${answered}/${sheet.problemCount})`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -298,6 +337,10 @@ const s = StyleSheet.create({
     borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)',
   },
   rowFocused: { backgroundColor: 'rgba(108,92,231,0.18)' },
+  rowLocked: { opacity: 0.55 },
+  boxLocked: { borderColor: 'rgba(255,255,255,0.12)' },
+  bubbleLocked: { opacity: 0.9 },
+  lockTag: { color: Colors.subtext, fontSize: 10, fontWeight: '700' },
   no: { color: Colors.subtext, fontSize: 13, fontWeight: '700', width: 28, textAlign: 'right' },
 
   choices: { flexDirection: 'row', gap: 8, flex: 1 },
@@ -342,6 +385,7 @@ const s = StyleSheet.create({
   rate: { fontSize: 56, fontWeight: '800' },
   resultSub: { color: Colors.white, fontSize: 15, marginTop: 6 },
   cleared: { color: '#00B894', fontSize: 15, fontWeight: '700', marginTop: 10 },
+  remain: { color: Colors.gold, fontSize: 13, marginTop: 8, textAlign: 'center' },
   box: {
     width: '100%', marginTop: 18, padding: 14, borderRadius: 12,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',

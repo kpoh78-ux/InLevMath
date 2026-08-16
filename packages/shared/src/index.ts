@@ -225,6 +225,9 @@ export function inferAnswerType(answer: string): ProblemAnswerType {
 /** 비교용 표기 통일 — 공백·단위·동그라미 숫자를 정리한다 */
 export function normalizeForCompare(value: string): string {
   let t = (value ?? '').normalize('NFKC').trim()
+  // 빈 값을 그냥 두면 아래 indexOf('') 가 0을 돌려줘 '1' 로 바뀐다.
+  // 그러면 답을 안 쓴 문항이 정답 1번과 같아져 맞은 것으로 처리된다.
+  if (t === '') return ''
 
   // ①②③ → 1,2,3
   const circled = CIRCLED_DIGITS.indexOf(t)

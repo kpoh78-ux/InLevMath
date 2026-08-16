@@ -258,6 +258,9 @@ model WorksheetResult {
   studentAnswersJson  String @default("[]")
   // 자동 채점이 판정하지 못한 문제 번호. 선생님이 최종 판단한다 (이미지 정답 등)
   pendingProblemsJson String @default("[]")
+  // 학생이 지금까지 답을 낸 문항 수. 부분 제출이 가능해 전체 문항 수와 다를 수 있다.
+  // 정답률은 이 값을 분모로 쓴다 (푼 만큼만 평가한다)
+  submittedCount      Int    @default(0)
 }
 
 enum DistributionStatus {

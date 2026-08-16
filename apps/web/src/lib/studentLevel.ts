@@ -65,13 +65,16 @@ async function splitAverages(studentId: string) {
     where: { studentId, result: { isNot: null } },
     select: {
       worksheet: { select: { problemCount: true } },
-      result: { select: { correctProblems: true, submittedAt: true } },
+      result: { select: { correctProblems: true, submittedAt: true, submittedCount: true } },
     },
   })
   for (const d of dists) {
     if (!d.result) continue
     const bucket = d.result.submittedAt >= cutoff ? current : past
-    bucket.add(d.result.correctProblems, d.worksheet.problemCount)
+    // 부분 제출이면 낸 문항 수를 분모로 쓴다 (푼 만큼만 평가한다).
+    // 선생님이 채점한 건은 submittedCount 가 0이라 전체 문항 수를 쓴다
+    const denom = d.result.submittedCount > 0 ? d.result.submittedCount : d.worksheet.problemCount
+    bucket.add(d.result.correctProblems, denom)
   }
 
   // ── 교재 — 끝냈으면 지난 과정, 진도 중이면 현재 과정 ──

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
-import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 
 const RARITY_STYLE: Record<string, { border: string; bg: string; label: string; glow: string }> = {
@@ -37,19 +37,36 @@ type StudentRow = {
 /** 학년 표시 순서 (초1 → 고3) */
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
+/** 보상 팝업에서 대상 학생을 고르는 드롭다운 */
+function StudentPicker({
+  students, value, onChange,
+}: {
+  students: Student[]; value: string; onChange: (id: string) => void
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">보상 대상 학생 *</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <option value="">학생을 선택하세요</option>
+        {students.map(s => (
+          <option key={s.id} value={s.id}>{s.name} ({s.grade}) · {s.rewardPoints}P</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 function RewardsPageInner() {
   // 상단 메뉴에서 고른 학생을 그대로 이어받는다 (?student=)
   const searchParams = useSearchParams()
-  const router = useRouter()
-  const pathname = usePathname()
   const navStudentId = searchParams.get('student')
 
   const [items, setItems]           = useState<RewardItem[]>([])
   const [students, setStudents]     = useState<Student[]>([])
-  // 선택은 id 만 들고, 표시할 학생은 목록에서 찾아 쓴다.
-  // 학생 객체를 따로 복사해 두면 포인트가 바뀔 때 목록과 헤더가 어긋난다.
-  const [selectedId, setSelectedId]  = useState<string | null>(null)
-  const selectedStudent = students.find(s => s.id === selectedId) ?? null
+  // 보고 있는 학생은 좌측 사이드바(URL)에서만 정해진다.
+  // 선택 상태를 따로 두면 사이드바와 서로 덮어써서 학생이 안 바뀌는 문제가 생긴다.
+  const selectedStudent = students.find(s => s.id === navStudentId) ?? null
   const [inventory, setInventory]   = useState<InventoryEntry[]>([])
   const [pointHistory, setPointHistory] = useState<{ id:string;amount:number;reason:string;type:string;createdAt:string }[]>([])
   const [showItemForm, setShowItemForm] = useState(false)
@@ -59,6 +76,8 @@ function RewardsPageInner() {
   const [showGrantModal, setShowGrantModal] = useState(false)
   const [grantReason, setGrantReason] = useState('')
   const [grantItemId, setGrantItemId] = useState('')
+  // 보상을 받을 학생 — 팝업 안에서 고른다
+  const [targetId, setTargetId]     = useState('')
   const [saving, setSaving]         = useState(false)
   // 학생 보관창고가 보상관리의 기본 화면이다
   const [tab, setTab]               = useState<'students' | 'items'>('students')
@@ -100,38 +119,17 @@ function RewardsPageInner() {
   }, [])
 
   useEffect(() => { loadItems(); loadStudents() }, [loadItems, loadStudents])
-  useEffect(() => { if (selectedId) loadInventory(selectedId) }, [selectedId, loadInventory])
+  useEffect(() => { if (navStudentId) loadInventory(navStudentId) }, [navStudentId, loadInventory])
 
-  /**
-   * 학생 선택은 URL(?student=)을 단일 기준으로 삼는다.
-   *
-   * 가운데 목록도 상태를 직접 바꾸지 않고 URL만 바꾼다.
-   * 양쪽에서 각자 상태를 건드리면 아래 동기화 effect가 URL 쪽 학생으로 되돌려
-   * 목록을 눌러도 화면이 안 바뀌는 문제가 생긴다.
-   */
-  const pickStudent = (id: string) => {
-    setTab('students')
-    if (id === navStudentId) { setSelectedId(id); return }
-    router.replace(`${pathname}?student=${id}`, { scroll: false })
+  /** 보상 팝업을 연다. 대상은 보고 있던 학생으로 채우되 팝업에서 바꿀 수 있다 */
+  const openPointModal = () => { setTargetId(navStudentId ?? ''); setShowPointModal(true) }
+  const openGrantModal = () => { setTargetId(navStudentId ?? ''); setShowGrantModal(true) }
+
+  /** 보상 후 갱신 — 대상이 보고 있는 학생이면 보관창고까지 다시 읽는다 */
+  const refreshAfterReward = (studentId: string) => {
+    loadStudents()
+    if (studentId === navStudentId) loadInventory(studentId)
   }
-
-  // URL의 학생을 화면에 반영한다. 이미 그 학생이면 아무것도 하지 않으므로
-  // 포인트 갱신 등으로 목록이 새로 만들어져도 선택이 흔들리지 않는다.
-  useEffect(() => {
-    if (students.length === 0) return
-
-    if (navStudentId) {
-      const target = students.find(s => s.id === navStudentId)
-      if (target && target.id !== selectedId) {
-        setSelectedId(target.id)
-        setTab('students')
-      }
-      return
-    }
-
-    // 사이드바 선택이 없으면 첫 학생을 열어 빈 화면으로 시작하지 않게 한다
-    if (!selectedId) setSelectedId(students[0].id)
-  }, [navStudentId, students, selectedId])
 
   // 아이템 생성
   const handleCreateItem = async () => {
@@ -149,31 +147,31 @@ function RewardsPageInner() {
     loadItems()
   }
 
-  // 아이템 지급
+  // 아이템 지급 — 대상은 팝업에서 고른 학생
   const handleGrant = async () => {
-    if (!selectedStudent || !grantItemId) return
+    if (!targetId || !grantItemId) return
     setSaving(true)
-    await apiFetch(`/api/rewards/students/${selectedStudent.id}/grant`, {
+    await apiFetch(`/api/rewards/students/${targetId}/grant`, {
       method: 'POST',
       body: JSON.stringify({ itemId: grantItemId, reason: grantReason }),
     })
     setSaving(false)
     setShowGrantModal(false); setGrantReason(''); setGrantItemId('')
-    loadInventory(selectedStudent.id)
+    refreshAfterReward(targetId)
   }
 
-  // 포인트 추가/차감
+  // 포인트 추가/차감 — 대상은 팝업에서 고른 학생
   const handlePoints = async () => {
-    if (!selectedStudent || !pointForm.amount || !pointForm.reason) return
+    if (!targetId || !pointForm.amount || !pointForm.reason) return
     const amount = parseInt(pointForm.amount) * (pointForm.sign === '-' ? -1 : 1)
     setSaving(true)
-    await apiFetch(`/api/rewards/students/${selectedStudent.id}/points`, {
+    await apiFetch(`/api/rewards/students/${targetId}/points`, {
       method: 'POST',
       body: JSON.stringify({ amount, reason: pointForm.reason, type: 'manual' }),
     })
     setSaving(false)
     setShowPointModal(false); setPointForm({ amount: '', reason: '', sign: '+' })
-    loadInventory(selectedStudent.id); loadStudents()
+    refreshAfterReward(targetId)
   }
 
   // 실물 수령 처리
@@ -318,57 +316,48 @@ function RewardsPageInner() {
 
       {/* ── 학생 보관창고 탭 ── */}
       {tab === 'students' && (
-        <div className="grid grid-cols-4 gap-5 items-start">
-          {/* 학생 목록 */}
-          <div className="col-span-1 bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-bold text-gray-500">학생 선택</p>
-            </div>
-            {students.map(s => (
-              <button key={s.id} onClick={() => pickStudent(s.id)}
-                className={`w-full flex items-center justify-between px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors text-left
-                  ${selectedStudent?.id === s.id ? 'bg-indigo-50' : ''}`}>
-                <div>
-                  <p className={`text-sm font-semibold ${selectedStudent?.id === s.id ? 'text-indigo-700' : 'text-gray-800'}`}>{s.name}</p>
-                  <p className="text-[11px] text-gray-400">{s.grade}</p>
-                </div>
-                <span className="text-xs font-bold text-amber-600">{s.rewardPoints}P</span>
-              </button>
-            ))}
-          </div>
-
-          {/* 선택된 학생 보관창고 */}
-          <div className="col-span-3 space-y-4">
-            {!selectedStudent ? (
-              <div className="bg-white rounded-xl border border-gray-200 py-20 text-center text-gray-400">
-                <p className="text-3xl mb-2">👈</p>
-                <p className="text-sm">왼쪽에서 학생을 선택하세요.</p>
+        <div className="space-y-4">
+          {/* 헤더 — 학생을 고르지 않아도 보상은 줄 수 있다 (팝업에서 대상 선택) */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+            {selectedStudent ? (
+              <div>
+                <h2 className="font-bold text-gray-900">{selectedStudent.name} 학생의 보관창고</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{selectedStudent.grade}</p>
               </div>
             ) : (
-              <>
-                {/* 학생 헤더 */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-                  <div>
-                    <h2 className="font-bold text-gray-900">{selectedStudent.name} 학생의 보관창고</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">{selectedStudent.grade}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-center">
-                      <p className="text-2xl font-black text-amber-600">{selectedStudent.rewardPoints}
-                        <span className="text-sm font-bold text-gray-400 ml-0.5">P</span>
-                      </p>
-                      <p className="text-[11px] text-gray-400">보유 포인트</p>
-                    </div>
-                    <button onClick={() => setShowPointModal(true)}
-                      className="text-xs border border-amber-300 text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition-colors font-medium">
-                      ± 포인트
-                    </button>
-                    <button onClick={() => setShowGrantModal(true)}
-                      className="text-xs bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors font-semibold">
-                      🎁 아이템 지급
-                    </button>
-                  </div>
+              <div>
+                <h2 className="font-bold text-gray-900">학생을 선택하세요</h2>
+                <p className="text-xs text-gray-400 mt-0.5">왼쪽 학생 목록에서 이름을 클릭하면 보상 현황이 보입니다</p>
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              {selectedStudent && (
+                <div className="text-center">
+                  <p className="text-2xl font-black text-amber-600">{selectedStudent.rewardPoints}
+                    <span className="text-sm font-bold text-gray-400 ml-0.5">P</span>
+                  </p>
+                  <p className="text-[11px] text-gray-400">보유 포인트</p>
                 </div>
+              )}
+              <button onClick={openPointModal}
+                className="text-xs border border-amber-300 text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                ± 포인트
+              </button>
+              <button onClick={openGrantModal}
+                className="text-xs bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors font-semibold">
+                🎁 아이템 지급
+              </button>
+            </div>
+          </div>
+
+          {!selectedStudent ? (
+            <div className="bg-white rounded-xl border border-gray-200 py-20 text-center text-gray-400">
+              <p className="text-3xl mb-2">👈</p>
+              <p className="text-sm">왼쪽에서 학생을 선택하면 포인트와 보유 아이템이 보입니다.</p>
+              <p className="text-xs text-gray-300 mt-1.5">학생을 고르지 않아도 위 버튼으로 보상을 줄 수 있습니다.</p>
+            </div>
+          ) : (
+              <>
 
                 {/* 보관창고 그리드 */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -435,8 +424,7 @@ function RewardsPageInner() {
                   </div>
                 )}
               </>
-            )}
-          </div>
+          )}
         </div>
       )}
 
@@ -445,6 +433,7 @@ function RewardsPageInner() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-80 space-y-4 shadow-2xl">
             <h3 className="font-bold text-gray-900">포인트 추가 / 차감</h3>
+            <StudentPicker students={students} value={targetId} onChange={setTargetId} />
             <div className="flex gap-2">
               {(['+','-'] as const).map(s => (
                 <button key={s} onClick={() => setPointForm(f => ({ ...f, sign: s }))}
@@ -465,7 +454,7 @@ function RewardsPageInner() {
             <div className="flex gap-2 pt-1">
               <button onClick={() => { setShowPointModal(false); setPointForm({ amount:'',reason:'',sign:'+' }) }}
                 className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2 text-sm">취소</button>
-              <button onClick={handlePoints} disabled={saving}
+              <button onClick={handlePoints} disabled={saving || !targetId || !pointForm.amount || !pointForm.reason}
                 className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
                 {saving ? '처리 중...' : '확인'}
               </button>
@@ -479,6 +468,7 @@ function RewardsPageInner() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-96 space-y-4 shadow-2xl">
             <h3 className="font-bold text-gray-900">아이템 지급</h3>
+            <StudentPicker students={students} value={targetId} onChange={setTargetId} />
             <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto">
               {items.map(item => {
                 const s = rs(item.rarity)
@@ -502,7 +492,7 @@ function RewardsPageInner() {
             <div className="flex gap-2 pt-1">
               <button onClick={() => { setShowGrantModal(false); setGrantReason(''); setGrantItemId('') }}
                 className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2 text-sm">취소</button>
-              <button onClick={handleGrant} disabled={saving || !grantItemId}
+              <button onClick={handleGrant} disabled={saving || !targetId || !grantItemId}
                 className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-semibold disabled:opacity-50">
                 {saving ? '지급 중...' : '지급하기'}
               </button>

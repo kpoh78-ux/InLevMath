@@ -40,6 +40,9 @@ type Distribution = {
     wrongProblemsJson: string
     gradedBy: string
     submittedAt: string
+    studentAnswersJson?: string
+    pendingProblemsJson?: string
+    submittedCount?: number
   } | null
 }
 
@@ -97,6 +100,10 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   // 그래서 '전체 취소'가 '전체 정답'과 똑같이 동작했다.
   const [wrongSet, setWrongSet] = useState<Set<number>>(new Set())
   const [markedSet, setMarkedSet] = useState<Set<number>>(new Set())
+  // 학생이 낸 답 (1번부터). 선생님이 정답과 대조해 O/X를 고칠 때 쓴다
+  const [studentAnswers, setStudentAnswers] = useState<string[]>([])
+  // 자동 채점이 판정하지 못해 선생님 판단이 필요한 문항
+  const [pendingSet, setPendingSet] = useState<Set<number>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [gradedResult, setGradedResult] = useState<{ correctRate: number; newAbility: { comprehension: number; reasoning: number; calculation: number } } | null>(null)
   const [answerImages, setAnswerImages] = useState<Record<number, string>>({})
@@ -121,9 +128,28 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   const openGrading = async (dist: Distribution) => {
     const existing: number[] = dist.result ? JSON.parse(dist.result.wrongProblemsJson) : []
     setWrongSet(new Set(existing))
-    // 이미 채점된 학습지는 모든 문제에 판정이 있는 상태로 연다
+    const parse = <T,>(json: string | undefined, fallback: T): T => {
+      if (!json) return fallback
+      try { return JSON.parse(json) as T } catch { return fallback }
+    }
+    const stuAnswers = parse<string[]>(dist.result?.studentAnswersJson, [])
+    const pending = parse<number[]>(dist.result?.pendingProblemsJson, [])
+    setStudentAnswers(stuAnswers)
+    setPendingSet(new Set(pending))
+
+    // 이미 채점된 학습지는 판정이 끝난 문항만 표시한다.
+    // 보류 문항과 학생이 아직 안 낸 문항은 '미채점'으로 두어 선생님이 직접 정하게 한다
+    const pendingNos = new Set(pending)
     setMarkedSet(dist.result
-      ? new Set(Array.from({ length: dist.worksheet.problemCount }, (_, i) => i + 1))
+      ? new Set(
+          Array.from({ length: dist.worksheet.problemCount }, (_, i) => i + 1)
+            .filter(no => {
+              if (pendingNos.has(no)) return false
+              // 학생 답안이 있는 건이면 안 낸 문항은 판정 대상이 아니다
+              if (stuAnswers.length > 0) return (stuAnswers[no - 1] ?? '') !== ''
+              return true
+            })
+        )
       : new Set())
     setGradedResult(null)
     setAnswerImages({})
@@ -176,7 +202,10 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
     try {
       const res = await apiFetch(`/api/teacher/grade/${gradingDist.id}`, {
         method: 'POST',
-        body: JSON.stringify({ wrongProblems: Array.from(wrongSet) }),
+        body: JSON.stringify({
+          wrongProblems: Array.from(wrongSet),
+          markedProblems: Array.from(markedSet),
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -292,6 +321,11 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                   <span className="mx-1.5 text-gray-300">·</span>
                   {student?.name} · 총 {gradingDist.worksheet.problemCount}문제
                 </p>
+                {pendingSet.size > 0 && (
+                  <p className="text-xs text-amber-600 mt-1 font-medium">
+                    자동 채점이 판정하지 못한 {pendingSet.size}문제가 있습니다 — 노란 칸을 확인해주세요
+                  </p>
+                )}
                 <p className="text-xs text-gray-400 mt-1">
                   누를 때마다 <span className="text-gray-400 font-medium">미채점</span> →
                   <span className="text-emerald-600 font-medium"> O</span> →
@@ -354,6 +388,9 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                       const num = i + 1
                       const isMarked = markedSet.has(num)
                       const isWrong = isMarked && wrongSet.has(num)
+                      const isPending = pendingSet.has(num)
+                      const stuAnswer = studentAnswers[i] ?? ''
+                      const hasStudentAnswers = studentAnswers.length > 0
                       const answer = answers[i] ?? ''
                       const img = isImageAnswer(answer) ? answerImages[num] : undefined
                       return (
@@ -367,7 +404,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                           }}
                           className={`flex items-center gap-3 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer min-h-[46px]
                             ${!isMarked
-                              ? 'border-gray-200 bg-white'
+                              ? (isPending ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white')
                               : isWrong
                                 ? 'border-rose-400 bg-rose-50'
                                 : 'border-emerald-300 bg-emerald-50'}`}
@@ -377,13 +414,31 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                             {!isMarked ? '·' : isWrong ? 'X' : 'O'}
                           </span>
                           <span className="text-xs font-semibold text-gray-500 w-8 tabular-nums shrink-0">{num}번</span>
+                          {/* 학생 답 — 있을 때만. 없으면 기존처럼 정답만 보여준다 */}
+                          {hasStudentAnswers && (
+                            <span className="text-xs shrink-0 min-w-0 max-w-[42%] truncate text-left">
+                              <span className="text-gray-400">학생 </span>
+                              {stuAnswer ? (
+                                <span className="font-semibold text-gray-800">{stuAnswer}</span>
+                              ) : (
+                                <span className="text-gray-300">미제출</span>
+                              )}
+                            </span>
+                          )}
                           {img ? (
                             <AnswerThumb src={img} onZoom={setZoomSrc} />
                           ) : isImageAnswer(answer) ? (
-                            <span className="text-xs text-gray-300 flex-1 text-left">이미지 불러오는 중...</span>
+                            <span className="text-xs text-gray-300 flex-1 text-left">이미지 정답</span>
                           ) : answer ? (
                             <span className="text-xs text-gray-400 truncate flex-1 text-left">정답: {answer}</span>
-                          ) : null}
+                          ) : (
+                            <span className="text-xs text-gray-300 flex-1 text-left">정답 미등록</span>
+                          )}
+                          {isPending && (
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+                              확인 필요
+                            </span>
+                          )}
                         </div>
                       )
                     })}

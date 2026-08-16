@@ -51,6 +51,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         wrongProblemsJson: d.result.wrongProblemsJson,
         gradedBy: d.result.gradedBy,
         submittedAt: d.result.submittedAt,
+        // 선생님 채점 화면에서 '학생 답 / 정답'을 나란히 보여주는 데 쓴다
+        studentAnswersJson: d.result.studentAnswersJson,
+        pendingProblemsJson: d.result.pendingProblemsJson,
+        submittedCount: d.result.submittedCount,
       } : null,
     })),
   })

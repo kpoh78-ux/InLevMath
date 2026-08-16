@@ -17,7 +17,11 @@ export async function POST(
   }
 
   const { distributionId } = await params
-  const { wrongProblems } = await req.json() as { wrongProblems: number[] }
+  const { wrongProblems, markedProblems } = await req.json() as {
+    wrongProblems: number[]
+    /** 선생님이 판정을 내린 문제 번호. 안 보내면 전체를 판정한 것으로 본다 */
+    markedProblems?: number[]
+  }
 
   const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
@@ -36,8 +40,11 @@ export async function POST(
 
   const total = dist.worksheet.problemCount
   const wrongCount = wrongProblems.filter(n => n >= 1 && n <= total).length
-  const correctProblems = total - wrongCount
-  const rate = total > 0 ? correctProblems / total : 0
+  const judged = Array.isArray(markedProblems)
+    ? markedProblems.filter(n => n >= 1 && n <= total).length
+    : total
+  const correctProblems = Math.max(0, judged - wrongCount)
+  const rate = judged > 0 ? correctProblems / judged : 0
   const step = dist.worksheet.step as WorksheetStep
 
   // 능력치 델타
@@ -49,11 +56,23 @@ export async function POST(
 
   const wrongProblemsJson = JSON.stringify(wrongProblems.filter(n => n >= 1 && n <= total).sort((a, b) => a - b))
 
+  // 선생님이 판정한 문항 수 — 정답률·레벨의 분모가 된다 (판정한 만큼만 평가)
+  const markedCount = Array.isArray(markedProblems)
+    ? markedProblems.filter(n => n >= 1 && n <= total).length
+    : total
+
   const [result, updatedStudent] = await prisma.$transaction([
     prisma.worksheetResult.upsert({
       where: { distributionId },
-      create: { distributionId, correctProblems, wrongProblemsJson, gradedBy: 'teacher' },
-      update: { correctProblems, wrongProblemsJson, gradedBy: 'teacher' },
+      // 선생님이 판정을 내렸으므로 보류(pending)는 비운다
+      create: {
+        distributionId, correctProblems, wrongProblemsJson,
+        gradedBy: 'teacher', pendingProblemsJson: '[]', submittedCount: markedCount,
+      },
+      update: {
+        correctProblems, wrongProblemsJson,
+        gradedBy: 'teacher', pendingProblemsJson: '[]', submittedCount: markedCount,
+      },
     }),
     prisma.student.update({
       where: { id: dist.student.id },

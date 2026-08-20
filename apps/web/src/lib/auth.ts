@@ -1,8 +1,17 @@
 import { createHmac } from 'crypto'
 import { NextRequest } from 'next/server'
 import { SignJWT, jwtVerify } from 'jose'
+import { LRUCache } from 'lru-cache'
 import { supabaseAdmin, supabaseAnon, phoneToEmail } from './supabase'
 import { prisma } from './db'
+
+// ─── 토큰 검증 결과 캐시 ───────────────────────────────────────────────────────
+// 동일 토큰으로 반복 API 호출 시 Supabase 외부 HTTPS 통신 및 Prisma DB 쿼리 생략
+// max: 동시 접속 사용자 수 상한, ttl: 60초(ms) — 토큰 만료 전 항상 재검증 가능
+const tokenCache = new LRUCache<string, JWTPayload>({
+  max: 500,
+  ttl: 60 * 1000, // 60초
+})
 
 export interface JWTPayload {
   sub: string       // Prisma User.id
@@ -97,35 +106,48 @@ export async function signInWithSupabase(userId: string, phone: string): Promise
 
 // Supabase JWT 검증 후 Prisma User 정보 반환. 실패 시 로컬 JWT 폴백
 export async function verifyToken(token: string): Promise<JWTPayload> {
-  // 로컬 JWT 우선 시도 (Supabase 불가 환경 대응)
+  // ① 캐시 히트 — 외부 통신 없이 즉시 반환
+  const cached = tokenCache.get(token)
+  if (cached) return cached
+
+  // ② 로컬 JWT 우선 시도 (Supabase 불가 환경 대응)
   const local = await verifyLocalJWT(token)
   if (local) {
     const prismaUser = await prisma.user.findUnique({ where: { id: local.sub } })
     if (prismaUser) {
-      return {
+      const payload: JWTPayload = {
         sub: prismaUser.id,
         role: prismaUser.role as 'student' | 'teacher',
         name: prismaUser.name,
         phone: prismaUser.phone,
       }
+      tokenCache.set(token, payload)
+      return payload
     }
   }
 
-  // Supabase JWT 검증
+  // ③ Supabase JWT 검증 (외부 HTTPS 통신 — 캐시 미스 시에만 실행)
   try {
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
     if (error || !user) throw new Error('유효하지 않은 토큰입니다.')
     const prismaUser = await prisma.user.findUnique({ where: { supabaseId: user.id } })
     if (!prismaUser) throw new Error('사용자를 찾을 수 없습니다.')
-    return {
+    const payload: JWTPayload = {
       sub: prismaUser.id,
       role: prismaUser.role as 'student' | 'teacher',
       name: prismaUser.name,
       phone: prismaUser.phone,
     }
+    tokenCache.set(token, payload)
+    return payload
   } catch (e: any) {
     throw new Error('유효하지 않은 토큰입니다.')
   }
+}
+
+/** 로그아웃 또는 역할 변경 시 해당 토큰의 캐시를 즉시 무효화 */
+export function invalidateTokenCache(token: string): void {
+  tokenCache.delete(token)
 }
 
 // Authorization 헤더에서 Bearer 토큰 추출 후 검증

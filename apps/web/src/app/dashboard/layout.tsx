@@ -67,7 +67,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const fetchSidebarStudents = useCallback(async () => {
     try {
       const token = localStorage.getItem('teacher_token') ?? ''
-      const res = await fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch('/api/students?sidebar=1', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
       const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
       const students: AttendedStudent[] = data.map(s => ({

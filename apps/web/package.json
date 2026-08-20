@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.110.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.0.0",
+    "lru-cache": "^11.5.2",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",

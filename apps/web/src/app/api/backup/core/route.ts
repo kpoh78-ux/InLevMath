@@ -1,11 +1,10 @@
 import { NextResponse, NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { backupDir } from '@/lib/backupDir';
 
-const prisma = new PrismaClient();
 
 export async function GET(req: NextRequest) {
   const auth = await getAuthUser(req);
@@ -79,7 +78,5 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: '주요 데이터 백업에 실패했습니다.', detail }, { status: 500 });
-  } finally {
-    await prisma.$disconnect();
   }
 }

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      addClient(user.sub, teacherId, controller)
+      addClient(user.sub, teacherId, user.role, controller)
 
       // 연결 확인 ping
       controller.enqueue(`data: ${JSON.stringify({ type: 'CONNECTED', userId: user.sub })}\n\n`)

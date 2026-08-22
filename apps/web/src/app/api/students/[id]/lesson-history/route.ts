@@ -3,8 +3,14 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
 
-function parseWrong(json: string): number[] {
-  try { return JSON.parse(json) } catch { return [] }
+function parseWrong(json: string | null | undefined): number[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 // GET /api/students/[id]/lesson-history
@@ -52,7 +58,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'desc' },
   })
 
-  // ── 최근 3회 수업 기록 ─────────────────────────────────────────
+  // ── 사전 파싱 (루프 바깥에서 1회만) ───────────────────────────────────────
+  // 3개월 월별 루프에서마다 JSON.parse와 new Date를 반복하지 않도록 미리 계산
+  const wsComputed = wsResults.map(r => ({
+    r,
+    date: new Date(r.submittedAt),
+    total: r.distribution.worksheet.problemCount,
+    wrongArr: parseWrong(r.wrongProblemsJson),
+    get wrongCount() { return this.wrongArr.length },
+  }))
+  const tbComputed = tbResults.map(r => ({
+    r,
+    date: new Date(r.submittedAt),
+    total: r.textbook._count.problems,
+    wrongArr: parseWrong(r.wrongProblemsJson),
+    get wrongCount() { return this.wrongArr.length },
+  }))
+
+  // ── 최근 3회 수업 기록 ─────────────────────────────────────────────
   type Session = {
     type: 'worksheet' | 'textbook'
     title: string; grade: string; step?: string; unit?: string
@@ -61,10 +84,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const allSessions: Session[] = [
-    ...wsResults.map(r => {
-      const total = r.distribution.worksheet.problemCount
-      const wrong = parseWrong(r.wrongProblemsJson).length
-      const correct = total - wrong
+    ...wsComputed.map(({ r, total, wrongCount }) => {
+      const correct = total - wrongCount
       return {
         type: 'worksheet' as const,
         title: r.distribution.worksheet.title,
@@ -73,14 +94,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         unit:  r.distribution.worksheet.unit,
         totalProblems: total,
         correctProblems: correct,
-        correctRate: Math.round((correct / total) * 100),
+        correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
         gradedAt: r.submittedAt.toISOString(),
       }
     }),
-    ...tbResults.map(r => {
-      const total = r.textbook._count.problems
-      const wrong = parseWrong(r.wrongProblemsJson).length
-      const correct = total - wrong
+    ...tbComputed.map(({ r, total, wrongCount }) => {
+      const correct = total - wrongCount
       return {
         type: 'textbook' as const,
         title: r.textbook.title,
@@ -96,7 +115,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   allSessions.sort((a, b) => new Date(b.gradedAt).getTime() - new Date(a.gradedAt).getTime())
   const recentSessions = allSessions.slice(0, 3)
 
-  // ── 3개월 월별 정답률 추이 ────────────────────────────────────
+  // ── 3개월 월별 정답률 추이 ──────────────────────────────────────────
   const now = new Date()
   const monthlyTrend = Array.from({ length: 3 }, (_, i) => {
     const target = new Date(now.getFullYear(), now.getMonth() - (2 - i), 1)
@@ -106,20 +125,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     let total = 0; let correct = 0
 
-    for (const r of wsResults) {
-      const d = new Date(r.submittedAt)
-      if (d >= monthStart && d < monthEnd) {
-        const t = r.distribution.worksheet.problemCount
-        const c = t - parseWrong(r.wrongProblemsJson).length
-        total += t; correct += c
+    // 사전 파싱된 값 재활용 — JSON.parse와 Date 생성 추가 없음
+    for (const { date, total: t, wrongCount } of wsComputed) {
+      if (date >= monthStart && date < monthEnd) {
+        total += t; correct += t - wrongCount
       }
     }
-    for (const r of tbResults) {
-      const d = new Date(r.submittedAt)
-      if (d >= monthStart && d < monthEnd) {
-        const t = r.textbook._count.problems
-        const c = t - parseWrong(r.wrongProblemsJson).length
-        total += t; correct += c
+    for (const { date, total: t, wrongCount } of tbComputed) {
+      if (date >= monthStart && date < monthEnd) {
+        total += t; correct += t - wrongCount
       }
     }
     return {
@@ -141,23 +155,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   })
 
-  // ── 교재별 채점 범위 ──
+  // ── 교재별 채점 범위 ─────────────────────────────────────────────────────────
   // TextbookResult는 오답 번호만 갖고 있으므로, 그 번호들이 속한
   // 교재 페이지 구간을 함께 계산해 "어디까지 풀었는지"를 보여준다.
+  // wrongArr는 사전 파싱 시 이미 계산해 둔 값을 재활용 — JSON.parse 추가 없음
   const textbookRanges = await Promise.all(
-    tbResults.slice(0, 5).map(async r => {
-      let wrong: number[] = []
-      try { wrong = JSON.parse(r.wrongProblemsJson) } catch { /* 손상된 값 무시 */ }
-
-      const total = r.textbook._count.problems
-      const correct = Math.max(total - wrong.length, 0)
+    tbComputed.slice(0, 5).map(async ({ r, total, wrongArr }) => {
+      const correct = Math.max(total - wrongArr.length, 0)
 
       // 오답이 속한 페이지 구간 (오답이 없으면 생략)
       let pageFrom: number | null = null
       let pageTo: number | null = null
-      if (wrong.length > 0) {
+      if (wrongArr.length > 0) {
         const agg = await prisma.textbookProblem.aggregate({
-          where: { textbookId: r.textbookId, number: { in: wrong }, bookPage: { gt: 0 } },
+          where: { textbookId: r.textbookId, number: { in: wrongArr }, bookPage: { gt: 0 } },
           _min: { bookPage: true },
           _max: { bookPage: true },
         })
@@ -172,9 +183,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         totalProblems: total,
         correctProblems: correct,
         correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
-        wrongCount: wrong.length,
-        wrongFrom: wrong.length > 0 ? Math.min(...wrong) : null,
-        wrongTo: wrong.length > 0 ? Math.max(...wrong) : null,
+        wrongCount: wrongArr.length,
+        wrongFrom: wrongArr.length > 0 ? Math.min(...wrongArr) : null,
+        wrongTo: wrongArr.length > 0 ? Math.max(...wrongArr) : null,
         pageFrom,
         pageTo,
         submittedAt: r.submittedAt,

@@ -19,6 +19,19 @@ type AttendedStudent = {
   attended: boolean; checkInTime?: string
 }
 
+export type RealtimeNotification = {
+  id: string
+  type: 'WORKSHEET_SUBMIT' | 'TEXTBOOK_SUBMIT' | 'MISSION_RESULT' | 'LEVEL_UP' | 'CONNECTED'
+  title: string
+  message: string
+  studentName?: string
+  studentId?: string
+  correctRate?: number
+  submittedCount?: number
+  totalProblems?: number
+  timestamp: number
+}
+
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
 function groupByGrade(students: AttendedStudent[]) {
@@ -36,38 +49,30 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams()
   const selectedStudent = searchParams.get('student')
 
-  /**
-   * 상단 메뉴를 눌러도 좌측에서 고른 학생이 유지되도록 ?student= 를 붙인다.
-   * 메뉴를 옮길 때마다 선택이 풀리면 같은 학생을 매번 다시 찾아야 한다.
-   */
   const navHref = (href: string) =>
     selectedStudent ? `${href}?student=${selectedStudent}` : href
 
-  // 학생 id가 경로에 박히는 상세 화면들.
-  // 여기서는 ?student= 를 붙여도 경로의 학생이 그대로라 화면이 안 바뀐다.
   const DETAIL_ROUTES = ['/dashboard/students/', '/dashboard/manage/students/']
   const detailBase = DETAIL_ROUTES.find(
     base => pathname.startsWith(base) && pathname.slice(base.length).split('/').length === 1
   )
-  // 상세 화면에서 보고 있는 학생 (사이드바 선택 표시에 함께 쓴다)
   const detailStudentId = detailBase ? pathname.slice(detailBase.length) : null
   const activeStudentId = selectedStudent ?? detailStudentId
 
-  /** 사이드바에서 학생을 눌렀을 때 이동할 주소 */
   const studentHref = (id: string) => {
-    // 상세 화면이면 경로의 학생 id 자체를 바꿔 바로 그 학생 화면으로 간다
     if (detailBase) return detailBase + id
-    // 목록형 화면이면 같은 학생을 다시 누른 경우 선택 해제
     return pathname + (selectedStudent === id ? '' : `?student=${id}`)
   }
+
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
+  const [notifications, setNotifications] = useState<RealtimeNotification[]>([])
 
   const fetchSidebarStudents = useCallback(async () => {
     try {
       const token = localStorage.getItem('teacher_token') ?? ''
-      const res = await fetch('/api/students', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch('/api/students?sidebar=1', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
       const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
       const students: AttendedStudent[] = data.map(s => ({
@@ -80,7 +85,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         grades.forEach(g => { if (next[g] === undefined) next[g] = true })
         return next
       })
-    } catch { /* 인증 오류 등 무시 */ }
+    } catch { /* 무시 */ }
   }, [])
 
   useEffect(() => {
@@ -96,35 +101,195 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('students-updated', handler)
   }, [fetchSidebarStudents])
 
+  // ─── 실시간 SSE(Server-Sent Events) 리스너 (100ms 내 알림 수신) ─────────────
+  useEffect(() => {
+    const token = localStorage.getItem('teacher_token')
+    if (!token) return
+
+    let isMounted = true
+    const abortController = new AbortController()
+
+    async function connectSSE() {
+      try {
+        const res = await fetch('/api/events', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: abortController.signal,
+        })
+        if (!res.ok || !res.body) return
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (isMounted) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6))
+                handleRealtimeEvent(event)
+              } catch {}
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return
+        // 연결 끊어지면 3초 후 재연결
+        if (isMounted) {
+          setTimeout(connectSSE, 3000)
+        }
+      }
+    }
+
+    function handleRealtimeEvent(event: any) {
+      if (!event || event.type === 'CONNECTED') return
+
+      let notif: RealtimeNotification | null = null
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+      if (event.type === 'WORKSHEET_SUBMIT') {
+        notif = {
+          id,
+          type: 'WORKSHEET_SUBMIT',
+          title: `📝 [학습지 제출] ${event.studentName} 학생`,
+          message: `「${event.worksheetTitle}」 ${event.submittedCount}문항 제출 (정답률 ${event.correctRate}%)`,
+          studentName: event.studentName,
+          studentId: event.studentId,
+          correctRate: event.correctRate,
+          submittedCount: event.submittedCount,
+          totalProblems: event.totalProblems,
+          timestamp: Date.now(),
+        }
+      } else if (event.type === 'TEXTBOOK_SUBMIT') {
+        notif = {
+          id,
+          type: 'TEXTBOOK_SUBMIT',
+          title: `📖 [교재 제출] ${event.studentName} 학생`,
+          message: `「${event.textbookTitle}」 ${event.submittedCount}문항 제출 (정답률 ${event.correctRate}%)`,
+          studentName: event.studentName,
+          studentId: event.studentId,
+          correctRate: event.correctRate,
+          submittedCount: event.submittedCount,
+          totalProblems: event.totalProblems,
+          timestamp: Date.now(),
+        }
+      } else if (event.type === 'MISSION_RESULT') {
+        notif = {
+          id,
+          type: 'MISSION_RESULT',
+          title: `🎯 [미션 완료] ${event.studentName} 학생`,
+          message: `${event.missionType} 결과 입력 (정답률 ${Math.round(event.correctRate * 100)}%)`,
+          studentName: event.studentName,
+          studentId: event.studentId,
+          correctRate: Math.round(event.correctRate * 100),
+          timestamp: Date.now(),
+        }
+      } else if (event.type === 'LEVEL_UP') {
+        notif = {
+          id,
+          type: 'LEVEL_UP',
+          title: `🎉 [레벨업 축하] ${event.studentName} 학생`,
+          message: `미션을 클리어하고 다음 단계로 진급했습니다!`,
+          studentName: event.studentName,
+          studentId: event.studentId,
+          timestamp: Date.now(),
+        }
+      }
+
+      if (notif) {
+        setNotifications(prev => [notif!, ...prev.slice(0, 4)]) // 최대 5개 유지
+        window.dispatchEvent(new CustomEvent('students-updated'))
+        window.dispatchEvent(new CustomEvent('summary-updated'))
+      }
+    }
+
+    connectSSE()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [])
+
+  // 6초 후 알림 자동 제거
+  useEffect(() => {
+    if (notifications.length === 0) return
+    const timer = setTimeout(() => {
+      setNotifications(prev => prev.slice(0, -1))
+    }, 6000)
+    return () => clearTimeout(timer)
+  }, [notifications])
+
+  const removeNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('teacher_token')
     localStorage.removeItem('teacher_name')
-    // 클라이언트 이동이라 모듈 캐시가 살아남는다 — 다음 사용자에게
-    // 이전 로그인 계정의 관리자 여부가 남지 않도록 비운다
     clearMeCache()
     router.push('/')
   }
 
-  // 관리 페이지는 자체 사이드바 사용 → 출결 사이드바 숨김
   const showAttendanceSidebar = !pathname.startsWith('/dashboard/manage')
-
   const gradeGroups = groupByGrade(sidebarStudents)
   const sortedGrades = GRADE_ORDER.filter(g => gradeGroups[g])
-
   const attendedTotal = sidebarStudents.filter(s => s.attended).length
-  const total         = sidebarStudents.length
+  const total = sidebarStudents.length
 
   const toggleGrade = (grade: string) =>
     setExpandedGrades(prev => ({ ...prev, [grade]: !prev[grade] }))
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 relative">
+
+      {/* ── 실시간 알림 팝업 토스트 (100ms 내 수신) ── */}
+      <div className="fixed top-16 right-6 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
+        {notifications.map(n => (
+          <div
+            key={n.id}
+            className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-indigo-100 p-4 transition-all duration-300 transform translate-y-0 hover:scale-[1.02] flex items-start gap-3.5"
+            style={{
+              boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.2), 0 8px 10px -6px rgba(99, 102, 241, 0.1)',
+            }}
+          >
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg shrink-0">
+              {n.type === 'WORKSHEET_SUBMIT' ? '📝' : n.type === 'TEXTBOOK_SUBMIT' ? '📖' : n.type === 'LEVEL_UP' ? '🏆' : '🎯'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-xs font-bold text-gray-900 truncate">{n.title}</p>
+                <button
+                  onClick={() => removeNotification(n.id)}
+                  className="text-gray-400 hover:text-gray-600 text-xs px-1 leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{n.message}</p>
+              {n.studentId && (
+                <Link
+                  href={`/dashboard/manage/students/${n.studentId}`}
+                  onClick={() => removeNotification(n.id)}
+                  className="inline-block text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline mt-2"
+                >
+                  학생 상태창 바로가기 →
+                </Link>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* ── 상단 헤더 ── */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="px-4 h-14 flex items-center justify-between">
-
-          {/* 네비 */}
           <nav className="flex h-14">
             {NAV.map(n => {
               const active = n.href === '/dashboard'
@@ -157,7 +322,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* 선생님 정보 */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
@@ -178,18 +342,13 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* ── 바디 (사이드바 + 메인) ── */}
       <div className="flex flex-1 overflow-hidden">
-
-        {/* 출결 사이드바 */}
         {showAttendanceSidebar && (
           <aside className="w-44 bg-white border-r border-gray-200 shrink-0 flex flex-col h-[calc(100vh-3.5rem)] sticky top-14">
-
-            {/* 사이드바 헤더 */}
             <div className="px-4 py-2.5 border-b border-gray-100">
               <p className="text-xs font-bold text-gray-800">등록 학생</p>
               <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명</p>
             </div>
 
-            {/* 학생 목록 (학년별 접기/펼치기) */}
             <div className="flex-1 overflow-y-auto py-1">
               {sortedGrades.length === 0 && (
                 <p className="text-[11px] text-gray-300 text-center py-6">등록된 학생이 없습니다</p>
@@ -200,7 +359,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
                 return (
                   <div key={grade}>
-                    {/* 학년 헤더 */}
                     <button
                       onClick={() => toggleGrade(grade)}
                       className="w-full flex items-center justify-between px-3 py-1.5
@@ -219,7 +377,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                       </svg>
                     </button>
 
-                    {/* 학생 행 */}
                     {isExpanded && (
                       <div className="pb-1">
                         {students.map(s => (
@@ -246,7 +403,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               })}
             </div>
 
-            {/* 하단 요약 */}
             <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/80">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-gray-500">전체</span>
@@ -262,7 +418,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           </aside>
         )}
 
-        {/* 메인 컨텐츠 */}
         <main className="flex-1 overflow-auto px-6 py-6">
           {children}
         </main>

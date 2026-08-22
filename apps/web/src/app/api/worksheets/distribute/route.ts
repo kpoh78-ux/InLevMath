@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { academyTeacher } from '@/lib/academy'
+import { broadcastToStudentsOfTeacher } from '@/lib/sse'
 
 // 선생님 인증 + 본인 Teacher 레코드 조회 — 실패 시 NextResponse 를 그대로 반환
 async function requireTeacher(req: NextRequest) {
@@ -34,27 +35,55 @@ export async function POST(req: NextRequest) {
   // 남의 학원 학습지가 섞이면 그 건만 조용히 빠지는 게 아니라 요청 전체를 막는다
   const owned = await prisma.worksheet.findMany({
     where: { id: { in: ids }, teacherId: teacher.id },
-    select: { id: true },
+    select: { id: true, title: true },
   })
   if (owned.length !== ids.length) {
     return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  // 이미 배포된 학생은 upsert(기존 유지) — 숨김 처리된 건은 재배포 시 다시 노출
-  const results = await Promise.all(
-    ids.flatMap(wsId =>
-      studentIds.map((studentId: string) =>
-        prisma.worksheetDistribution.upsert({
-          where: { worksheetId_studentId: { worksheetId: wsId, studentId } },
-          update: { hiddenAt: null }, // 배포 이력은 유지, 숨김만 해제
-          create: { worksheetId: wsId, studentId, status: 'distributed' },
-        })
-      )
-    )
+  // ─── 배치 처리 (기존 N×M upsert → 2회 쿼리로 전환) ─────────────────────────
+  // 학습지 10개 × 학생 30명 = 기존 300 쿼리 → 아래 2 쿼리로 대체
+  //
+  // ① 신규 배포 일괄 생성 — 이미 존재하는 (worksheetId, studentId) 조합은 건너뜀
+  // ② 기존 배포의 hiddenAt 초기화 — 숨김 해제 (배포 이력·결과는 그대로 유지)
+  const pairs = ids.flatMap(wsId =>
+    studentIds.map((studentId: string) => ({ worksheetId: wsId, studentId }))
   )
 
+  const [createResult] = await prisma.$transaction([
+    // ① 신규 행 삽입 (중복 충돌 시 스킵)
+    prisma.worksheetDistribution.createMany({
+      data: pairs.map(p => ({ ...p, status: 'distributed' })),
+      skipDuplicates: true,
+    }),
+    // ② 이미 존재하던 행의 hiddenAt 초기화 (재배포 시 숨김 해제)
+    prisma.worksheetDistribution.updateMany({
+      where: {
+        OR: pairs.map(p => ({
+          worksheetId: p.worksheetId,
+          studentId: p.studentId,
+        })),
+        hiddenAt: { not: null },
+      },
+      data: { hiddenAt: null },
+    }),
+  ])
+
+  // SSE: 학생 대상 "새로운 학습지 미션" 실시간 알림 브로드캐스트
+  broadcastToStudentsOfTeacher(teacher.id, {
+    type: 'NEW_MISSION',
+    title: '새로운 학습지 미션',
+    message: owned.length === 1
+      ? `「${owned[0].title}」 새로운 학습지 미션이 도착했습니다!`
+      : `${owned.length}개의 새로운 학습지 미션이 도착했습니다!`,
+    worksheetCount: owned.length,
+    studentIds,
+    timestamp: Date.now(),
+  })
+
   return NextResponse.json({
-    distributed: results.length,
+    distributed: pairs.length,
+    created: createResult.count,
     worksheetCount: ids.length,
     studentCount: studentIds.length,
   })

@@ -8,6 +8,7 @@ import { academyTeacher } from '@/lib/academy'
 const INITIAL_PASSWORD = process.env.STUDENT_INITIAL_PASSWORD ?? 'math1234'
 
 // GET /api/students — 선생님이 자신의 학생 목록 조회
+// ?sidebar=1 : 사이드바 전용 경량 응답 (id·grade·name 3개 필드만, results 조인 없음)
 export async function GET(req: NextRequest) {
   const user = await getAuthUser(req)
   if (!user || user.role !== 'teacher') {
@@ -16,6 +17,22 @@ export async function GET(req: NextRequest) {
 
   const teacher = await academyTeacher(user.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
+
+  // 사이드바는 id·grade·name 3개 필드만 필요 — results(최근 5건) 조인 생략
+  const isSidebar = req.nextUrl.searchParams.get('sidebar') === '1'
+
+  if (isSidebar) {
+    const students = await prisma.student.findMany({
+      where: { teacherId: teacher.id },
+      select: {
+        id: true,
+        grade: true,
+        user: { select: { name: true } },
+      },
+      orderBy: { grade: 'asc' },
+    })
+    return NextResponse.json(students)
+  }
 
   const students = await prisma.student.findMany({
     where: { teacherId: teacher.id },

@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store'
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 
 type SseEvent = {
-  type: 'CONNECTED' | 'MISSION_RESULT' | 'LEVEL_UP'
+  type: 'CONNECTED' | 'MISSION_RESULT' | 'LEVEL_UP' | 'NEW_MISSION'
   [key: string]: unknown
 }
 

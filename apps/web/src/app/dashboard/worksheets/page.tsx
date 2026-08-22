@@ -1067,16 +1067,21 @@ function AllWorksheetsView() {
         <WorksheetAiAnswersModal
           file={aiFile}
           onClose={() => setAiFile(null)}
-          onConfirm={({ title, answers }) => {
-            // 검수를 마친 정답을 들고 학습지 등록 폼으로 넘어간다.
-            // 학년·단원·단계는 파일만으로 알 수 없어 선생님이 직접 고른다.
+          onConfirm={({ title, answers, majorUnit, middleUnit, minorUnit, section }) => {
+            // 검수를 마친 정답 및 AI 자동 추출 단원/유형 메타데이터를 학습지 등록 폼에 자동 채움
             setAiFile(null)
             setPendingAnswers(answers)
             setEditingWs(null)
             setSaveError('')
             setForm({
-              title, grade: '', unit: '', problemCount: String(answers.length),
-              source: 'manual', category: '단원별', step: '기초', examSubType: '',
+              title, 
+              grade: '', 
+              unit: minorUnit || middleUnit || majorUnit || '', 
+              problemCount: String(answers.length),
+              source: 'manual', 
+              category: '단원별', 
+              step: section && ['기초', '기본', '발전', '최상위'].includes(section) ? (section as any) : '기본', 
+              examSubType: '',
             })
             setShowAddModal(true)
           }}

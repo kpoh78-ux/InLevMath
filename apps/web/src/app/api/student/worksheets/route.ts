@@ -14,15 +14,37 @@ export async function GET(req: NextRequest) {
 
   const distributions = await prisma.worksheetDistribution.findMany({
     where: { studentId: student.id },
-    include: {
-      worksheet: true,
-      result: true,
+    select: {
+      id: true,
+      status: true,
+      distributedAt: true,
+      // answersJson 등 미사용 대용량 컬럼 제외 — 응답에 필요한 필드만 선택
+      worksheet: {
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          step: true,
+          examSubType: true,
+          grade: true,
+          unit: true,
+          problemCount: true,
+        },
+      },
+      // studentAnswersJson·pendingProblemsJson 등 미사용 컬럼 제외
+      result: {
+        select: {
+          correctProblems: true,
+          submittedAt: true,
+        },
+      },
     },
     orderBy: { distributedAt: 'desc' },
   })
 
   return NextResponse.json(distributions.map(d => ({
     distributionId: d.id,
+    id: d.id,
     worksheetId: d.worksheet.id,
     title: d.worksheet.title,
     category: d.worksheet.category,
@@ -31,9 +53,12 @@ export async function GET(req: NextRequest) {
     grade: d.worksheet.grade,
     unit: d.worksheet.unit,
     totalProblems: d.worksheet.problemCount,
+    totalQuestions: d.worksheet.problemCount,
     status: d.status,
     distributedAt: d.distributedAt,
+    assignedAt: d.distributedAt,
     correctProblems: d.result?.correctProblems ?? null,
+    score: d.result?.correctProblems ?? null,
     submittedAt: d.result?.submittedAt ?? null,
   })))
 }

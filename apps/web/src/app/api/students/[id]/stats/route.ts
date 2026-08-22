@@ -3,8 +3,14 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
 
-function parseWrong(json: string): number[] {
-  try { return JSON.parse(json) } catch { return [] }
+function parseWrong(json: string | null | undefined): number[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +30,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-  // 최근 30일 학습지 채점 결과
+  // 1. 배정된 교재 목록 및 문제 수 초고속 집계 (DB 엔진 COUNT(*))
+  const studentTextbooks = await prisma.textbookAssignment.findMany({
+    where: { studentId: id },
+    select: {
+      id: true,
+      completedAt: true,
+      textbook: {
+        select: {
+          id: true,
+          title: true,
+          grade: true,
+          _count: {
+            select: { problems: true }
+          }
+        }
+      }
+    }
+  })
+
+  // 총 배정 문제 수 초고속 연산 (메모리 사용량 최소화)
+  const totalAssignedProblemCount = studentTextbooks.reduce(
+    (acc, item) => acc + (item.textbook._count.problems || 0),
+    0
+  )
+
+  // 2. 최근 30일 학습지 채점 결과
   const worksheetResults = await prisma.worksheetResult.findMany({
     where: {
       distribution: { studentId: id },
@@ -38,33 +69,43 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'asc' },
   })
 
-  // 최근 30일 교재 채점 결과
+  // 3. 최근 30일 교재 채점 결과 (COUNT 집계로 메모리/트래픽 절감)
   const textbookResults = await prisma.textbookResult.findMany({
     where: {
       studentId: id,
       submittedAt: { gte: thirtyDaysAgo },
     },
     include: {
-      textbook: { include: { problems: { select: { id: true } } } },
+      textbook: { select: { _count: { select: { problems: true } } } },
     },
     orderBy: { submittedAt: 'asc' },
   })
+
+  // ── 사전 파싱 (루프 밖에서 1회만 실행) ────────────────────────
+  const wsComputed = worksheetResults.map(r => ({
+    r,
+    date: new Date(r.submittedAt),
+    total: r.distribution.worksheet.problemCount,
+    wrongCount: parseWrong(r.wrongProblemsJson).length,
+  }))
+  const tbComputed = textbookResults.map(r => ({
+    r,
+    date: new Date(r.submittedAt),
+    total: r.textbook._count.problems,
+    wrongCount: parseWrong(r.wrongProblemsJson).length,
+  }))
 
   // ── 전체 요약 ─────────────────────────────────────────────────
   let totalProblems = 0
   let correctProblems = 0
 
-  for (const r of worksheetResults) {
-    const total = r.distribution.worksheet.problemCount
-    const wrong = parseWrong(r.wrongProblemsJson).length
+  for (const { total, wrongCount } of wsComputed) {
     totalProblems += total
-    correctProblems += total - wrong
+    correctProblems += total - wrongCount
   }
-  for (const r of textbookResults) {
-    const total = r.textbook.problems.length
-    const wrong = parseWrong(r.wrongProblemsJson).length
+  for (const { total, wrongCount } of tbComputed) {
     totalProblems += total
-    correctProblems += total - wrong
+    correctProblems += total - wrongCount
   }
 
   // ── 주간 추이 (최근 4주, 가장 오래된 것 → 최신) ───────────────
@@ -76,20 +117,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     let wTotal = 0; let wCorrect = 0
 
-    for (const r of worksheetResults) {
-      const d = new Date(r.submittedAt)
-      if (d >= weekStart && d < weekEnd) {
-        const total = r.distribution.worksheet.problemCount
-        const wrong = parseWrong(r.wrongProblemsJson).length
-        wTotal += total; wCorrect += total - wrong
+    for (const { date, total, wrongCount } of wsComputed) {
+      if (date >= weekStart && date < weekEnd) {
+        wTotal += total; wCorrect += total - wrongCount
       }
     }
-    for (const r of textbookResults) {
-      const d = new Date(r.submittedAt)
-      if (d >= weekStart && d < weekEnd) {
-        const total = r.textbook.problems.length
-        const wrong = parseWrong(r.wrongProblemsJson).length
-        wTotal += total; wCorrect += total - wrong
+    for (const { date, total, wrongCount } of tbComputed) {
+      if (date >= weekStart && date < weekEnd) {
+        wTotal += total; wCorrect += total - wrongCount
       }
     }
 
@@ -102,20 +137,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // ── 단계별 정답률 ──────────────────────────────────────────────
   const stepMap: Record<string, { total: number; correct: number }> = {}
-  for (const r of worksheetResults) {
+  for (const { r, total, wrongCount } of wsComputed) {
     const step = r.distribution.worksheet.step
-    const total = r.distribution.worksheet.problemCount
-    const wrong = parseWrong(r.wrongProblemsJson).length
     if (!stepMap[step]) stepMap[step] = { total: 0, correct: 0 }
     stepMap[step].total += total
-    stepMap[step].correct += total - wrong
+    stepMap[step].correct += total - wrongCount
   }
-  if (textbookResults.length > 0) {
+  if (tbComputed.length > 0) {
     let tbTotal = 0; let tbCorrect = 0
-    for (const r of textbookResults) {
-      const total = r.textbook.problems.length
-      const wrong = parseWrong(r.wrongProblemsJson).length
-      tbTotal += total; tbCorrect += total - wrong
+    for (const { total, wrongCount } of tbComputed) {
+      tbTotal += total; tbCorrect += total - wrongCount
     }
     stepMap['교재'] = { total: tbTotal, correct: tbCorrect }
   }
@@ -137,7 +168,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       grade: student.grade,
       currentLevel: student.currentLevel,
       currentMission: student.currentMission,
-      // 레벨·칭호의 근거가 되는 평균 정답률 (lib/studentLevel.ts)
       levelRate: student.avgCorrectRate,
       comprehension: student.comprehension,
       reasoning: student.reasoning,
@@ -149,7 +179,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       avgCorrectRate: totalProblems > 0 ? Math.round((correctProblems / totalProblems) * 100) : 0,
       worksheetCount: worksheetResults.length,
       textbookCount: textbookResults.length,
+      assignedTextbookCount: studentTextbooks.length,
+      totalAssignedProblemCount,
+      totalProblemCount: totalAssignedProblemCount,
     },
+    assignedTextbooks: studentTextbooks.map(item => ({
+      assignmentId: item.id,
+      textbookId: item.textbook.id,
+      title: item.textbook.title,
+      grade: item.textbook.grade,
+      problemCount: item.textbook._count.problems,
+      isCompleted: Boolean(item.completedAt),
+    })),
     weeklyTrend,
     byStep,
   })

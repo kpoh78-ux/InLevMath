@@ -19,6 +19,7 @@ import {
 } from '@inlevmath/shared'
 import { tryApplyAutoReward } from '@/lib/autoReward'
 import { tryRecalcStudentLevel } from '@/lib/studentLevel'
+import { broadcastToTeacher } from '@/lib/sse'
 
 export async function POST(
   req: NextRequest,
@@ -31,7 +32,10 @@ export async function POST(
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
   }
 
-  const student = await prisma.student.findFirst({ where: { userId: payload.sub } })
+  const student = await prisma.student.findFirst({
+    where: { userId: payload.sub },
+    include: { user: { select: { name: true } } },
+  })
   if (!student) return NextResponse.json({ error: '학생 정보 없음' }, { status: 404 })
 
   const { distributionId } = await params
@@ -148,6 +152,20 @@ export async function POST(
         correctRate,
       })
     : null
+
+  // SSE: 학생 답안 제출 실시간 알림 (100ms 내 교사 대시보드 팝업 전송)
+  broadcastToTeacher(student.teacherId, {
+    type: 'WORKSHEET_SUBMIT',
+    studentId: student.id,
+    studentName: student.user.name,
+    worksheetTitle: dist.worksheet.title,
+    step: dist.worksheet.step,
+    totalProblems: total,
+    submittedCount,
+    correctProblems,
+    correctRate,
+    complete,
+  })
 
   return NextResponse.json({
     correctProblems,

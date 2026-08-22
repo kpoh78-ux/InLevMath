@@ -48,19 +48,26 @@ export async function POST(req: NextRequest) {
   const results: { row: number; name: string; status: '성공' | '실패'; reason?: string }[] = []
   const hashed = await bcrypt.hash(INITIAL_PASSWORD, 10)
 
+  // ─── 1단계: 엑셀 전체 행 파싱 및 유효성 검사 ────────────────────────────────
+  type ValidRow = {
+    rowNum: number; name: string; phone: string; grade: string
+    school: string; parentName: string; parentPhone: string; startDate: string
+  }
+  const validRows: ValidRow[] = []
+  const excelPhones = new Set<string>() // 엑셀 내 중복 감지용
+
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]
-    const rowNum = i + 2 // 헤더 제외 실제 엑셀 행 번호
+    const rowNum = i + 2
 
-    const name       = String(row[0] ?? '').trim()
-    const phone      = String(row[1] ?? '').replace(/\D/g, '')
-    const grade      = String(row[2] ?? '').trim()
-    const school     = String(row[3] ?? '').trim()
-    const parentName = String(row[4] ?? '').trim()
+    const name        = String(row[0] ?? '').trim()
+    const phone       = String(row[1] ?? '').replace(/\D/g, '')
+    const grade       = String(row[2] ?? '').trim()
+    const school      = String(row[3] ?? '').trim()
+    const parentName  = String(row[4] ?? '').trim()
     const parentPhone = String(row[5] ?? '').replace(/\D/g, '')
-    const startDate  = String(row[6] ?? '').trim()
+    const startDate   = String(row[6] ?? '').trim()
 
-    // 필수값 검증
     if (!name) {
       results.push({ row: rowNum, name: `(${rowNum}행)`, status: '실패', reason: '학생이름 누락' })
       continue
@@ -73,33 +80,66 @@ export async function POST(req: NextRequest) {
       results.push({ row: rowNum, name, status: '실패', reason: `학년 형식 오류 (예: 중2, 고1) — 입력값: "${grade}"` })
       continue
     }
-
-    // 중복 확인
-    const existing = await prisma.user.findUnique({ where: { phone } })
-    if (existing) {
-      results.push({ row: rowNum, name, status: '실패', reason: `핸드폰번호 중복 (${phone})` })
+    if (excelPhones.has(phone)) {
+      results.push({ row: rowNum, name, status: '실패', reason: `파일 내 핸드폰번호 중복 (${phone})` })
       continue
     }
+    excelPhones.add(phone)
+    validRows.push({ rowNum, name, phone, grade, school, parentName, parentPhone, startDate })
+  }
 
-    try {
-      await prisma.user.create({
-        data: {
-          name, phone, password: hashed, role: 'student',
-          student: {
-            create: {
-              teacherId: teacher.id,
-              school,
-              grade,
-              parentName,
-              parentPhone,
-              startDate,
-            },
-          },
-        },
-      })
-      results.push({ row: rowNum, name, status: '성공' })
-    } catch {
-      results.push({ row: rowNum, name, status: '실패', reason: 'DB 저장 오류' })
+  // ─── 2단계: DB 중복 번호 1회 조회 ────────────────────────────────────────────
+  // 기존: 행마다 findUnique → 최대 N회 쿼리
+  // 개선: 전체 번호를 한 번에 조회하여 Set으로 관리
+  if (validRows.length > 0) {
+    const phones = validRows.map(r => r.phone)
+    const existingUsers = await prisma.user.findMany({
+      where: { phone: { in: phones } },
+      select: { phone: true },
+    })
+    const existingPhones = new Set(existingUsers.map(u => u.phone))
+
+    // 중복 번호가 있는 행은 실패 처리, 나머지만 일괄 생성 대상으로 분류
+    const toCreate = validRows.filter(r => {
+      if (existingPhones.has(r.phone)) {
+        results.push({ row: r.rowNum, name: r.name, status: '실패', reason: `핸드폰번호 중복 (${r.phone})` })
+        return false
+      }
+      return true
+    })
+
+    // ─── 3단계: 유효 행 일괄 생성 (트랜잭션) ──────────────────────────────────
+    // 기존: 행마다 user.create 순차 실행 → 최대 N회 쿼리
+    // 개선: prisma.$transaction으로 한 번에 처리 (원자성 보장)
+    if (toCreate.length > 0) {
+      try {
+        await prisma.$transaction(
+          toCreate.map(r =>
+            prisma.user.create({
+              data: {
+                name: r.name, phone: r.phone, password: hashed, role: 'student',
+                student: {
+                  create: {
+                    teacherId: teacher.id,
+                    school: r.school,
+                    grade: r.grade,
+                    parentName: r.parentName,
+                    parentPhone: r.parentPhone,
+                    startDate: r.startDate,
+                  },
+                },
+              },
+            })
+          )
+        )
+        for (const r of toCreate) {
+          results.push({ row: r.rowNum, name: r.name, status: '성공' })
+        }
+      } catch {
+        for (const r of toCreate) {
+          results.push({ row: r.rowNum, name: r.name, status: '실패', reason: 'DB 저장 오류' })
+        }
+      }
     }
   }
 

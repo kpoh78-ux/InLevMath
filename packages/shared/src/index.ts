@@ -457,3 +457,107 @@ export function calcAbilityDelta(
 
   return delta
 }
+
+// ─── IRT 3PL 및 컴퓨터 적응형 진단 평가 (CAT Engine) 타입 ────────────────────
+export interface IrtItemParams {
+  id: string
+  discrimination: number // a: 변별도 (0.5 ~ 2.5)
+  difficulty: number     // b: 난이도 (-3.0 ~ +3.0)
+  guessing: number       // c: 추측도 (0.0 ~ 0.25)
+  conceptId?: string
+  conceptTitle?: string
+  domain?: '수와 연산' | '문자와 식' | '함수' | '기하' | '확률과 통계'
+  grade?: string
+  contentLatex: string
+  problemType: 'MULTIPLE_CHOICE' | 'SHORT_ANSWER'
+  optionsJson?: string[]
+  answer: string
+  solutionLatex?: string
+}
+
+export interface IrtUserResponse {
+  item: IrtItemParams
+  isCorrect: boolean
+  timeSpentSec: number
+  submittedAnswer?: string
+}
+
+export interface DiagnosticCapabilityRadar {
+  calculation: number      // 계산력
+  comprehension: number    // 이해력
+  reasoning: number        // 추론력
+  problemSolving: number   // 문제해결력
+  application: number      // 응용력
+}
+
+// ─── 초3~고3 K-수학 4계층 체계화 (대단원 ➡️ 중단원 ➡️ 소단원 ➡️ 문제유형) 타입 ───
+export type MathGradeSubjectCode =
+  | 'ELEM_3_1' | 'ELEM_3_2' | 'ELEM_4_1' | 'ELEM_4_2'
+  | 'ELEM_5_1' | 'ELEM_5_2' | 'ELEM_6_1' | 'ELEM_6_2'
+  | 'MID_1_1'  | 'MID_1_2'  | 'MID_2_1'  | 'MID_2_2'  | 'MID_3_1'  | 'MID_3_2'
+  | 'HIGH_COMMON_1' | 'HIGH_COMMON_2' | 'HIGH_ALGEBRA' | 'HIGH_CALC_1'
+  | 'HIGH_CALC_2'   | 'HIGH_PROB_STAT' | 'HIGH_GEOMETRY'
+
+export interface MathMajorUnitDto {
+  id: string
+  subject: MathGradeSubjectCode
+  orderIndex: number
+  code: string
+  name: string
+  middleUnits?: MathMiddleUnitDto[]
+}
+
+export interface MathMiddleUnitDto {
+  id: string
+  majorUnitId: string
+  orderIndex: number
+  code: string
+  name: string
+  subUnits?: MathSubUnitDto[]
+}
+
+export interface MathSubUnitDto {
+  id: string
+  middleUnitId: string
+  orderIndex: number
+  code: string
+  name: string
+  patternTypes?: MathPatternTypeDto[]
+}
+
+export interface MathPatternTypeDto {
+  id: string
+  subUnitId: string
+  typeCode: string
+  typeName: string
+  difficulty: number
+}
+
+export interface StudentSubUnitStatDto {
+  id: string
+  studentId: string
+  subUnitId: string
+  totalSolved: number
+  correctCount: number
+  accuracyRate: number
+  updatedAt: string
+}
+
+export interface StudentPatternStatDto {
+  id: string
+  studentId: string
+  patternTypeId: string
+  totalSolved: number
+  correctCount: number
+  accuracyRate: number
+  updatedAt: string
+}
+
+// 2022 개정 수학 지식 그래프 및 스테이지 공통 타입
+export * from './taxonomy'
+
+// 멀티 디바이스 반응형 뷰포트 훅
+export * from './hooks/useResponsiveViewport'
+
+
+

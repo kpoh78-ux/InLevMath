@@ -57,14 +57,6 @@ export default function StudentDashboard() {
   const [loadingWS, setLoadingWS] = useState(true)
   const { currentLevel, currentMission, abilityScore, clearedMissions } = progress
 
-  const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
-    if (event.type === 'LEVEL_UP') {
-      showToast('🎉 미션 클리어! 다음 레벨로 올라갔어요!')
-      setProgress(prev => ({ ...prev, currentLevel: prev.currentLevel + 1 }))
-    }
-  }, [])
-  useEvents(onEvent)
-
   // 배정된 교재 fetch
   const fetchTextbooks = useCallback(async () => {
     try {
@@ -83,6 +75,17 @@ export default function StudentDashboard() {
       setLoadingWS(false)
     }
   }, [])
+
+  const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
+    if (event.type === 'LEVEL_UP') {
+      showToast('🎉 미션 클리어! 다음 레벨로 올라갔어요!')
+      setProgress(prev => ({ ...prev, currentLevel: prev.currentLevel + 1 }))
+    } else if (event.type === 'NEW_MISSION') {
+      showToast('📝 새로운 학습지 미션이 도착했어요!')
+      fetchWorksheets()
+    }
+  }, [fetchWorksheets])
+  useEvents(onEvent)
 
   useEffect(() => { fetchWorksheets(); fetchTextbooks() }, [fetchWorksheets, fetchTextbooks])
 

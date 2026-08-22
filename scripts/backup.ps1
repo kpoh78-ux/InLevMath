@@ -73,22 +73,31 @@ try {
     $GDBackupDir = $null
     $GoogleDriveCandidates = @()
     if (Test-Path "G:\") {
-        $GSubdirs = Get-ChildItem -Path "G:\" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
-        $GoogleDriveCandidates += $GSubdirs
-        $GoogleDriveCandidates += "G:\"
+        $GSubdirs = Get-ChildItem -Path "G:\" -Directory -ErrorAction SilentlyContinue
+        foreach ($d in $GSubdirs) {
+            try {
+                $candidateDir = Join-Path $d.FullName "InLevMath_Backups"
+                if (-not (Test-Path $candidateDir)) {
+                    New-Item -ItemType Directory -Path $candidateDir -Force -ErrorAction Stop | Out-Null
+                }
+                $GoogleDriveCandidates += $d.FullName
+            } catch {}
+        }
     }
-    $GoogleDriveCandidates += @("G:\내 드라이브", "G:\My Drive", "$HOME\Google Drive")
+    $GoogleDriveCandidates += @("$HOME\Google Drive")
 
     foreach ($GDPath in $GoogleDriveCandidates) {
-        if (Test-Path $GDPath) {
+        try {
             $GDBackupDir = Join-Path $GDPath "InLevMath_Backups"
             if (-not (Test-Path $GDBackupDir)) {
-                New-Item -ItemType Directory -Path $GDBackupDir -Force | Out-Null
+                New-Item -ItemType Directory -Path $GDBackupDir -Force -ErrorAction Stop | Out-Null
             }
             $GDZipPath = Join-Path $GDBackupDir $ZipFileName
-            Copy-Item -Path $FinalLocalZipPath -Destination $GDZipPath -Force
+            Copy-Item -Path $FinalLocalZipPath -Destination $GDZipPath -Force -ErrorAction Stop
             Write-Host "Google Drive backup completed: $GDZipPath" -ForegroundColor Green
             break
+        } catch {
+            Write-Warning "Google Drive path skipped ($GDPath): $($_.Exception.Message)"
         }
     }
 

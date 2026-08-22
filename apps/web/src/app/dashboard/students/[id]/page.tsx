@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { MISSION_LABELS, type MissionType } from '@inlevmath/shared'
+import StudentWeaknessRadar from '@/components/dashboard/StudentWeaknessRadar'
 
-type Tab = 'history' | 'ability' | 'grading'
+type Tab = 'history' | 'ability' | 'radar' | 'grading'
 
 const MISSION_COLORS: Record<string, string> = {
   concept_learning: 'bg-blue-100 text-blue-700',
@@ -90,6 +91,7 @@ export default function StudentDetailPage() {
   const TABS: [Tab, string][] = [
     ['history', '학습내역'],
     ['ability', '능력치 분석'],
+    ['radar', '소단원·유형 정답률 레이더'],
     ['grading', '채점 이력'],
   ]
 
@@ -431,6 +433,18 @@ export default function StudentDetailPage() {
               </div>
             </div>
           )}
+
+          {/* 소단원 및 취약점 레이더 분석 연동 */}
+          <div className="pt-2">
+            <StudentWeaknessRadar studentId={id} studentName={student.name} />
+          </div>
+        </div>
+      )}
+
+      {/* ── 단원·유형 레이더 탭 ── */}
+      {tab === 'radar' && (
+        <div className="space-y-4">
+          <StudentWeaknessRadar studentId={id} studentName={student.name} />
         </div>
       )}
 

@@ -489,3 +489,67 @@ export interface DiagnosticCapabilityRadar {
   problemSolving: number   // 문제해결력
   application: number      // 응용력
 }
+
+// ─── 초3~고3 K-수학 4계층 체계화 (대단원 ➡️ 중단원 ➡️ 소단원 ➡️ 문제유형) 타입 ───
+export type MathGradeSubjectCode =
+  | 'ELEM_3_1' | 'ELEM_3_2' | 'ELEM_4_1' | 'ELEM_4_2'
+  | 'ELEM_5_1' | 'ELEM_5_2' | 'ELEM_6_1' | 'ELEM_6_2'
+  | 'MID_1_1'  | 'MID_1_2'  | 'MID_2_1'  | 'MID_2_2'  | 'MID_3_1'  | 'MID_3_2'
+  | 'HIGH_COMMON_1' | 'HIGH_COMMON_2' | 'HIGH_ALGEBRA' | 'HIGH_CALC_1'
+  | 'HIGH_CALC_2'   | 'HIGH_PROB_STAT' | 'HIGH_GEOMETRY'
+
+export interface MathMajorUnitDto {
+  id: string
+  subject: MathGradeSubjectCode
+  orderIndex: number
+  code: string
+  name: string
+  middleUnits?: MathMiddleUnitDto[]
+}
+
+export interface MathMiddleUnitDto {
+  id: string
+  majorUnitId: string
+  orderIndex: number
+  code: string
+  name: string
+  subUnits?: MathSubUnitDto[]
+}
+
+export interface MathSubUnitDto {
+  id: string
+  middleUnitId: string
+  orderIndex: number
+  code: string
+  name: string
+  patternTypes?: MathPatternTypeDto[]
+}
+
+export interface MathPatternTypeDto {
+  id: string
+  subUnitId: string
+  typeCode: string
+  typeName: string
+  difficulty: number
+}
+
+export interface StudentSubUnitStatDto {
+  id: string
+  studentId: string
+  subUnitId: string
+  totalSolved: number
+  correctCount: number
+  accuracyRate: number
+  updatedAt: string
+}
+
+export interface StudentPatternStatDto {
+  id: string
+  studentId: string
+  patternTypeId: string
+  totalSolved: number
+  correctCount: number
+  accuracyRate: number
+  updatedAt: string
+}
+

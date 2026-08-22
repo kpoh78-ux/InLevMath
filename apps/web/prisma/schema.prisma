@@ -101,6 +101,8 @@ model Student {
   rewards             StudentReward[]
   pointHistory        PointTransaction[]
   autoRewardLogs      AutoRewardLog[]
+  subUnitStats        StudentSubUnitStat[]
+  patternStats        StudentPatternStat[]
 
   @@index([teacherId])
 }
@@ -137,12 +139,20 @@ model TextbookProblem {
   type       String   @default("multiple") // "multiple" | "short" | "image"
   answer     String   @default("") // type='image'이면 IMAGE_ANSWER_MARKER
 
+  // 소단원 / 유형 점진적 연동 (Nullable 외래키)
+  subUnitId     String?
+  subUnit       MathSubUnit?     @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
+  patternTypeId String?
+  patternType   MathPatternType? @relation(fields: [patternTypeId], references: [id], onDelete: SetNull)
+
   @@unique([textbookId, number])
   @@index([textbookId, number])
   // 교재 페이지별 조회 — 정답 입력 화면의 기본 이동 단위
   @@index([textbookId, bookPage, number], map: "TextbookProblem_page_idx")
   // 단원/유형별 조회 — 문제 수가 수천 개여도 필요한 구간만 읽기 위한 인덱스
   @@index([textbookId, majorUnit, middleUnit, minorUnit, section, subSection], map: "TextbookProblem_unit_idx")
+  @@index([subUnitId])
+  @@index([patternTypeId])
 }
 
 // 교재 배정 — 학습지의 WorksheetDistribution과 같은 역할.
@@ -436,4 +446,137 @@ model ConceptDependency {
   @@index([prerequisiteId])
   @@index([successorId])
 }
+
+// ── 초3~고3 K-수학 4계층 체계화 (대단원 ➡️ 중단원 ➡️ 소단원 ➡️ 문제유형) ───────────
+
+// 1. 교육과정 학년 및 고등 선택과목
+enum MathGradeSubject {
+  ELEM_3_1
+  ELEM_3_2
+  ELEM_4_1
+  ELEM_4_2
+  ELEM_5_1
+  ELEM_5_2
+  ELEM_6_1
+  ELEM_6_2
+  MID_1_1
+  MID_1_2
+  MID_2_1
+  MID_2_2
+  MID_3_1
+  MID_3_2
+  HIGH_COMMON_1
+  HIGH_COMMON_2
+  HIGH_ALGEBRA
+  HIGH_CALC_1
+  HIGH_CALC_2
+  HIGH_PROB_STAT
+  HIGH_GEOMETRY
+}
+
+// 2. 대단원 (Major Unit)
+model MathMajorUnit {
+  id          String           @id @default(cuid())
+  subject     MathGradeSubject
+  orderIndex  Int
+  code        String           @unique // 예: "H1_C1_MAJOR_01"
+  name        String           // 예: "Ⅰ. 다항식"
+  middleUnits MathMiddleUnit[]
+
+  @@index([subject, orderIndex])
+}
+
+// 3. 중단원 (Middle Unit)
+model MathMiddleUnit {
+  id          String        @id @default(cuid())
+  majorUnitId String
+  majorUnit   MathMajorUnit @relation(fields: [majorUnitId], references: [id], onDelete: Cascade)
+  orderIndex  Int
+  code        String        @unique
+  name        String        // 예: "1. 다항식의 연산"
+  subUnits    MathSubUnit[]
+
+  @@index([majorUnitId, orderIndex])
+}
+
+// 4. 소단원 (Sub Unit - 현재 기본 단위)
+model MathSubUnit {
+  id               String               @id @default(cuid())
+  middleUnitId     String
+  middleUnit       MathMiddleUnit       @relation(fields: [middleUnitId], references: [id], onDelete: Cascade)
+  orderIndex       Int
+  code             String               @unique
+  name             String               // 예: "(1) 다항식의 덧셈과 뺄셈"
+  patternTypes     MathPatternType[]    // 향후 점진적 확장
+  questions        Question[]
+  textbookProblems TextbookProblem[]
+  stats            StudentSubUnitStat[]
+
+  @@index([middleUnitId])
+}
+
+// 5. 문제 유형 (Pattern Type - 향후 점진적 축적)
+model MathPatternType {
+  id               String               @id @default(cuid())
+  subUnitId        String
+  subUnit          MathSubUnit          @relation(fields: [subUnitId], references: [id], onDelete: Cascade)
+  typeCode         String               @unique // 예: "TYP_H1_01_01_03"
+  typeName         String               // 예: "[유형03] 식의 값 구하기 - 곱셈공식 변형"
+  difficulty       Int                  @default(3)
+  questions        Question[]
+  textbookProblems TextbookProblem[]
+  stats            StudentPatternStat[]
+
+  @@index([subUnitId])
+}
+
+// 6. 문항 모델 (소단원 / 문제유형 연결 - 점진적 확장)
+model Question {
+  id            String           @id @default(cuid())
+  subUnitId     String?
+  subUnit       MathSubUnit?     @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
+  patternTypeId String?
+  patternType   MathPatternType? @relation(fields: [patternTypeId], references: [id], onDelete: SetNull)
+  title         String           @default("")
+  content       String?          @db.Text
+  answer        String           @default("")
+  difficulty    Int              @default(3)
+  createdAt     DateTime         @default(now())
+
+  @@index([subUnitId])
+  @@index([patternTypeId])
+}
+
+// 7. 학생 소단원별 정답률 누적 통계
+model StudentSubUnitStat {
+  id           String      @id @default(cuid())
+  studentId    String
+  student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subUnitId    String
+  subUnit      MathSubUnit @relation(fields: [subUnitId], references: [id], onDelete: Cascade)
+  totalSolved  Int         @default(0)
+  correctCount Int         @default(0)
+  accuracyRate Float       @default(0.0) // 0.0 ~ 100.0%
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([studentId, subUnitId])
+  @@index([studentId, accuracyRate])
+}
+
+// 8. 학생 문제유형별 정답률 누적 통계
+model StudentPatternStat {
+  id            String          @id @default(cuid())
+  studentId     String
+  student       Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  patternTypeId String
+  patternType   MathPatternType @relation(fields: [patternTypeId], references: [id], onDelete: Cascade)
+  totalSolved   Int             @default(0)
+  correctCount  Int             @default(0)
+  accuracyRate  Float           @default(0.0) // 0.0 ~ 100.0%
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([studentId, patternTypeId])
+  @@index([studentId, accuracyRate])
+}
+
 

@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(distributions.map(d => ({
     distributionId: d.id,
+    id: d.id,
     worksheetId: d.worksheet.id,
     title: d.worksheet.title,
     category: d.worksheet.category,
@@ -52,9 +53,12 @@ export async function GET(req: NextRequest) {
     grade: d.worksheet.grade,
     unit: d.worksheet.unit,
     totalProblems: d.worksheet.problemCount,
+    totalQuestions: d.worksheet.problemCount,
     status: d.status,
     distributedAt: d.distributedAt,
+    assignedAt: d.distributedAt,
     correctProblems: d.result?.correctProblems ?? null,
+    score: d.result?.correctProblems ?? null,
     submittedAt: d.result?.submittedAt ?? null,
   })))
 }

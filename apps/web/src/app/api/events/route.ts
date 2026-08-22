@@ -29,10 +29,13 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     start(controller) {
-      addClient(user.sub, teacherId, user.role, controller)
+      // 다중 탭/다중 기기 동시 접속 지원을 위해 연결 세션별 고유 clientId 생성
+      const clientId = `${user.sub}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      
+      addClient(clientId, teacherId, user.role, controller, user.sub)
 
       // 연결 확인 ping
-      controller.enqueue(`data: ${JSON.stringify({ type: 'CONNECTED', userId: user.sub })}\n\n`)
+      controller.enqueue(`data: ${JSON.stringify({ type: 'CONNECTED', userId: user.sub, clientId })}\n\n`)
 
       // 30초마다 heartbeat — 연결 유지
       const heartbeat = setInterval(() => {
@@ -40,13 +43,13 @@ export async function GET(req: NextRequest) {
           controller.enqueue(': heartbeat\n\n')
         } catch {
           clearInterval(heartbeat)
-          removeClient(user.sub)
+          removeClient(clientId)
         }
       }, 30000)
 
       req.signal.addEventListener('abort', () => {
         clearInterval(heartbeat)
-        removeClient(user.sub)
+        removeClient(clientId)
         try { controller.close() } catch {}
       })
     },

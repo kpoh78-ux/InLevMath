@@ -3,8 +3,14 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
 
-function parseWrong(json: string): number[] {
-  try { return JSON.parse(json) } catch { return [] }
+function parseWrong(json: string | null | undefined): number[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 // GET /api/students/[id]/lesson-history

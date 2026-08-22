@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { academyTeacher } from '@/lib/academy'
+import { broadcastToStudentsOfTeacher } from '@/lib/sse'
 
 // 선생님 인증 + 본인 Teacher 레코드 조회 — 실패 시 NextResponse 를 그대로 반환
 async function requireTeacher(req: NextRequest) {
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   // 남의 학원 학습지가 섞이면 그 건만 조용히 빠지는 게 아니라 요청 전체를 막는다
   const owned = await prisma.worksheet.findMany({
     where: { id: { in: ids }, teacherId: teacher.id },
-    select: { id: true },
+    select: { id: true, title: true },
   })
   if (owned.length !== ids.length) {
     return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
@@ -67,6 +68,18 @@ export async function POST(req: NextRequest) {
       data: { hiddenAt: null },
     }),
   ])
+
+  // SSE: 학생 대상 "새로운 학습지 미션" 실시간 알림 브로드캐스트
+  broadcastToStudentsOfTeacher(teacher.id, {
+    type: 'NEW_MISSION',
+    title: '새로운 학습지 미션',
+    message: owned.length === 1
+      ? `「${owned[0].title}」 새로운 학습지 미션이 도착했습니다!`
+      : `${owned.length}개의 새로운 학습지 미션이 도착했습니다!`,
+    worksheetCount: owned.length,
+    studentIds,
+    timestamp: Date.now(),
+  })
 
   return NextResponse.json({
     distributed: pairs.length,

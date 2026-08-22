@@ -15,6 +15,7 @@ import { verifyToken } from '@/lib/auth'
 import { answersMatch } from '@inlevmath/shared'
 import { tryApplyAutoReward } from '@/lib/autoReward'
 import { tryRecalcStudentLevel } from '@/lib/studentLevel'
+import { broadcastToTeacher } from '@/lib/sse'
 
 /** 한 번에 낼 수 있는 문항 수 */
 const MAX_PER_SUBMIT = 300
@@ -30,13 +31,16 @@ export async function POST(
     return NextResponse.json({ error: '권한 없음' }, { status: 403 })
   }
 
-  const student = await prisma.student.findFirst({ where: { userId: payload.sub } })
+  const student = await prisma.student.findFirst({
+    where: { userId: payload.sub },
+    include: { user: { select: { name: true } } },
+  })
   if (!student) return NextResponse.json({ error: '학생 정보 없음' }, { status: 404 })
 
   const { textbookId } = await params
   const assigned = await prisma.textbookAssignment.findFirst({
     where: { textbookId, studentId: student.id },
-    select: { id: true },
+    include: { textbook: { select: { title: true } } },
   })
   if (!assigned) return NextResponse.json({ error: '배정받지 않은 교재입니다.' }, { status: 403 })
 
@@ -147,6 +151,19 @@ export async function POST(
         correctRate,
       })
     : null
+
+  // SSE: 학생 교재 답안 제출 실시간 알림 (100ms 내 교사 대시보드 팝업 전송)
+  broadcastToTeacher(student.teacherId, {
+    type: 'TEXTBOOK_SUBMIT',
+    studentId: student.id,
+    studentName: student.user.name,
+    textbookTitle: assigned.textbook.title,
+    totalProblems,
+    submittedCount,
+    correctProblems: correctCount,
+    correctRate,
+    complete,
+  })
 
   return NextResponse.json({
     correctProblems: correctCount,

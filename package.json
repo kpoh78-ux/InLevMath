@@ -11,6 +11,7 @@
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "build:web": "npm run build --workspace=apps/web",
     "start:web": "npm run start --workspace=apps/web",
+    "backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup.ps1",
     "lint": "turbo lint",
     "prepare": "husky"
   },

@@ -395,3 +395,45 @@ model AutoRewardLog {
   @@unique([sourceType, sourceId, studentId])
   @@index([studentId])
 }
+
+// ── 수학 지식 그래프 (Knowledge Graph DAG) ───────────────────────────────────
+
+enum SchoolLevel {
+  ELEMENTARY // 초등
+  MIDDLE     // 중등
+  HIGH       // 고등
+}
+
+model ConceptNode {
+  id          String      @id @default(cuid())
+  code        String      @unique // 예: "MATH-H1-FUNC-012"
+  title       String      // 예: "이차함수의 최대와 최소"
+  domain      String      // 수와 연산, 변화와 관계(대수), 도형/기하, 확률과 통계
+  gradeLevel  SchoolLevel
+  semester    Int         // 1학기 / 2학기
+  description String?     @db.Text
+
+  // DAG 선수/후수 관계 정의
+  prerequisites ConceptDependency[] @relation("SuccessorToPrerequisite")
+  successors    ConceptDependency[] @relation("PrerequisiteToSuccessor")
+
+  createdAt DateTime @default(now())
+
+  @@index([domain, gradeLevel])
+}
+
+model ConceptDependency {
+  id             String      @id @default(cuid())
+  prerequisiteId String      // 선수 개념 ID (원인 노드)
+  successorId    String      // 후수 개념 ID (결과 노드)
+  weight         Float       @default(1.0) // 의존 결합도 (0.0 ~ 1.0)
+  dependencyType String      @default("STRICT") // STRICT(필수), SUPPLEMENTARY(보조)
+
+  prerequisite ConceptNode @relation("SuccessorToPrerequisite", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+  successor    ConceptNode @relation("PrerequisiteToSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([prerequisiteId, successorId])
+  @@index([prerequisiteId])
+  @@index([successorId])
+}
+

@@ -39,8 +39,8 @@ const KEYPAD_ROWS: string[][] = [
 // 행 높이 상수 — getItemLayout에 전달해 스크롤 위치 계산 비용 O(1) 처리
 const ROW_HEIGHT = 62 // paddingVertical(8×2) + content(44) + marginBottom(6)
 
-// ─── 개별 문항 행 — memo()로 분리 ──────────────────────────────────────────
-// props가 바뀐 문항(1개)만 리렌더링, 나머지는 이전 결과 재사용
+// ─── 개별 문항 행 — memo() + 커스텀 비교 함수로 분리 ──────────────────────────
+// ✅ 해당 문제의 값(value), 포커스(isFocused), 잠금(locked) 상태가 바뀌지 않았으면 리렌더링 원천 차단
 const OmrRow = memo(function OmrRow({
   item,
   isFocused,
@@ -91,6 +91,15 @@ const OmrRow = memo(function OmrRow({
       {item.locked && <Text style={s.tag}>제출됨</Text>}
       {!item.locked && item.noAnswer && <Text style={s.tagWarn}>정답 미등록</Text>}
     </View>
+  )
+}, (prev, next) => {
+  return (
+    prev.isFocused === next.isFocused &&
+    prev.item.value === next.item.value &&
+    prev.item.locked === next.item.locked &&
+    prev.item.no === next.item.no &&
+    prev.item.noAnswer === next.item.noAnswer &&
+    prev.item.type === next.item.type
   )
 })
 

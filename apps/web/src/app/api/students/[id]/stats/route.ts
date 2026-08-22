@@ -3,8 +3,14 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { academyTeacher } from '@/lib/academy'
 
-function parseWrong(json: string): number[] {
-  try { return JSON.parse(json) } catch { return [] }
+function parseWrong(json: string | null | undefined): number[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +30,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-  // 최근 30일 학습지 채점 결과
+  // 1. 배정된 교재 목록 및 문제 수 초고속 집계 (DB 엔진 COUNT(*))
+  const studentTextbooks = await prisma.textbookAssignment.findMany({
+    where: { studentId: id },
+    select: {
+      id: true,
+      completedAt: true,
+      textbook: {
+        select: {
+          id: true,
+          title: true,
+          grade: true,
+          _count: {
+            select: { problems: true }
+          }
+        }
+      }
+    }
+  })
+
+  // 총 배정 문제 수 초고속 연산 (메모리 사용량 최소화)
+  const totalAssignedProblemCount = studentTextbooks.reduce(
+    (acc, item) => acc + (item.textbook._count.problems || 0),
+    0
+  )
+
+  // 2. 최근 30일 학습지 채점 결과
   const worksheetResults = await prisma.worksheetResult.findMany({
     where: {
       distribution: { studentId: id },
@@ -38,8 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'asc' },
   })
 
-  // 최근 30일 교재 채점 결과
-  // ※ problems 전체 레코드 대신 _count 사용 → DB 레벨 COUNT 쿼리로 전환 (메모리/트래픽 절감)
+  // 3. 최근 30일 교재 채점 결과 (COUNT 집계로 메모리/트래픽 절감)
   const textbookResults = await prisma.textbookResult.findMany({
     where: {
       studentId: id,
@@ -52,7 +82,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   // ── 사전 파싱 (루프 밖에서 1회만 실행) ────────────────────────
-  // wrongProblemsJson JSON.parse와 Date 인스턴스화를 루프마다 반복하지 않도록 미리 계산
   const wsComputed = worksheetResults.map(r => ({
     r,
     date: new Date(r.submittedAt),
@@ -139,7 +168,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       grade: student.grade,
       currentLevel: student.currentLevel,
       currentMission: student.currentMission,
-      // 레벨·칭호의 근거가 되는 평균 정답률 (lib/studentLevel.ts)
       levelRate: student.avgCorrectRate,
       comprehension: student.comprehension,
       reasoning: student.reasoning,
@@ -151,7 +179,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       avgCorrectRate: totalProblems > 0 ? Math.round((correctProblems / totalProblems) * 100) : 0,
       worksheetCount: worksheetResults.length,
       textbookCount: textbookResults.length,
+      assignedTextbookCount: studentTextbooks.length,
+      totalAssignedProblemCount,
+      totalProblemCount: totalAssignedProblemCount,
     },
+    assignedTextbooks: studentTextbooks.map(item => ({
+      assignmentId: item.id,
+      textbookId: item.textbook.id,
+      title: item.textbook.title,
+      grade: item.textbook.grade,
+      problemCount: item.textbook._count.problems,
+      isCompleted: Boolean(item.completedAt),
+    })),
     weeklyTrend,
     byStep,
   })

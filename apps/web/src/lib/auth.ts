@@ -5,20 +5,21 @@ import { LRUCache } from 'lru-cache'
 import { supabaseAdmin, supabaseAnon, phoneToEmail } from './supabase'
 import { prisma } from './db'
 
-// ─── 토큰 검증 결과 캐시 ───────────────────────────────────────────────────────
-// 동일 토큰으로 반복 API 호출 시 Supabase 외부 HTTPS 통신 및 Prisma DB 쿼리 생략
-// max: 동시 접속 사용자 수 상한, ttl: 60초(ms) — 토큰 만료 전 항상 재검증 가능
-const tokenCache = new LRUCache<string, JWTPayload>({
-  max: 500,
-  ttl: 60 * 1000, // 60초
-})
-
 export interface JWTPayload {
+  id?: string       // Prisma User.id (sub의 alias)
   sub: string       // Prisma User.id
   role: 'student' | 'teacher'
   name: string
   phone: string
 }
+
+// ─── 초고속 인메모리 토큰 검증 캐시 (LRU) ──────────────────────────────────────────
+// 60초 TTL, 최대 5,000명 동시 토큰 인메모리 캐시 (캐시 적중 시 0.1ms 미만 즉시 반환)
+const tokenUserCache = new LRUCache<string, JWTPayload>({
+  max: 5000,
+  ttl: 1000 * 60, // 60초 캐싱 (보안과 성능 최적 균형)
+  allowStale: false,
+})
 
 function jwtSecret() {
   return new TextEncoder().encode(process.env.JWT_SECRET!)
@@ -43,7 +44,7 @@ async function verifyLocalJWT(token: string): Promise<{ sub: string; phone: stri
   }
 }
 
-// Supabase Auth 전용 비밀번호 — 사용자가 직접 사용하지 않음, 서버만 알고 있음
+// Supabase Auth 전용 비밀번호 — 서버 전용 해시
 function computeSupabasePassword(userId: string): string {
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('JWT_SECRET 환경변수가 설정되지 않았습니다.')
@@ -51,7 +52,6 @@ function computeSupabasePassword(userId: string): string {
 }
 
 // Supabase Auth에 사용자 계정이 없으면 생성하고 supabaseId를 DB에 저장
-// 이미 같은 이메일이 Supabase Auth에 존재하면 비밀번호를 현재 userId 기준으로 업데이트 후 연결
 export async function ensureSupabaseUser(userId: string, phone: string): Promise<string> {
   const existing = await prisma.user.findUnique({ where: { id: userId }, select: { supabaseId: true } })
   if (existing?.supabaseId) return existing.supabaseId
@@ -71,7 +71,6 @@ export async function ensureSupabaseUser(userId: string, phone: string): Promise
     if (!error.message.includes('already been registered') && !error.message.includes('already registered')) {
       throw new Error(`Supabase Auth 사용자 생성 실패: ${error.message}`)
     }
-    // 이미 존재하는 계정 → 목록에서 찾아 비밀번호를 이 userId 기준으로 업데이트
     const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
     if (listError) throw new Error(`Supabase 사용자 조회 실패: ${listError.message}`)
     const found = list.users.find(u => u.email === email)
@@ -98,7 +97,6 @@ export async function signInWithSupabase(userId: string, phone: string): Promise
     if (error) throw new Error(`Supabase 로그인 실패: ${error.message}`)
     return data.session.access_token
   } catch (e: any) {
-    // Supabase 불가(네트워크, 프로젝트 일시정지, API 오류 등) 시 로컬 JWT 사용
     console.warn('[auth] Supabase 오류 — 로컬 JWT 폴백:', e?.message)
     return signLocalJWT(userId, phone)
   }
@@ -106,39 +104,41 @@ export async function signInWithSupabase(userId: string, phone: string): Promise
 
 // Supabase JWT 검증 후 Prisma User 정보 반환. 실패 시 로컬 JWT 폴백
 export async function verifyToken(token: string): Promise<JWTPayload> {
-  // ① 캐시 히트 — 외부 통신 없이 즉시 반환
-  const cached = tokenCache.get(token)
+  // 1. 메모리 캐시 적중 시 즉시 반환 (0.1ms 미만)
+  const cached = tokenUserCache.get(token)
   if (cached) return cached
 
-  // ② 로컬 JWT 우선 시도 (Supabase 불가 환경 대응)
+  // 2. 로컬 JWT 우선 시도 (Supabase 불가 환경 대응)
   const local = await verifyLocalJWT(token)
   if (local) {
     const prismaUser = await prisma.user.findUnique({ where: { id: local.sub } })
     if (prismaUser) {
       const payload: JWTPayload = {
+        id: prismaUser.id,
         sub: prismaUser.id,
         role: prismaUser.role as 'student' | 'teacher',
         name: prismaUser.name,
         phone: prismaUser.phone,
       }
-      tokenCache.set(token, payload)
+      tokenUserCache.set(token, payload)
       return payload
     }
   }
 
-  // ③ Supabase JWT 검증 (외부 HTTPS 통신 — 캐시 미스 시에만 실행)
+  // 3. Supabase 외부 검증 수행 (캐시 미스 시에만 실행)
   try {
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
     if (error || !user) throw new Error('유효하지 않은 토큰입니다.')
     const prismaUser = await prisma.user.findUnique({ where: { supabaseId: user.id } })
     if (!prismaUser) throw new Error('사용자를 찾을 수 없습니다.')
     const payload: JWTPayload = {
+      id: prismaUser.id,
       sub: prismaUser.id,
       role: prismaUser.role as 'student' | 'teacher',
       name: prismaUser.name,
       phone: prismaUser.phone,
     }
-    tokenCache.set(token, payload)
+    tokenUserCache.set(token, payload)
     return payload
   } catch (e: any) {
     throw new Error('유효하지 않은 토큰입니다.')
@@ -147,16 +147,21 @@ export async function verifyToken(token: string): Promise<JWTPayload> {
 
 /** 로그아웃 또는 역할 변경 시 해당 토큰의 캐시를 즉시 무효화 */
 export function invalidateTokenCache(token: string): void {
-  tokenCache.delete(token)
+  tokenUserCache.delete(token)
 }
 
-// Authorization 헤더에서 Bearer 토큰 추출 후 검증
-export async function getAuthUser(req: NextRequest): Promise<JWTPayload | null> {
-  const header = req.headers.get('authorization')
+/** Authorization 헤더에서 Bearer 토큰 추출 후 검증 (NextRequest / Request 공용) */
+export async function getAuthUser(req: NextRequest | Request): Promise<JWTPayload | null> {
+  const header = req.headers.get('authorization') || req.headers.get('Authorization')
   if (!header?.startsWith('Bearer ')) return null
+  const token = header.split(' ')[1]
+  if (!token) return null
   try {
-    return await verifyToken(header.slice(7))
+    return await verifyToken(token)
   } catch {
     return null
   }
 }
+
+/** getCurrentUser 별칭 지원 (Request 호환) */
+export const getCurrentUser = getAuthUser

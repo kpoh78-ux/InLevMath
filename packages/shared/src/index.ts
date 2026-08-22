@@ -457,3 +457,35 @@ export function calcAbilityDelta(
 
   return delta
 }
+
+// ─── IRT 3PL 및 컴퓨터 적응형 진단 평가 (CAT Engine) 타입 ────────────────────
+export interface IrtItemParams {
+  id: string
+  discrimination: number // a: 변별도 (0.5 ~ 2.5)
+  difficulty: number     // b: 난이도 (-3.0 ~ +3.0)
+  guessing: number       // c: 추측도 (0.0 ~ 0.25)
+  conceptId?: string
+  conceptTitle?: string
+  domain?: '수와 연산' | '문자와 식' | '함수' | '기하' | '확률과 통계'
+  grade?: string
+  contentLatex: string
+  problemType: 'MULTIPLE_CHOICE' | 'SHORT_ANSWER'
+  optionsJson?: string[]
+  answer: string
+  solutionLatex?: string
+}
+
+export interface IrtUserResponse {
+  item: IrtItemParams
+  isCorrect: boolean
+  timeSpentSec: number
+  submittedAnswer?: string
+}
+
+export interface DiagnosticCapabilityRadar {
+  calculation: number      // 계산력
+  comprehension: number    // 이해력
+  reasoning: number        // 추론력
+  problemSolving: number   // 문제해결력
+  application: number      // 응용력
+}

@@ -538,6 +538,12 @@ function NormalDashboard() {
 
   useEffect(() => { fetchSummary() }, [fetchSummary])
 
+  useEffect(() => {
+    const handler = () => fetchSummary()
+    window.addEventListener('summary-updated', handler)
+    return () => window.removeEventListener('summary-updated', handler)
+  }, [fetchSummary])
+
   const today = new Date().toLocaleDateString('ko-KR',{ year:'numeric', month:'long', day:'numeric', weekday:'short' })
   const todayDow = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1 })()
 

@@ -1,11 +1,12 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "prisma generate && node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "next start -p ${PORT:-3000} -H 0.0.0.0",
+    "startCommand": "npx next start --port ${PORT:-3000} --hostname 0.0.0.0",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

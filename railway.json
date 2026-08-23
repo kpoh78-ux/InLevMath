@@ -5,7 +5,7 @@
     "buildCommand": "npm run build:web"
   },
   "deploy": {
-    "startCommand": "npx prisma db push --schema apps/web/prisma/schema.prisma --accept-data-loss && npm run start:web",
+    "startCommand": "npm run start:web",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",

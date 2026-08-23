@@ -25,6 +25,7 @@ RUN npm run build:web
 
 # 3. Production Runner
 FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 ENV NODE_ENV=production

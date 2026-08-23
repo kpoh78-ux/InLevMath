@@ -1,0 +1,9 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.build]
+cmds = [
+  "prisma generate",
+  "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
+  "next build"
+]

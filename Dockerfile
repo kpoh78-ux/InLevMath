@@ -3,18 +3,15 @@ FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-# 2. Dependencies
-FROM base AS deps
+# 2. Dependencies & Build
+FROM base AS builder
+WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/shared/package.json ./packages/shared/
 RUN npm ci
 
-# 3. Builder
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client
@@ -26,7 +23,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build:web
 
-# 4. Production Runner
+# 3. Production Runner
 FROM node:20-alpine AS runner
 WORKDIR /app
 

@@ -216,10 +216,8 @@ export function submitDiagnosticResponse(
     updatedTheta: theta,
     standardError,
     isCompleted,
-    isFinished: isCompleted,
     nextProblem,
     responseIndex: responseCount,
-    convergedEarly: converged,
   }
 }
 

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * packages/shared/src/hooks/useResponsiveViewport.ts
  * 멀티 디바이스 반응형 뷰포트 감지 훅 (Web & Mobile WebView 공용)

@@ -138,17 +138,34 @@ function ManageStudentsPageInner() {
 
   const clearStudentFilter = () => router.replace(pathname, { scroll: false })
 
-  /** 학생 이름 클릭 — 기존 값을 채워 같은 모달을 수정 모드로 연다 */
+  const [detailModalStudent, setDetailModalStudent] = useState<StudentDetailData | null>(null)
+
+  /** 학생 이름 클릭 — 4자리 PIN 및 학생상세정보 모달 열기 */
   const openEditStudent = (st: Student) => {
-    setEditingStudent(st)
-    setError('')
-    setForm({
-      name: st.name, phone: st.phone, grade: st.grade, school: st.school,
-      parentName: st.parentName, parentPhone: st.parentPhone, startDate: st.startDate,
-      memo: st.memo, address: st.address, homePhone: st.homePhone,
-      birthDate: st.birthDate, email: st.email,
+    setDetailModalStudent({
+      id: st.id,
+      name: st.name,
+      phone: st.phone,
+      studentPhone: st.phone,
+      grade: st.grade,
+      gradeLevel: st.gradeGroup,
+      gradeNumber: st.grade.replace(/[^0-9]/g, '') ? `${st.grade.replace(/[^0-9]/g, '')}학년` : '1학년',
+      attendancePin: st.attendancePin || st.phone.slice(-4),
+      status: st.status,
+      school: st.school,
+      schoolName: st.school,
+      parentName: st.parentName,
+      parentPhone: st.parentPhone,
+      startDate: st.startDate,
+      classStartDate: st.startDate,
+      birthDate: st.birthDate,
+      email: st.email,
+      memo: st.memo,
+      address: st.address,
+      homePhone: st.homePhone,
+      studentAppId: `S${st.id.slice(-8).toUpperCase()}`,
+      parentAppId: `P${st.id.slice(-8).toUpperCase()}`,
     })
-    setShowModal(true)
   }
 
   const closeStudentModal = () => {
@@ -752,6 +769,20 @@ function ManageStudentsPageInner() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 학생 상세정보 & 4자리 출결 PIN 관리 모달 */}
+      {detailModalStudent && (
+        <StudentDetailModal
+          isOpen={true}
+          initialData={detailModalStudent}
+          mode="edit"
+          onClose={() => setDetailModalStudent(null)}
+          onSaved={() => {
+            fetchStudents()
+            setDetailModalStudent(null)
+          }}
+        />
       )}
     </div>
   )

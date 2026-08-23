@@ -21,7 +21,15 @@ const Trash2: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => 
   </svg>
 )
 
-export const ScratchpadCanvas: React.FC = () => {
+interface ScratchpadCanvasProps {
+  height?: number;
+  onExportImage?: (dataUrl: string) => void;
+}
+
+export const ScratchpadCanvas: React.FC<ScratchpadCanvasProps> = ({
+  height = 320,
+  onExportImage,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [penColor, setPenColor] = useState('#4f46e5')

@@ -2,8 +2,20 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // 모노레포의 shared 패키지를 Next.js가 트랜스파일하도록 설정
   transpilePackages: ["@inlevmath/shared"],
+  serverExternalPackages: ["pdfjs-dist", "canvas"],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+    };
+    return config;
+  },
+  turbopack: {
+    resolveAlias: {
+      canvas: './src/lib/empty-module.ts',
+    },
+  },
 };
 
 export default nextConfig;

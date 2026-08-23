@@ -51,9 +51,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const studentData: Record<string, unknown> = {}
   if (status) studentData.status = status
   for (const key of ['school', 'grade', 'parentName', 'parentPhone', 'startDate',
-                     'address', 'homePhone', 'birthDate', 'email', 'memo'] as const) {
+                     'address', 'homePhone', 'birthDate', 'email', 'memo', 'attendancePin'] as const) {
     const v = str(body[key])
-    if (v !== undefined) studentData[key] = v
+    if (v !== undefined) studentData[key] = v === '' ? null : v
   }
 
   const name = str(body.name)

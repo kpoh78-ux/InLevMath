@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
+import { MonthlyAttendanceCalendar } from '@/components/attendance/MonthlyAttendanceCalendar'
 import {
   MISSION_LABELS, MissionType, levelInfoOf, TITLE_CAPS, TITLE_CAP_FREE_AT,
 } from '@inlevmath/shared'
@@ -139,6 +140,7 @@ export default function StudentDetailPage() {
   const [error, setError] = useState('')
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [activeTab, setActiveTab] = useState<'stats' | 'attendance'>('stats')
 
   const fetchInventory = useCallback(() =>
     apiFetch(`/api/rewards/students/${id}/inventory`)
@@ -196,14 +198,42 @@ export default function StudentDetailPage() {
 
   return (
     <div className="space-y-5">
-
-      {/* 뒤로가기 */}
-      <div className="flex items-center gap-3">
+      {/* 상단 탭 및 뒤로가기 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <Link href="/dashboard/manage/students"
-          className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+          className="text-gray-400 hover:text-gray-600 text-sm transition-colors flex items-center gap-1 font-medium">
           ← 학생 목록
         </Link>
+
+        <div className="flex bg-gray-200/70 p-1 rounded-xl text-xs font-bold self-start sm:self-auto">
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`px-4 py-2 rounded-lg transition ${
+              activeTab === 'stats'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            📊 학습 상태창 & 역량 분석
+          </button>
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className={`px-4 py-2 rounded-lg transition flex items-center gap-1.5 ${
+              activeTab === 'attendance'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <span>📅 월별 출결 캘린더</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          </button>
+        </div>
       </div>
+
+      {activeTab === 'attendance' ? (
+        <MonthlyAttendanceCalendar studentId={id} studentName={student.name} />
+      ) : (
+        <>
 
       {/* ══════════════ 상태창 ══════════════ */}
       <div className="relative mx-auto max-w-md rounded-2xl overflow-hidden"
@@ -525,6 +555,8 @@ export default function StudentDetailPage() {
             <div style={{ height: 3, background: 'linear-gradient(90deg, transparent, #c9aa71, transparent)' }} />
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )

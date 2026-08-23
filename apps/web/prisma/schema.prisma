@@ -80,6 +80,16 @@ model Student {
   email     String @default("") // 학생 이메일
   memo      String @default("") // 특이사항 메모
 
+  // 4자리 출결 번호 (미지정 시 학생 번호 끝 4자리 자동 매칭, 형제자매 번호 충돌 시 커스텀 지정)
+  attendancePin String?
+
+  gradeLevel      String?         // '초' | '중' | '고'
+  studentAppId    String?         @unique // S29757874
+  parentAppId     String?         @unique // P51560034
+  studentPhone    String?         // 01054013630
+  schoolName      String?         // 수완초
+  classStartDate  DateTime?
+
   // 레벨(Lv.1~9)과 칭호는 평균 정답률에서 계산된다. lib/studentLevel.ts 참고
   currentLevel   Int         @default(1)
   currentMission MissionType @default(concept_learning)
@@ -94,20 +104,23 @@ model Student {
 
   rewardPoints Int @default(0)
 
-  results             MissionResult[]
-  distributions       WorksheetDistribution[]
-  textbookAssignments TextbookAssignment[]
-  textbookResults     TextbookResult[]
-  rewards             StudentReward[]
-  pointHistory        PointTransaction[]
-  autoRewardLogs      AutoRewardLog[]
-  subUnitStats        StudentSubUnitStat[]
-  patternStats        StudentPatternStat[]
-  dailyLessonReports  DailyLessonReport[]
-  weaknessConfig      StudentWeaknessConfig?
+  results              MissionResult[]
+  distributions        WorksheetDistribution[]
+  textbookAssignments  TextbookAssignment[]
+  textbookResults      TextbookResult[]
+  rewards              StudentReward[]
+  pointHistory         PointTransaction[]
+  autoRewardLogs       AutoRewardLog[]
+  subUnitStats         StudentSubUnitStat[]
+  patternStats         StudentPatternStat[]
+  dailyLessonReports   DailyLessonReport[]
+  attendanceLogs       AttendanceLog[]
+  alimtalkLogs         AlimtalkLog[]
+  weaknessConfig       StudentWeaknessConfig?
   prescriptiveMissions PrescriptiveMission[]
 
   @@index([teacherId])
+  @@index([attendancePin])
 }
 
 // ── 교재 ────────────────────────────────────────────────────────────────────
@@ -607,9 +620,11 @@ model StudentPatternStat {
 
 // ── 학부모 맞춤 발송 시스템 (알림톡 / SMS / LMS) ──────────────────────────────────
 enum AttendanceStatus {
+  PRESENT
   ON_TIME
   LATE
   ABSENT
+  EXCUSED
   MAKEUP
 }
 
@@ -728,5 +743,50 @@ model PrescriptiveMission {
   @@index([subUnitId])
 }
 
+enum StudentStatus {
+  ENROLLED  // 재원
+  DISCHARGED // 퇴원
+  ON_LEAVE  // 휴원
+}
 
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+  ABSENT
+  MAKEUP
+}
 
+model AttendanceLog {
+  id           String           @id @default(cuid())
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         AttendanceType   @default(CHECK_IN) // CHECK_IN | CHECK_OUT | ABSENT | MAKEUP
+  status       AttendanceStatus @default(PRESENT)  // PRESENT | ON_TIME | LATE | ABSENT | EXCUSED | MAKEUP
+  date         String           // "YYYY-MM-DD"
+  checkInTime  DateTime?        // 등원 시각
+  checkOutTime DateTime?        // 하원 시각
+  alimtalkSent Boolean          @default(false)
+  smsSent      Boolean          @default(false)
+  memo         String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([studentId, date])
+  @@index([studentId, date])
+  @@index([date])
+}
+
+model AlimtalkLog {
+  id             String   @id @default(cuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  templateCode   String   // INLEV_ATTEND_IN, INLEV_ATTEND_OUT, INLEV_REPORT
+  recipientPhone String
+  content        String   @db.Text
+  sentStatus     String   // SUCCESS | FAILED
+  providerMsgId  String?
+  sentAt         DateTime @default(now())
+
+  @@index([studentId])
+  @@index([sentAt])
+}

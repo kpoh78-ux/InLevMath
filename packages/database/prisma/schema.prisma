@@ -99,166 +99,154 @@ model Question {
   title         String           @default("")
   content       String?          @db.Text
   answer        String           @default("")
+  solution      String?          @db.Text
   difficulty    Int              @default(3)
+  sourceType    String           @default("custom") // custom, textbook, exam
   createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([subUnitId])
   @@index([patternTypeId])
 }
 
-// 7. 학생 소단원별 정답률 누적 통계
+// 7. 학생 소단원별 누적 학습 통계
 model StudentSubUnitStat {
-  id           String      @id @default(cuid())
-  studentId    String
-  subUnitId    String
-  subUnit      MathSubUnit @relation(fields: [subUnitId], references: [id], onDelete: Cascade)
-  totalSolved  Int         @default(0)
-  correctCount Int         @default(0)
-  accuracyRate Float       @default(0.0) // 0.0 ~ 100.0%
-  updatedAt    DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  studentId      String
+  subUnitId      String
+  subUnit        MathSubUnit @relation(fields: [subUnitId], references: [id], onDelete: Cascade)
+  totalSolved    Int         @default(0)
+  totalCorrect   Int         @default(0)
+  accuracyRate   Float       @default(0.0)
+  masteryScore   Float       @default(0.0)
+  lastStudiedAt  DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@unique([studentId, subUnitId])
-  @@index([studentId, accuracyRate])
+  @@index([studentId])
+  @@index([subUnitId])
 }
 
-// 8. 학생 문제유형별 정답률 누적 통계
+// 8. 학생 문제유형별 누적 학습 통계 (향후 유형별 정밀 분석)
 model StudentPatternStat {
   id            String          @id @default(cuid())
   studentId     String
   patternTypeId String
   patternType   MathPatternType @relation(fields: [patternTypeId], references: [id], onDelete: Cascade)
   totalSolved   Int             @default(0)
-  correctCount  Int             @default(0)
-  accuracyRate  Float           @default(0.0) // 0.0 ~ 100.0%
+  totalCorrect  Int             @default(0)
+  accuracyRate  Float           @default(0.0)
+  lastStudiedAt DateTime?
+  createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   @@unique([studentId, patternTypeId])
-  @@index([studentId, accuracyRate])
+  @@index([studentId])
+  @@index([patternTypeId])
 }
 
-// 9. 출결 상태
-enum AttendanceStatus {
-  ON_TIME
-  LATE
-  ABSENT
-  MAKEUP
+// 9. 교재 1쪽당 5문항 고정 단원 매핑 템플릿
+model TextbookPageTemplate {
+  id          String           @id @default(cuid())
+  subject     MathGradeSubject
+  pageNumber  Int
+  title       String?
+  stageIndex  Int?
+  subUnitId   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([subject, pageNumber])
+  @@index([subject])
 }
 
-// 10. 수업 집중도
-enum ConcentrationGrade {
-  EXCELLENT
-  GOOD
-  NORMAL
-  NEEDS_CARE
-}
-
-// 11. 발송 채널 (알림톡 / 단문 SMS / 장문 LMS)
-enum SendChannel {
-  ALIMTALK
-  SMS
-  LMS
-}
-
-// 12. 발송 상태
-enum SendStatus {
-  SUCCESS
-  FAILED
-  PENDING
-}
-
-// 13. 일일 학습 리포트
-model DailyLessonReport {
-  id                   String             @id @default(cuid())
-  studentId            String
-  studentName          String
-  parentPhone          String
-  reportDate           DateTime           @default(now())
-
-  // 자동 집계 데이터 (%)
-  homeworkCompletion   Float              @default(0.0)
-  calcBookCompletion   Float              @default(0.0)
-  progressBookScore    Float              @default(0.0)
-  worksheetScore       Float              @default(0.0)
-  unitExamScore        Float?
-  targetGoalRate       Float              @default(0.0)
-  studyTimeAchieveRate Float              @default(0.0)
-
-  // 교사 입력 데이터
-  attendance           AttendanceStatus   @default(ON_TIME)
-  lateMinutes          Int                @default(0)
-  concentrationGrade   ConcentrationGrade @default(NORMAL)
-  teacherComment       String?            @db.Text
-
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  sendLogs             AlimtalkSendLog[]
-
-  @@index([studentId, reportDate])
-}
-
-// 14. 카카오 알림톡 / 문자 발송 이력
-model AlimtalkSendLog {
-  id              String             @id @default(cuid())
-  reportId        String?
-  report          DailyLessonReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
-  studentName     String             @default("")
-  parentPhone     String             @default("")
-  receiverPhone   String             @default("")
-  sendChannel     SendChannel        // ALIMTALK | SMS | LMS
-  messageType     String             @default("AT") // AT, SMS, LMS
-  templateCode    String?
-  messageTitle    String?
-  sentMessageText String?            @db.Text
-  messageBody     String             @default("") @db.Text
-  includedOptions Json?
-  status          SendStatus         @default(PENDING)
-  statusCode      String?            // SUCCESS | FAIL
-  responseCode    String?
-  responseMessage String?
-  bizmsgMsgId     String?
-  resendChannel   SendChannel?       // 실패 시 대체 발송 채널
-  sentAt          DateTime           @default(now())
-
-  @@index([parentPhone])
-  @@index([receiverPhone])
-  @@index([sendChannel, status])
-  @@index([sentAt])
-}
-
-// 15. 학습 트랙 (기초/기본/심화)
+// 10. 학습 진행 트랙 (진도/복습/심화/클리닉)
 enum LearningTrackType {
   BASIC
   STANDARD
   ADVANCED
 }
 
-// 16. 학생별 맞춤 취약 정답률(%) 기준 설정
-model StudentWeaknessConfig {
-  id               String            @id @default(cuid())
-  studentId        String            @unique
-  customThreshold  Float             @default(60.0) // 취약 기준 정답률 (30% ~ 85%)
-  trackType        LearningTrackType @default(STANDARD) // BASIC | STANDARD | ADVANCED
-  autoPrescription Boolean           @default(true) // 미달 시 AI 자동 처방 미션 발급 여부
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-
-  @@index([studentId])
+enum AttendanceStatus {
+  PRESENT   // 출석/등원
+  ON_TIME   // 정시 출석
+  LATE      // 지각
+  ABSENT    // 결석
+  EXCUSED   // 조퇴/공결
+  MAKEUP    // 보강
 }
 
-// 17. AI 맞춤 자동 처방 클리닉 미션
-model PrescriptiveMission {
-  id             String       @id @default(cuid())
-  studentId      String
-  subUnitId      String
-  subUnit        MathSubUnit? @relation(fields: [subUnitId], references: [id], onDelete: Cascade)
-  missionType    String       @default("AI_AUTO_CLINIC")
-  title          String
-  targetAccuracy Float        @default(80.0)
-  voiceMessage   String?      @db.Text
-  isCompleted    Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+enum StudentStatus {
+  ENROLLED  // 재원
+  DISCHARGED // 퇴원
+  ON_LEAVE  // 휴원
+}
 
-  @@index([studentId, isCompleted])
-  @@index([subUnitId])
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+  ABSENT
+  MAKEUP
+}
+
+model Student {
+  id              String         @id @default(uuid())
+  name            String
+  gradeLevel      String?        // '초' | '중' | '고'
+  grade           String         // '5학년'
+  attendancePin   String?        @db.VarChar(4) // 4자리 등하원 출결 번호 (기본: 전화번호 끝자리, 형제자매 시 커스텀)
+  status          StudentStatus  @default(ENROLLED)
+  studentAppId    String?        @unique // S29757874
+  parentAppId     String?        @unique // P51560034
+  studentPhone    String?        // 01054013630
+  parentPhone     String?        // 01050016601
+  schoolName      String?        // 수완초
+  classStartDate  DateTime?
+  birthDate       DateTime?
+  email           String?
+
+  attendanceLogs  AttendanceLog[]
+  alimtalkLogs    AlimtalkLog[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([attendancePin])
+  @@index([status])
+}
+
+model AttendanceLog {
+  id           String           @id @default(uuid())
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         AttendanceType   @default(CHECK_IN)
+  status       AttendanceStatus @default(PRESENT)
+  date         DateTime         @default(now()) @db.Date
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  memo         String?
+  smsSent      Boolean          @default(false)
+  alimtalkSent Boolean          @default(false)
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([studentId, date])
+  @@index([studentId, date])
+  @@index([date])
+}
+
+model AlimtalkLog {
+  id             String   @id @default(uuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  templateCode   String   // INLEV_ATTEND_IN, INLEV_ATTEND_OUT, INLEV_REPORT
+  recipientPhone String
+  content        String   @db.Text
+  sentStatus     String   // SUCCESS | FAILED
+  providerMsgId  String?
+  sentAt         DateTime @default(now())
+
+  @@index([studentId])
+  @@index([sentAt])
 }

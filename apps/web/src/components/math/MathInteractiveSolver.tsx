@@ -267,7 +267,7 @@ export const MathInteractiveSolver: React.FC<MathInteractiveSolverProps> = ({
           <div className={viewMode === 'canvas' ? 'lg:col-span-2' : ''}>
             <ScratchpadCanvas
               height={viewMode === 'canvas' ? 420 : 320}
-              onExportImage={(dataUrl) => {
+              onExportImage={(dataUrl: string) => {
                 alert('풀이 필기 이미지가 첨부되었습니다.')
               }}
             />

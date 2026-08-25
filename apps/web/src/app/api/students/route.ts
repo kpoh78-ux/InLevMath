@@ -22,12 +22,19 @@ export async function GET(req: NextRequest) {
   const isSidebar = req.nextUrl.searchParams.get('sidebar') === '1'
 
   if (isSidebar) {
+    const today = new Date().toLocaleDateString('sv-SE');
     const students = await prisma.student.findMany({
-      where: { teacherId: teacher.id },
+      where: { teacherId: teacher.id, status: 'active' },
       select: {
         id: true,
         grade: true,
-        user: { select: { name: true } },
+        attendancePin: true,
+        user: { select: { name: true, phone: true } },
+        attendanceLogs: {
+          where: { date: today },
+          select: { type: true, status: true, checkInTime: true, checkOutTime: true },
+          take: 1,
+        },
       },
       orderBy: { grade: 'asc' },
     })

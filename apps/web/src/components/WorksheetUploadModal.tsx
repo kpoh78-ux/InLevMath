@@ -195,12 +195,12 @@ export function WorksheetUploadModal({
                       <span className="flex-1 text-sm text-gray-800 truncate">{f.name}</span>
                       <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">{formatSize(f.size)}</span>
                       <button onClick={() => print(f)}
-                        className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-indigo-400 hover:text-indigo-600 px-2.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap">
+                        className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-indigo-400 hover:text-indigo-600 px-2.5 py-1.5 rounded-lg transition-colors shrink-0 whitespace-nowrap cursor-pointer">
                         인쇄
                       </button>
                       <button onClick={() => onPick(f)}
-                        className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap">
-                        선택
+                        className="text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 px-3 py-1.5 rounded-lg transition-all shadow-xs shrink-0 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                        <span>⚡ Omni-AI 정답 추출</span>
                       </button>
                     </div>
                   ))}

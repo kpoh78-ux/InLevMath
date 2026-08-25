@@ -1,0 +1,540 @@
+// apps/web/src/lib/attendanceService.ts
+import { prisma } from '@/lib/db';
+import { broadcastToTeacher, broadcastToAll } from '@/lib/sse';
+import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
+
+export interface KioskCheckResult {
+  studentName: string;
+  grade: string;
+  type: 'CHECK_IN' | 'NEED_CHECK_OUT' | 'CHECK_OUT';
+  checkInTime?: string;
+  checkOutTime?: string;
+  parentPhoneMasked: string;
+  alimtalkSent: boolean;
+}
+
+export type AttendanceResponse = {
+  studentId: string;
+  studentName: string;
+  grade: string;
+  type: 'CHECK_IN' | 'NEED_CHECK_OUT' | 'CHECK_OUT' | 'ALREADY_CHECKED_OUT' | 'ERROR';
+  checkInTime?: string;
+  checkOutTime?: string;
+  parentPhoneMasked: string;
+  alimtalkSent: boolean;
+  message?: string;
+};
+
+export function maskPhoneNumber(phone: string): string {
+  const clean = phone.replace(/[^0-9]/g, '');
+  if (clean.length === 11) {
+    return `${clean.slice(0, 3)}-****-${clean.slice(7)}`;
+  }
+  if (clean.length === 10) {
+    return `${clean.slice(0, 3)}-***-${clean.slice(6)}`;
+  }
+  if (clean.length >= 4) {
+    return `***-****-${clean.slice(-4)}`;
+  }
+  return '***-****-****';
+}
+
+export function formatTimeKorean(date: Date = new Date()): string {
+  return date.toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function getTodayDateString(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export class AttendanceService {
+  /**
+   * 키오스크 4자리 PIN 입력 처리
+   */
+  static async handleKioskPin(pin: string, teacherId?: string): Promise<KioskCheckResult> {
+    const res = await handleKioskPin(pin, teacherId);
+    if (res.type === 'ERROR') {
+      throw new Error(res.message || '일치하는 학생 정보를 찾을 수 없습니다.');
+    }
+    return {
+      studentName: res.studentName,
+      grade: res.grade,
+      type: res.type === 'ALREADY_CHECKED_OUT' ? 'CHECK_OUT' : res.type,
+      checkInTime: res.checkInTime,
+      checkOutTime: res.checkOutTime,
+      parentPhoneMasked: res.parentPhoneMasked,
+      alimtalkSent: res.alimtalkSent,
+    };
+  }
+
+  /**
+   * 키오스크 [퇴원하기] 확정 처리
+   */
+  static async confirmCheckOut(pinOrPayload: string | { pin?: string; studentId?: string }, teacherId?: string): Promise<KioskCheckResult> {
+    const res = await confirmCheckOut(pinOrPayload, teacherId);
+    if (res.type === 'ERROR') {
+      throw new Error(res.message || '학생을 찾을 수 없습니다.');
+    }
+    return {
+      studentName: res.studentName,
+      grade: res.grade,
+      type: 'CHECK_OUT',
+      checkInTime: res.checkInTime,
+      checkOutTime: res.checkOutTime,
+      parentPhoneMasked: res.parentPhoneMasked,
+      alimtalkSent: res.alimtalkSent,
+    };
+  }
+}
+
+// ── 4자리 PIN으로 학생 조회 (1순위: attendancePin, 2순위: 전화번호 끝 4자리) ──
+export async function findStudentByPin(pin: string, teacherId?: string) {
+  const cleanPin = pin.trim();
+  if (!cleanPin || cleanPin.length !== 4) return null;
+
+  // 1. 커스텀 지정된 attendancePin 우선 매칭 (재원생 우선)
+  let student = await prisma.student.findFirst({
+    where: {
+      attendancePin: cleanPin,
+      status: { in: ['active', 'ENROLLED'] },
+      ...(teacherId ? { teacherId } : {}),
+    },
+    include: {
+      user: true,
+      teacher: true,
+    },
+  });
+
+  if (student) return student;
+
+  // 2. 학생의 휴대폰번호 끝 4자리 매칭
+  const activeStudents = await prisma.student.findMany({
+    where: {
+      status: { in: ['active', 'ENROLLED'] },
+      ...(teacherId ? { teacherId } : {}),
+    },
+    include: {
+      user: true,
+      teacher: true,
+    },
+  });
+
+  student = activeStudents.find((s) => {
+    const userPhone = s.user?.phone || '';
+    return userPhone.replace(/[^0-9]/g, '').endsWith(cleanPin);
+  }) || null;
+
+  return student;
+}
+
+/**
+ * 1단계 & 2단계: 키오스크에서 4자리 PIN 입력 시 상태 머신
+ */
+export async function handleKioskPin(pin: string, teacherId?: string): Promise<AttendanceResponse> {
+  const student = await findStudentByPin(pin, teacherId);
+  if (!student) {
+    return {
+      studentId: '',
+      studentName: '',
+      grade: '',
+      type: 'ERROR',
+      parentPhoneMasked: '',
+      alimtalkSent: false,
+      message: '등록되지 않은 4자리 출결 번호입니다. 선생님께 문의해주세요.',
+    };
+  }
+
+  const todayStr = getTodayDateString();
+  const targetParentPhone = student.parentPhone || student.user?.phone || '010-0000-0000';
+  const maskedParentPhone = maskPhoneNumber(targetParentPhone);
+  const now = new Date();
+  const nowTimeStr = formatTimeKorean(now);
+
+  // 당일 출결 기록 확인
+  let todayLog = await prisma.attendanceLog.findFirst({
+    where: {
+      studentId: student.id,
+      date: todayStr,
+    },
+  });
+
+  // 상태 A: 당일 출결 기록이 없거나 등원 전 -> [1차 입력] 등원 완료 처리 및 학부모 알림톡 자동 발송
+  if (!todayLog || !todayLog.checkInTime) {
+    if (!todayLog) {
+      todayLog = await prisma.attendanceLog.create({
+        data: {
+          studentId: student.id,
+          date: todayStr,
+          type: 'CHECK_IN',
+          status: 'ON_TIME',
+          checkInTime: now,
+          alimtalkSent: true,
+        },
+      });
+    } else {
+      todayLog = await prisma.attendanceLog.update({
+        where: { id: todayLog.id },
+        data: {
+          type: 'CHECK_IN',
+          status: 'ON_TIME',
+          checkInTime: now,
+          alimtalkSent: true,
+        },
+      });
+    }
+
+    // 카카오 알림톡(비즈엠) 발송
+    const alimtalkResult = await sendKakaoAlimtalk({
+      templateCode: 'INLEV_ATTEND_IN',
+      recipientPhone: targetParentPhone,
+      variables: {
+        studentName: student.user.name,
+        checkInTime: nowTimeStr,
+        academyName: 'InLevMath 학원',
+      },
+    });
+
+    // 선생님 앱 화면 실시간 SSE 브로드캐스트
+    if (student.teacherId) {
+      broadcastToTeacher(student.teacherId, {
+        type: 'ATTENDANCE_UPDATE',
+        studentId: student.id,
+        studentName: student.user.name,
+        grade: student.grade,
+        status: 'CHECK_IN',
+        time: nowTimeStr,
+        timestamp: now.toISOString(),
+      });
+    }
+
+    return {
+      studentId: student.id,
+      studentName: student.user.name,
+      grade: student.grade,
+      type: 'CHECK_IN',
+      checkInTime: nowTimeStr,
+      parentPhoneMasked: maskedParentPhone,
+      alimtalkSent: alimtalkResult.success,
+      message: `${student.user.name} 학생 등원이 확인되었습니다.`,
+    };
+  }
+
+  // 상태 B: 이미 등원했고 아직 하원하지 않은 경우 -> [2차 입력] 퇴원 대기 및 [퇴원하기] 팝업 버튼 유도
+  if (todayLog.checkInTime && !todayLog.checkOutTime) {
+    const checkInFormatted = formatTimeKorean(todayLog.checkInTime);
+    return {
+      studentId: student.id,
+      studentName: student.user.name,
+      grade: student.grade,
+      type: 'NEED_CHECK_OUT',
+      checkInTime: checkInFormatted,
+      parentPhoneMasked: maskedParentPhone,
+      alimtalkSent: false,
+      message: `${student.user.name} 학생, 지금 퇴원하시겠습니까?`,
+    };
+  }
+
+  // 상태 C: 이미 당일 등원 및 하원까지 모두 완료된 경우
+  return {
+    studentId: student.id,
+    studentName: student.user.name,
+    grade: student.grade,
+    type: 'ALREADY_CHECKED_OUT',
+    checkInTime: todayLog.checkInTime ? formatTimeKorean(todayLog.checkInTime) : '',
+    checkOutTime: todayLog.checkOutTime ? formatTimeKorean(todayLog.checkOutTime) : '',
+    parentPhoneMasked: maskedParentPhone,
+    alimtalkSent: false,
+    message: `${student.user.name} 학생은 오늘 이미 하원 처리가 완료되었습니다.`,
+  };
+}
+
+export const processKioskPin = handleKioskPin;
+
+/**
+ * 2단계: 키오스크 [퇴원하기] 대형 버튼 터치 시 하원 확정 처리
+ */
+export async function confirmCheckOut(
+  pinOrPayload: string | { pin?: string; studentId?: string },
+  teacherId?: string
+): Promise<AttendanceResponse> {
+  let student: any = null;
+
+  if (typeof pinOrPayload === 'string') {
+    student = await findStudentByPin(pinOrPayload, teacherId);
+  } else if (pinOrPayload.studentId) {
+    student = await prisma.student.findUnique({
+      where: { id: pinOrPayload.studentId },
+      include: { user: true, teacher: true },
+    });
+  } else if (pinOrPayload.pin) {
+    student = await findStudentByPin(pinOrPayload.pin, teacherId);
+  }
+
+  if (!student) {
+    return {
+      studentId: '',
+      studentName: '',
+      grade: '',
+      type: 'ERROR',
+      parentPhoneMasked: '',
+      alimtalkSent: false,
+      message: '학생 정보를 찾을 수 없습니다.',
+    };
+  }
+
+  const todayStr = getTodayDateString();
+  const targetParentPhone = student.parentPhone || student.user?.phone || '010-0000-0000';
+  const maskedParentPhone = maskPhoneNumber(targetParentPhone);
+  const now = new Date();
+  const nowTimeStr = formatTimeKorean(now);
+
+  let todayLog = await prisma.attendanceLog.findFirst({
+    where: {
+      studentId: student.id,
+      date: todayStr,
+    },
+  });
+
+  if (!todayLog) {
+    todayLog = await prisma.attendanceLog.create({
+      data: {
+        studentId: student.id,
+        date: todayStr,
+        type: 'CHECK_OUT',
+        status: 'ON_TIME',
+        checkInTime: now,
+        checkOutTime: now,
+        alimtalkSent: true,
+      },
+    });
+  } else {
+    todayLog = await prisma.attendanceLog.update({
+      where: { id: todayLog.id },
+      data: {
+        type: 'CHECK_OUT',
+        checkOutTime: now,
+        alimtalkSent: true,
+      },
+    });
+  }
+
+  // 하원 카카오 알림톡 발송
+  const alimtalkResult = await sendKakaoAlimtalk({
+    templateCode: 'INLEV_ATTEND_OUT',
+    recipientPhone: targetParentPhone,
+    variables: {
+      studentName: student.user.name,
+      checkOutTime: nowTimeStr,
+      academyName: 'InLevMath 학원',
+    },
+  });
+
+  // 선생님 앱 화면 실시간 SSE 브로드캐스트
+  if (student.teacherId) {
+    broadcastToTeacher(student.teacherId, {
+      type: 'ATTENDANCE_UPDATE',
+      studentId: student.id,
+      studentName: student.user.name,
+      grade: student.grade,
+      status: 'CHECK_OUT',
+      time: nowTimeStr,
+      timestamp: now.toISOString(),
+    });
+  }
+
+  return {
+    studentId: student.id,
+    studentName: student.user.name,
+    grade: student.grade,
+    type: 'CHECK_OUT',
+    checkInTime: todayLog.checkInTime ? formatTimeKorean(todayLog.checkInTime) : nowTimeStr,
+    checkOutTime: nowTimeStr,
+    parentPhoneMasked: maskedParentPhone,
+    alimtalkSent: alimtalkResult.success,
+    message: `${student.user.name} 학생 하원 처리가 완료되었습니다.`,
+  };
+}
+
+/**
+ * 선생님 앱 원클릭 출결 상태 변경 및 알림 발송
+ */
+export async function toggleAttendance(params: {
+  studentId: string;
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'ABSENT' | 'MAKEUP';
+  status?: 'ON_TIME' | 'LATE' | 'ABSENT' | 'MAKEUP';
+  time?: string;
+  date?: string;
+  sendNotification?: boolean;
+  memo?: string;
+  teacherId?: string;
+}) {
+  const { studentId, type, status: customStatus, time, date, sendNotification, memo, teacherId } = params;
+  const targetDate = date || getTodayDateString();
+  const timeStr = time || formatTimeKorean();
+  const now = new Date();
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    include: { user: true },
+  });
+
+  if (!student) {
+    throw new Error('학생 정보를 찾을 수 없습니다.');
+  }
+
+  let log = await prisma.attendanceLog.findFirst({
+    where: {
+      studentId,
+      date: targetDate,
+    },
+  });
+
+  const updateData: any = {
+    type,
+    memo: memo || undefined,
+  };
+
+  if (customStatus) {
+    updateData.status = customStatus;
+  }
+
+  if (type === 'CHECK_IN') {
+    updateData.checkInTime = now;
+    if (!customStatus) updateData.status = 'ON_TIME';
+  } else if (type === 'CHECK_OUT') {
+    updateData.checkOutTime = now;
+    if (!customStatus) updateData.status = 'ON_TIME';
+  } else if (type === 'ABSENT') {
+    updateData.status = 'ABSENT';
+  } else if (type === 'MAKEUP') {
+    updateData.status = 'MAKEUP';
+  }
+
+  if (log) {
+    log = await prisma.attendanceLog.update({
+      where: { id: log.id },
+      data: updateData,
+    });
+  } else {
+    log = await prisma.attendanceLog.create({
+      data: {
+        studentId,
+        date: targetDate,
+        type,
+        status: updateData.status || 'ON_TIME',
+        checkInTime: type === 'CHECK_IN' ? now : undefined,
+        checkOutTime: type === 'CHECK_OUT' ? now : undefined,
+        memo,
+      },
+    });
+  }
+
+  // 알림 발송 옵션이 켜져 있는 경우
+  if (sendNotification) {
+    const parentPhone = student.parentPhone || student.user.phone;
+    const templateCode = type === 'CHECK_OUT' ? 'INLEV_ATTEND_OUT' : 'INLEV_ATTEND_IN';
+
+    await sendKakaoAlimtalk({
+      templateCode,
+      recipientPhone: parentPhone,
+      variables: {
+        studentName: student.user.name,
+        time: timeStr,
+        academyName: 'InLevMath 학원',
+      },
+    });
+  }
+
+  // 실시간 브로드캐스트
+  const targetTeacherId = teacherId || student.teacherId;
+  if (targetTeacherId) {
+    broadcastToTeacher(targetTeacherId, {
+      type: 'ATTENDANCE_UPDATE',
+      studentId: student.id,
+      studentName: student.user.name,
+      status: type,
+      time: timeStr,
+      date: targetDate,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, log };
+}
+
+export const toggleTeacherAttendance = toggleAttendance;
+
+/**
+ * 월별 출결 캘린더 조회
+ */
+export async function getMonthlyAttendance(studentId: string, year: number, month: number) {
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+
+  const logs = await prisma.attendanceLog.findMany({
+    where: {
+      studentId,
+      date: {
+        startsWith: monthPrefix,
+      },
+    },
+    orderBy: {
+      date: 'asc',
+    },
+  });
+
+  const totalCheckIns = logs.filter((l) => l.checkInTime).length;
+  const totalCheckOuts = logs.filter((l) => l.checkOutTime).length;
+  const totalAbsents = logs.filter((l) => l.status === 'ABSENT').length;
+  const totalLate = logs.filter((l) => l.status === 'LATE').length;
+
+  const formattedLogs = logs.map((l) => ({
+    id: l.id,
+    date: l.date,
+    type: l.type,
+    status: l.status,
+    checkInTime: l.checkInTime ? formatTimeKorean(l.checkInTime) : '',
+    checkOutTime: l.checkOutTime ? formatTimeKorean(l.checkOutTime) : '',
+    alimtalkSent: l.alimtalkSent,
+    memo: l.memo,
+  }));
+
+  return {
+    year,
+    month,
+    summary: {
+      checkIns: totalCheckIns,
+      checkOuts: totalCheckOuts,
+      absents: totalAbsents,
+      late: totalLate,
+      attendanceRate: totalCheckIns > 0 ? Math.round((totalCheckIns / (totalCheckIns + totalAbsents || 1)) * 100) : 100,
+    },
+    logs: formattedLogs,
+  };
+}
+
+export const getStudentMonthlyAttendance = getMonthlyAttendance;
+
+/**
+ * 형제자매 번호 중복 방지: 4자리 고유 난수 PIN 생성
+ */
+export async function generateUniqueAttendancePin(): Promise<string> {
+  for (let attempts = 0; attempts < 50; attempts++) {
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const existing = await prisma.student.findFirst({
+      where: {
+        attendancePin: pin,
+        status: { in: ['active', 'ENROLLED'] },
+      },
+    });
+    if (!existing) {
+      return pin;
+    }
+  }
+  return String(Date.now()).slice(-4);
+}

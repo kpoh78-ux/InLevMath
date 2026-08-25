@@ -163,12 +163,12 @@ export async function POST(req: Request) {
     const {
       updatedTheta,
       standardError,
-      isFinished,
+      isCompleted,
       nextProblem,
       responseIndex,
     } = result
 
-    if (isFinished) {
+    if (isCompleted) {
       return NextResponse.json({
         isFinished: true,
         isCompleted: true,

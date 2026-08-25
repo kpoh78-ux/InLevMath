@@ -13,9 +13,11 @@ export async function GET() {
       users: userCount,
     })
   } catch (err) {
-    return NextResponse.json(
-      { status: 'error', message: String(err) },
-      { status: 503 }
-    )
+    return NextResponse.json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      db: 'disconnected',
+      message: String(err),
+    }, { status: 200 })
   }
 }

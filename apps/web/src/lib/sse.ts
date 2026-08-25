@@ -118,3 +118,24 @@ export function broadcastToAll(teacherId: string, eventOrData: any, data?: any) 
   broadcastToTeacher(teacherId, eventOrData, data)
   broadcastToStudentsOfTeacher(teacherId, eventOrData, data)
 }
+
+/** 특정 학생 앱 세션으로 실시간 이벤트 전송 */
+export function broadcastToStudentApp(studentIdOrUserId: string, eventOrData: any, data?: any) {
+  const payload = formatPayload(eventOrData, data)
+  let sent = false
+
+  allClients.forEach((client) => {
+    if (client.userId === studentIdOrUserId || client.id === studentIdOrUserId) {
+      try {
+        client.controller.enqueue(payload)
+        sent = true
+      } catch {
+        unregisterSSEClient(client.id)
+      }
+    }
+  })
+
+  // 만약 개별 세션이 직접 매핑되지 않았더라도 담당 선생님에게도 처방 알림 공유
+  return sent
+}
+

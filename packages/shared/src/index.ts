@@ -553,3 +553,11 @@ export interface StudentPatternStatDto {
   updatedAt: string
 }
 
+// 2022 개정 수학 지식 그래프 및 스테이지 공통 타입
+export * from './taxonomy'
+
+// 멀티 디바이스 반응형 뷰포트 훅
+export * from './hooks/useResponsiveViewport'
+
+
+

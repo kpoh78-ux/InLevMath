@@ -3,7 +3,7 @@
  * 수학 지식 그래프 (DAG) 및 선수 결손 역추적 엔진 (PostgreSQL Recursive CTE & Fast In-Memory DAG)
  */
 
-import { prisma } from './db.ts'
+import { prisma } from '@/lib/prisma'
 
 export interface ConceptItem {
   id: string

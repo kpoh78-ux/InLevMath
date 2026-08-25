@@ -5,23 +5,27 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState, Suspense } from 'react'
 import { clearMeCache } from '@/lib/useMe'
 
-const NAV: { href: string; label: string; brand?: true }[] = [
+import { AttendanceSidebarItem } from '@/components/attendance/AttendanceSidebarItem'
+
+const NAV: { href: string; label: string; brand?: true; badge?: string }[] = [
   { href: '/dashboard',              label: 'InLevMath', brand: true },
   { href: '/dashboard/lesson-prep',  label: '수업준비' },
   { href: '/dashboard/worksheets',   label: '학습지' },
   { href: '/dashboard/textbooks',    label: '교재' },
+  { href: '/dashboard/alimtalk',     label: '알림톡', badge: 'NEW' },
   { href: '/dashboard/manage',       label: '학생관리' },
   { href: '/dashboard/rewards',      label: '보상관리' },
 ]
 
 type AttendedStudent = {
   id: string; name: string; grade: string
-  attended: boolean; checkInTime?: string
+  attended: boolean; checkInTime?: string; checkOutTime?: string
+  status?: string; attendancePin?: string
 }
 
 export type RealtimeNotification = {
   id: string
-  type: 'WORKSHEET_SUBMIT' | 'TEXTBOOK_SUBMIT' | 'MISSION_RESULT' | 'LEVEL_UP' | 'CONNECTED'
+  type: 'WORKSHEET_SUBMIT' | 'TEXTBOOK_SUBMIT' | 'MISSION_RESULT' | 'LEVEL_UP' | 'ATTENDANCE_UPDATE' | 'CONNECTED'
   title: string
   message: string
   studentName?: string
@@ -74,10 +78,31 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       const token = localStorage.getItem('teacher_token') ?? ''
       const res = await fetch('/api/students?sidebar=1', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
-      const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
-      const students: AttendedStudent[] = data.map(s => ({
-        id: s.id, name: s.user.name, grade: s.grade, attended: false,
-      }))
+      const data = await res.json() as {
+        id: string; grade: string; attendancePin?: string; user: { name: string; phone?: string }
+        attendanceLogs?: Array<{ type: string; status: string; checkInTime?: string; checkOutTime?: string }>
+      }[]
+      const students: AttendedStudent[] = data.map(s => {
+        const todayLog = s.attendanceLogs && s.attendanceLogs.length > 0 ? s.attendanceLogs[0] : null
+        const isAttended = Boolean(todayLog?.checkInTime)
+        const checkInTimeStr = todayLog?.checkInTime
+          ? new Date(todayLog.checkInTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+          : undefined
+        const checkOutTimeStr = todayLog?.checkOutTime
+          ? new Date(todayLog.checkOutTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+          : undefined
+
+        return {
+          id: s.id,
+          name: s.user.name,
+          grade: s.grade,
+          attended: isAttended,
+          checkInTime: checkInTimeStr,
+          checkOutTime: checkOutTimeStr,
+          status: todayLog?.status,
+          attendancePin: s.attendancePin,
+        }
+      })
       setSidebarStudents(students)
       setExpandedGrades(prev => {
         const grades = [...new Set(students.map(s => s.grade))]
@@ -200,6 +225,21 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           studentId: event.studentId,
           timestamp: Date.now(),
         }
+      } else if (event.type === 'ATTENDANCE_UPDATE') {
+        const isCheckIn = event.subType === 'CHECK_IN'
+        notif = {
+          id,
+          type: 'ATTENDANCE_UPDATE',
+          title: isCheckIn
+            ? `🔔 [등원 알림] ${event.studentName} (${event.grade || ''})`
+            : `🔔 [하원 알림] ${event.studentName} (${event.grade || ''})`,
+          message: isCheckIn
+            ? `${event.checkInTime || '지금'}에 안전하게 등원하였습니다. (학부모 알림톡 자동 발송)`
+            : `${event.checkOutTime || '지금'}에 하원하였습니다. (학부모 알림톡 자동 발송)`,
+          studentName: event.studentName,
+          studentId: event.studentId,
+          timestamp: Date.now(),
+        }
       }
 
       if (notif) {
@@ -313,7 +353,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                     }
                   `}
                 >
-                  {n.label}
+                  <span className="flex items-center gap-1.5">
+                    <span>{n.label}</span>
+                    {n.badge && (
+                      <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-900 shadow-xs">
+                        {n.badge}
+                      </span>
+                    )}
+                  </span>
                   {active && (
                     <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-indigo-600 rounded-full" />
                   )}
@@ -343,13 +390,18 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       {/* ── 바디 (사이드바 + 메인) ── */}
       <div className="flex flex-1 overflow-hidden">
         {showAttendanceSidebar && (
-          <aside className="w-44 bg-white border-r border-gray-200 shrink-0 flex flex-col h-[calc(100vh-3.5rem)] sticky top-14">
-            <div className="px-4 py-2.5 border-b border-gray-100">
-              <p className="text-xs font-bold text-gray-800">등록 학생</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명</p>
+          <aside className="w-48 bg-white border-r border-gray-200 shrink-0 flex flex-col h-[calc(100vh-3.5rem)] sticky top-14">
+            <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-gray-800">등록 학생</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명 (등원 {attendedTotal}명)</p>
+              </div>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                실시간
+              </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-1">
+            <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
               {sortedGrades.length === 0 && (
                 <p className="text-[11px] text-gray-300 text-center py-6">등록된 학생이 없습니다</p>
               )}
@@ -378,23 +430,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                     </button>
 
                     {isExpanded && (
-                      <div className="pb-1">
+                      <div className="pb-1 space-y-0.5">
                         {students.map(s => (
-                          <button
+                          <AttendanceSidebarItem
                             key={s.id}
-                            onClick={() => router.push(studentHref(s.id))}
-                            className={`
-                              w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors
-                              ${activeStudentId === s.id
-                                ? 'bg-indigo-50 border-r-2 border-indigo-500'
-                                : 'hover:bg-gray-50 border-r-2 border-transparent'}
-                            `}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-200" />
-                            <span className="text-[11px] flex-1 truncate text-gray-700">
-                              {s.name}
-                            </span>
-                          </button>
+                            student={s}
+                            isActive={activeStudentId === s.id}
+                            onSelect={() => router.push(studentHref(s.id))}
+                            onStatusChanged={fetchSidebarStudents}
+                          />
                         ))}
                       </div>
                     )}

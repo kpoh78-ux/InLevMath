@@ -138,8 +138,8 @@ export async function processSubmissionStats(
         },
       })
 
-      // 정답률 60% 미만 취약점 발생 시 자동 처방 미션 발급
-      if (newTotal >= 5 && newAccuracy < 60.0) {
+      // 최소 3문항 이상 풀이 시 학생별 맞춤 기준 정답률에 따라 자동 처방 미션 및 음성 브리핑 검사
+      if (newTotal >= 3) {
         await checkAndTriggerWeaknessMission(studentId, subUnitId, newAccuracy)
       }
     }

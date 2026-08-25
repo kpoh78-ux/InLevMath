@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { useMe } from '@/lib/useMe'
+import { StudentDetailModal, StudentDetailData } from '@/components/student/StudentDetailModal'
 
 type Student = {
   id: string
@@ -23,6 +24,7 @@ type Student = {
   birthDate: string
   email: string
   memo: string
+  attendancePin?: string
 }
 
 const GRADE_OPTIONS: { group: '초' | '중' | '고'; label: string }[] = [
@@ -112,6 +114,7 @@ function ManageStudentsPageInner() {
         birthDate: s.birthDate ?? '',
         email: s.email ?? '',
         memo: s.memo ?? '',
+        attendancePin: (s as any).attendancePin ?? s.user.phone.slice(-4),
       })))
     } catch {
       // 인증 오류 등
@@ -135,17 +138,34 @@ function ManageStudentsPageInner() {
 
   const clearStudentFilter = () => router.replace(pathname, { scroll: false })
 
-  /** 학생 이름 클릭 — 기존 값을 채워 같은 모달을 수정 모드로 연다 */
+  const [detailModalStudent, setDetailModalStudent] = useState<StudentDetailData | null>(null)
+
+  /** 학생 이름 클릭 — 4자리 PIN 및 학생상세정보 모달 열기 */
   const openEditStudent = (st: Student) => {
-    setEditingStudent(st)
-    setError('')
-    setForm({
-      name: st.name, phone: st.phone, grade: st.grade, school: st.school,
-      parentName: st.parentName, parentPhone: st.parentPhone, startDate: st.startDate,
-      memo: st.memo, address: st.address, homePhone: st.homePhone,
-      birthDate: st.birthDate, email: st.email,
+    setDetailModalStudent({
+      id: st.id,
+      name: st.name,
+      phone: st.phone,
+      studentPhone: st.phone,
+      grade: st.grade,
+      gradeLevel: st.gradeGroup,
+      gradeNumber: st.grade.replace(/[^0-9]/g, '') ? `${st.grade.replace(/[^0-9]/g, '')}학년` : '1학년',
+      attendancePin: st.attendancePin || st.phone.slice(-4),
+      status: st.status,
+      school: st.school,
+      schoolName: st.school,
+      parentName: st.parentName,
+      parentPhone: st.parentPhone,
+      startDate: st.startDate,
+      classStartDate: st.startDate,
+      birthDate: st.birthDate,
+      email: st.email,
+      memo: st.memo,
+      address: st.address,
+      homePhone: st.homePhone,
+      studentAppId: `S${st.id.slice(-8).toUpperCase()}`,
+      parentAppId: `P${st.id.slice(-8).toUpperCase()}`,
     })
-    setShowModal(true)
   }
 
   const closeStudentModal = () => {
@@ -477,187 +497,36 @@ function ManageStudentsPageInner() {
         </table>
       </div>
 
-      {/* 학생 등록 모달 */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 py-8">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
-              <h2 className="text-lg font-bold text-gray-900">{editingStudent ? '학생 상세 정보' : '학생 개별 등록'}</h2>
-              <button onClick={closeStudentModal}
-                className="text-gray-400 hover:text-gray-600 text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={handleAdd} className="flex flex-col flex-1 overflow-hidden">
-              <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
-                {/* 필수 항목 */}
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">필수 입력 항목</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                        학생 이름 <span className="text-red-500">*</span>
-                      </label>
-                      <input type="text" required value={form.name} onChange={f('name')}
-                        placeholder="이름을 입력해주세요."
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                        핸드폰번호 (로그인 ID) <span className="text-red-500">*</span>
-                      </label>
-                      <input type="tel" required value={form.phone}
-                        onChange={e => setForm(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
-                        placeholder="숫자만 입력 (11자리)" maxLength={11}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="block text-xs font-medium text-gray-600 mb-2">
-                      학년 <span className="text-red-500">*</span>
-                    </label>
-                    <div className="space-y-2">
-                      {(['초', '중', '고'] as const).map(group => (
-                        <div key={group} className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 w-4">{group}</span>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {GRADE_OPTIONS.filter(g => g.group === group).map(g => (
-                              <button key={g.label} type="button"
-                                onClick={() => setForm(prev => ({ ...prev, grade: g.label }))}
-                                className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors ${
-                                  form.grade === g.label
-                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                    : 'border-gray-200 text-gray-600 hover:border-indigo-400'
-                                }`}>
-                                {g.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 선택 항목 */}
-                <div className="border-t border-gray-100 pt-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">선택 입력 항목</p>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">학교명</label>
-                        <input type="text" value={form.school} onChange={f('school')}
-                          placeholder="학교명을 입력해주세요."
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">수업시작일</label>
-                        <input type="date" value={form.startDate} onChange={f('startDate')}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">보호자 이름</label>
-                        <input type="text" value={form.parentName} onChange={f('parentName')}
-                          placeholder="보호자 성함"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">보호자 연락처</label>
-                        <input type="tel" value={form.parentPhone}
-                          onChange={e => setForm(prev => ({ ...prev, parentPhone: e.target.value.replace(/\D/g, '') }))}
-                          placeholder="숫자만 입력 (11자리)" maxLength={11}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">학생 생년월일</label>
-                        <input type="date" value={form.birthDate} onChange={f('birthDate')}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">학생 이메일</label>
-                        <input type="email" value={form.email} onChange={f('email')}
-                          placeholder="예시 : student@math.com"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">집 주소</label>
-                        <input type="text" value={form.address} onChange={f('address')}
-                          placeholder="주소를 입력해주세요."
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">집 전화</label>
-                        <input type="tel" value={form.homePhone}
-                          onChange={e => setForm(prev => ({ ...prev, homePhone: e.target.value.replace(/\D/g, '') }))}
-                          placeholder="숫자만 입력해주세요." maxLength={12}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">비고</label>
-                      <input type="text" value={form.memo} onChange={f('memo')}
-                        placeholder="메모 (선택)"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                    </div>
-                  </div>
-                </div>
-
-                {!editingStudent && (
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2.5 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-xs text-indigo-600">
-                      초기 비밀번호는 <strong>math1234</strong>로 자동 설정됩니다. 학생이 직접 변경할 수 있습니다.
-                    </p>
-                  </div>
-                )}
-                {editingStudent && (
-                  <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5">
-                    <p className="text-xs text-amber-700">
-                      핸드폰번호는 <strong>로그인 아이디</strong>입니다. 바꾸면 학생이 새 번호로 로그인해야 합니다.
-                    </p>
-                  </div>
-                )}
-
-                {error && (
-                  <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
-                )}
-              </div>
-
-              <div className="px-6 pb-6 pt-4 border-t border-gray-100 flex items-center justify-between shrink-0">
-                {editingStudent ? <span /> : (
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={continueAdd} onChange={e => setContinueAdd(e.target.checked)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
-                    <span className="text-sm text-gray-600">계속 학생 등록하기</span>
-                  </label>
-                )}
-                <div className="flex gap-3">
-                  <button type="button" onClick={closeStudentModal}
-                    className="border border-gray-300 text-gray-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">
-                    취소
-                  </button>
-                  <button type="submit" disabled={submitting || !form.grade || !form.name || !form.phone}
-                    className="bg-indigo-600 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                    {submitting
-                      ? (editingStudent ? '저장 중...' : '등록 중...')
-                      : (editingStudent ? '저장하기' : '등록하기')}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 학생 등록 / 상세 정보 및 4자리 출결 PIN 수정 모달 */}
+      <StudentDetailModal
+        isOpen={showModal}
+        onClose={closeStudentModal}
+        mode={editingStudent ? 'edit' : 'create'}
+        initialData={
+          editingStudent
+            ? {
+                id: editingStudent.id,
+                name: editingStudent.name,
+                phone: editingStudent.phone,
+                school: editingStudent.school,
+                grade: editingStudent.grade,
+                parentName: editingStudent.parentName,
+                parentPhone: editingStudent.parentPhone,
+                startDate: editingStudent.startDate,
+                address: editingStudent.address,
+                homePhone: editingStudent.homePhone,
+                birthDate: editingStudent.birthDate,
+                email: editingStudent.email,
+                memo: editingStudent.memo,
+                attendancePin: editingStudent.attendancePin,
+              }
+            : null
+        }
+        onSaved={async () => {
+          await fetchStudents()
+          closeStudentModal()
+        }}
+      />
 
       {/* 학생 일괄 등록 모달 */}
       {showBulkModal && (
@@ -900,6 +769,20 @@ function ManageStudentsPageInner() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 학생 상세정보 & 4자리 출결 PIN 관리 모달 */}
+      {detailModalStudent && (
+        <StudentDetailModal
+          isOpen={true}
+          initialData={detailModalStudent}
+          mode="edit"
+          onClose={() => setDetailModalStudent(null)}
+          onSaved={() => {
+            fetchStudents()
+            setDetailModalStudent(null)
+          }}
+        />
       )}
     </div>
   )

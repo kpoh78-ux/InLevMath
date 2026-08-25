@@ -2,7 +2,8 @@
  * PostgreSQL pg_indexes 인덱스 생성 및 관계 검증 스크립트
  */
 
-import { prisma } from '../src/lib/db.ts'
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
 
 console.log('========================================================================')
 console.log('🔍 [DB 인덱스 검증] ConceptNode 및 ConceptDependency 인덱스 및 관계 확인')

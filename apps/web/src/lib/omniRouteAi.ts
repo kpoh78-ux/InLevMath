@@ -19,6 +19,8 @@ export interface WorksheetAnalysisResult {
     patternType?: string;
   }[];
   providerUsed: 'GEMINI_2_5_FLASH_FREE' | 'GROQ_LLAMA3_FREE' | 'FALLBACK_LOCAL';
+  /** true면 자동 분석 신뢰도가 낮아 결과를 반드시 사람이 확인해야 함 */
+  lowConfidence: boolean;
 }
 
 const WorksheetParseSchema: Schema = {
@@ -49,19 +51,29 @@ const WorksheetParseSchema: Schema = {
 
 export async function parseWorksheetWithOmniRoute(
   fileName: string,
-  extractedText: string,
-  answerSnippet?: string
+  titleSnippet: string,
+  answerSnippet: string,
+  opts?: { boundaryConfident?: boolean }
 ): Promise<WorksheetAnalysisResult> {
+  const boundaryConfident = opts?.boundaryConfident ?? true;
+  const boundaryNote = boundaryConfident
+    ? ''
+    : '\n[주의] 정답 구간의 시작 위치를 키워드로 확신하지 못해 페이지 위치 추정으로 잘라낸 텍스트입니다. 아래 텍스트가 실제 정답표/해설이 아닐 수 있으니 신중히 판단하고, 확신이 서지 않으면 answers를 비워두세요.';
+
   const prompt = `당신은 대한민국 K-수학 전문 교육과정 분석 AI입니다.
-업로드된 학습지 파일명과 본문/정답 텍스트를 분석하여 4계층 단원 분류와 문항별 정답을 JSON으로 추출하세요.
+학습지의 [표지/문제 앞부분 텍스트]와 [정답 구간 텍스트]를 각각 참고하여 4계층 단원 분류와 문항별 정답을 JSON으로 추출하세요.
 
 [파일명]: ${fileName}
-[정답/본문 텍스트 요약]:
-${answerSnippet || extractedText.slice(0, 3000)}
+
+[표지/문제 앞부분 텍스트 — 대/중/소단원명과 학습지 제목은 보통 여기 적혀 있습니다]:
+${titleSnippet || '(추출되지 않음)'}
+
+[정답 구간 텍스트 — 문항별 정답은 여기서 추출하세요]:
+${answerSnippet || '(추출되지 않음)'}${boundaryNote}
 
 추출 규칙:
-1. 대단원, 중단원, 소단원, 대표 문제유형을 한국 수학 교육과정 표준 명칭으로 지정하세요.
-2. 문항 번호와 정답을 배열로 완벽히 추출하세요 (보기 1~5번, 분수, 식 등).
+1. 대단원, 중단원, 소단원, 대표 문제유형은 [표지/문제 앞부분 텍스트]에 실제로 적힌 내용을 근거로 한국 수학 교육과정 표준 명칭으로 지정하세요. 추측으로 지어내지 마세요.
+2. 문항 번호와 정답은 [정답 구간 텍스트]를 근거로 배열로 완벽히 추출하세요 (보기 1~5번, 분수, 식 등).
 3. 배점이 없는 경우 기본 4점으로 설정하세요.`;
 
   // 1차 시도: Google Gemini 2.5 Flash (무료 티어 활용)
@@ -82,7 +94,8 @@ ${answerSnippet || extractedText.slice(0, 3000)}
       const parsed = JSON.parse(response.text || '{}');
       return {
         ...parsed,
-        providerUsed: 'GEMINI_2_5_FLASH_FREE'
+        providerUsed: 'GEMINI_2_5_FLASH_FREE',
+        lowConfidence: !boundaryConfident,
       };
     }
   } catch (geminiError) {
@@ -95,7 +108,7 @@ ${answerSnippet || extractedText.slice(0, 3000)}
       const groqRes = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
         {
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           messages: [
             { role: 'system', content: 'You are a math parser that outputs ONLY valid JSON matching the schema.' },
             { role: 'user', content: prompt }
@@ -111,25 +124,28 @@ ${answerSnippet || extractedText.slice(0, 3000)}
       const parsed = JSON.parse(groqRes.data.choices[0]?.message?.content || '{}');
       return {
         ...parsed,
-        providerUsed: 'GROQ_LLAMA3_FREE'
+        providerUsed: 'GROQ_LLAMA3_FREE',
+        lowConfidence: !boundaryConfident,
       };
     }
   } catch (groqError) {
     console.warn('Groq 무료 API 폴백 실패, 정규식 기반 로컬 파서로 최종 대체합니다.', groqError);
   }
 
-  // 3차 시도: 순수 정규식 로컬 Fallback (API 비용 0원, 완벽한 오프라인 안전장치)
-  return fallbackRegexParser(fileName, extractedText);
+  // 3차 시도: 순수 정규식 로컬 Fallback (API 키 미설정/실패 시의 최종 안전장치)
+  // 주의: 어떤 AI도 호출되지 않았으므로 단원/유형은 알 수 없다고 명시하고, 사람이 반드시 확인해야 한다.
+  return fallbackRegexParser(fileName, titleSnippet, answerSnippet);
 }
 
-function fallbackRegexParser(fileName: string, text: string): WorksheetAnalysisResult {
+function fallbackRegexParser(fileName: string, titleSnippet: string, answerSnippet: string): WorksheetAnalysisResult {
   const answers: { questionNumber: number; answer: string; score: number }[] = [];
-  // 예: "1. ③ 2. ④" 또는 "1) 3 2) 5" 형태의 정답 정규식 매칭
-  const regex = /(?:([0-9]{1,2})[\.\)\]\s]\s*([①-⑤1-5]|[\-\+0-9a-zA-Z\/]+))/g;
+  // 정답 구간 텍스트에서만 "1. ③" / "1) 3" 형태의 정답 정규식 매칭 (원문 전체를 훑지 않음)
+  const sourceText = answerSnippet || titleSnippet;
+  const regex = /(?:([0-9]{1,2})[.)\]\s]\s*([①-⑤1-5]|[\-+0-9a-zA-Z/]+))/g;
   let match;
   let idx = 1;
 
-  while ((match = regex.exec(text)) !== null && idx <= 30) {
+  while ((match = regex.exec(sourceText)) !== null && idx <= 50) {
     answers.push({
       questionNumber: parseInt(match[1], 10) || idx,
       answer: match[2],
@@ -140,12 +156,14 @@ function fallbackRegexParser(fileName: string, text: string): WorksheetAnalysisR
 
   return {
     worksheetTitle: fileName.replace(/\.pdf$/i, ''),
-    gradeSubject: 'MID_3_1',
-    majorUnit: 'Ⅰ. 실수와 그 연산',
-    middleUnit: '1. 제곱근과 실수',
-    subUnit: '(1) 제곱근의 뜻과 성질',
-    mainPatternType: '[유형01] 기본 연산 및 개념',
-    answers: answers.length > 0 ? answers : [{ questionNumber: 1, answer: '1', score: 4 }],
-    providerUsed: 'FALLBACK_LOCAL'
+    gradeSubject: '',
+    // AI 미호출 상태에서는 단원/유형을 추측하지 않는다 — 하드코딩된 가짜 값 대신 명시적으로 미분류 표시
+    majorUnit: '',
+    middleUnit: '',
+    subUnit: '',
+    mainPatternType: '',
+    answers,
+    providerUsed: 'FALLBACK_LOCAL',
+    lowConfidence: true,
   };
 }

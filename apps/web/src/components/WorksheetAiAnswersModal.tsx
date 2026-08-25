@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { readFile, printWorksheetFile, type WorksheetFile } from '@/lib/worksheetFiles'
-import { extractLightweightPdfText } from '@/lib/pdfTextExtractor'
+import { extractLightweightPdfText, type StructureOverride } from '@/lib/pdfTextExtractor'
 import { SymbolPalette, useSymbolPalette } from '@/components/AnswerInput'
 import { Sparkles, Zap, ShieldCheck, Tag, BookOpen, Layers, CheckCircle2, RotateCcw } from 'lucide-react'
 
@@ -34,6 +34,8 @@ type OmniExtractResult = {
   answers: ExtractedAnswer[]
   aiProviderUsed: string
   tokenSavedPercent: number
+  lowConfidence?: boolean
+  answerStructureType?: string
   note: string
   matchedTaxonomy?: {
     subUnitId: string
@@ -106,25 +108,26 @@ export function WorksheetAiAnswersModal({
 
   const palette = useSymbolPalette<number>(setAnswerAt)
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (structureOverride?: StructureOverride) => {
     setPhase('running'); setError('')
     try {
       const f = await readFile(file)
       const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-      
+
       let parsedData: OmniExtractResult | null = null
 
-      // 1. PDF 파일인 경우: 클라이언트 로컬 경량 텍스트 추출 (토큰 90% 절약)
+      // 1. PDF 파일인 경우: 클라이언트 로컬 경량 텍스트 추출 (토큰 절약)
       if (ext === 'pdf') {
         try {
           const buffer = await f.arrayBuffer()
-          const extractedPdf = await extractLightweightPdfText(buffer)
+          const extractedPdf = await extractLightweightPdfText(buffer, { structureOverride })
 
           const res = await apiFetch('/api/worksheet/parse-omni', {
             method: 'POST',
             body: JSON.stringify({
-              rawText: extractedPdf.rawText,
+              titleSnippet: extractedPdf.titleSnippet,
               answerSnippet: extractedPdf.answerSnippet,
+              boundaryConfident: extractedPdf.boundaryConfident,
               fileName: file.name,
             }),
           })
@@ -133,7 +136,9 @@ export function WorksheetAiAnswersModal({
           if (res.ok && jsonRes.data) {
             parsedData = {
               ...jsonRes.data,
-              tokenSavedPercent: extractedPdf.estimatedTokenSavedPercent || 92,
+              tokenSavedPercent: extractedPdf.estimatedTokenSavedPercent,
+              answerStructureType: extractedPdf.answerStructureType,
+              lowConfidence: Boolean(jsonRes.data.lowConfidence) || !extractedPdf.boundaryConfident,
             }
           }
         } catch (pdfErr) {
@@ -164,6 +169,7 @@ export function WorksheetAiAnswersModal({
           answers: fallbackData.answers || [],
           aiProviderUsed: 'CLAUDE_HAIKU',
           tokenSavedPercent: 0,
+          lowConfidence: false,
           note: fallbackData.note || '',
         }
       }
@@ -224,7 +230,7 @@ export function WorksheetAiAnswersModal({
         return { label: '⚡ Gemini 2.5 Flash (무료/초고속)', color: 'bg-amber-50 text-amber-700 border-amber-200' }
       case 'GROQ_LLAMA_3':
       case 'GROQ_LLAMA3_FREE':
-        return { label: '🦙 Groq Llama-3 (0.3초 초고속)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+        return { label: '⚡ Groq GPT-OSS 120B (초고속)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
       case 'DEEPSEEK_V3':
         return { label: '🧠 DeepSeek V3 (정밀 추론)', color: 'bg-blue-50 text-blue-700 border-blue-200' }
       case 'CLAUDE_HAIKU':
@@ -272,7 +278,7 @@ export function WorksheetAiAnswersModal({
                 className="border border-slate-300 text-slate-600 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer">
                 닫기
               </button>
-              <button onClick={run}
+              <button onClick={() => run()}
                 className="bg-indigo-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer">
                 다시 시도
               </button>
@@ -303,6 +309,32 @@ export function WorksheetAiAnswersModal({
                 </div>
               </div>
             </div>
+
+            {/* 1-1. 저신뢰 결과 경고 배너 (AI 미호출 또는 정답 구간 경계 추정 실패) */}
+            {(result.aiProviderUsed === 'FALLBACK_LOCAL' || result.lowConfidence) && (
+              <div className="px-6 pt-3">
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 flex items-start gap-2.5">
+                  <span className="text-red-600 text-base leading-none mt-0.5">⚠️</span>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-xs font-bold text-red-800">
+                      {result.aiProviderUsed === 'FALLBACK_LOCAL'
+                        ? 'AI 분석이 실행되지 않아 아래 단원/정답은 추정치입니다. 반드시 직접 확인 후 등록하세요.'
+                        : '정답 구간 위치를 자동으로 확신하지 못했습니다. 아래 결과를 반드시 확인하세요.'}
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={() => run('TABLE_ONLY')}
+                        className="text-[11px] font-bold text-red-700 border border-red-300 bg-white hover:bg-red-100 px-2.5 py-1 rounded-lg cursor-pointer">
+                        정답표만으로 재추출
+                      </button>
+                      <button type="button" onClick={() => run('WITH_EXPLANATION')}
+                        className="text-[11px] font-bold text-red-700 border border-red-300 bg-white hover:bg-red-100 px-2.5 py-1 rounded-lg cursor-pointer">
+                        해설 포함 재추출
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 2. 대단원 / 중단원 / 소단원 / 유형 자동 분류 태그 바 */}
             <div className="px-6 pt-3">
@@ -413,9 +445,9 @@ export function WorksheetAiAnswersModal({
               <span className="text-xs text-slate-500 mr-auto font-medium">
                 {filled}/{answers.length}문항 입력됨
               </span>
-              <button 
+              <button
                 type="button"
-                onClick={run}
+                onClick={() => run()}
                 className="border border-slate-300 text-slate-600 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />

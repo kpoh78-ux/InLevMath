@@ -11,8 +11,9 @@ export async function POST(req: Request) {
   try {
     const contentType = req.headers.get('content-type') || '';
     let fileName = '학습지.pdf';
-    let rawText = '';
+    let titleSnippet = '';
     let answerSnippet = '';
+    let boundaryConfident = true;
     let totalPageCount = 1;
 
     if (contentType.includes('multipart/form-data')) {
@@ -28,18 +29,20 @@ export async function POST(req: Request) {
 
       // 1. 토큰 절약을 위한 텍스트 & 정답표 고속 추출 (Vision 불필요)
       const extracted = await extractLightweightPdfText(arrayBuffer);
-      rawText = extracted.rawText;
+      titleSnippet = extracted.titleSnippet;
       answerSnippet = extracted.answerSnippet || '';
+      boundaryConfident = extracted.boundaryConfident;
       totalPageCount = extracted.totalPageCount;
     } else {
       const body = await req.json();
       fileName = body.fileName || '학습지.pdf';
-      rawText = body.rawText || '';
+      titleSnippet = body.titleSnippet || '';
       answerSnippet = body.answerSnippet || '';
+      boundaryConfident = body.boundaryConfident ?? true;
     }
 
     // 2. 무료 티어 AI 로드밸런서로 라우팅 (비용 0원 최적화)
-    const analysis = await parseWorksheetWithOmniRoute(fileName, rawText, answerSnippet);
+    const analysis = await parseWorksheetWithOmniRoute(fileName, titleSnippet, answerSnippet, { boundaryConfident });
 
     return NextResponse.json({
       success: true,
@@ -59,9 +62,10 @@ export async function POST(req: Request) {
           answer: String(a.answer || '').trim(),
           score: a.score ?? 4,
           section: a.patternType || analysis.mainPatternType,
-          confident: true,
+          confident: !analysis.lowConfidence,
         })),
         aiProviderUsed: analysis.providerUsed,
+        lowConfidence: analysis.lowConfidence,
       }
     });
   } catch (error: any) {

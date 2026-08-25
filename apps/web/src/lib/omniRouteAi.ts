@@ -138,20 +138,30 @@ ${answerSnippet || '(추출되지 않음)'}${boundaryNote}
 }
 
 function fallbackRegexParser(fileName: string, titleSnippet: string, answerSnippet: string): WorksheetAnalysisResult {
-  const answers: { questionNumber: number; answer: string; score: number }[] = [];
-  // 정답 구간 텍스트에서만 "1. ③" / "1) 3" 형태의 정답 정규식 매칭 (원문 전체를 훑지 않음)
+  // 정답 구간 텍스트에서만 매칭 (원문 전체를 훑지 않음)
   const sourceText = answerSnippet || titleSnippet;
-  const regex = /(?:([0-9]{1,2})[.)\]\s]\s*([①-⑤1-5]|[\-+0-9a-zA-Z/]+))/g;
-  let match;
-  let idx = 1;
 
-  while ((match = regex.exec(sourceText)) !== null && idx <= 50) {
-    answers.push({
-      questionNumber: parseInt(match[1], 10) || idx,
-      answer: match[2],
-      score: 4
-    });
-    idx++;
+  // 1순위: 엄격한 객관식(①~⑤) 패턴 — 오탐 가능성이 사실상 없음
+  const strictMcRegex = /\b([0-9]{1,2})\s*[.)\]]\s*([①②③④⑤])(?=\s|$)/g;
+  const mcAnswers: { questionNumber: number; answer: string; score: number }[] = [];
+  let mcMatch;
+  while ((mcMatch = strictMcRegex.exec(sourceText)) !== null && mcAnswers.length < 50) {
+    mcAnswers.push({ questionNumber: parseInt(mcMatch[1], 10), answer: mcMatch[2], score: 4 });
+  }
+
+  // 객관식만으로 충분히 추출됐으면(문항 5개 이상) 그대로 사용 — 가장 신뢰도 높은 결과
+  let answers = mcAnswers;
+
+  if (mcAnswers.length < 5) {
+    // 2순위: 단답형까지 포함한 넓은 패턴. 문서 식별코드 등 긴 노이즈 토큰을 배제하기 위해
+    // 답안 토큰 길이를 6자로 제한 (일반적인 분수/식 표현은 이 범위를 넘지 않음)
+    const looseRegex = /\b([0-9]{1,2})\s*[.)\]]\s*([①-⑤]|[\-+0-9a-zA-Z/]{1,6})(?=\s|$)/g;
+    const looseAnswers: { questionNumber: number; answer: string; score: number }[] = [];
+    let looseMatch;
+    while ((looseMatch = looseRegex.exec(sourceText)) !== null && looseAnswers.length < 50) {
+      looseAnswers.push({ questionNumber: parseInt(looseMatch[1], 10), answer: looseMatch[2], score: 4 });
+    }
+    if (looseAnswers.length > answers.length) answers = looseAnswers;
   }
 
   return {

@@ -76,13 +76,13 @@ export function WorksheetAiAnswersModal({
   file: WorksheetFile
   onClose: () => void
   /** 검수를 마친 정답 및 단원 메타데이터 */
-  onConfirm: (v: { 
-    title: string; 
-    answers: string[]; 
-    majorUnit?: string; 
-    middleUnit?: string; 
-    minorUnit?: string; 
-    section?: string; 
+  onConfirm: (v: {
+    title: string;
+    answers: string[];
+    majorUnit?: string;
+    middleUnit?: string;
+    minorUnit?: string;
+    section?: string;
   }) => void
 }) {
   const [phase, setPhase] = useState<'running' | 'review' | 'error'>('running')
@@ -213,8 +213,8 @@ export function WorksheetAiAnswersModal({
       if (!window.confirm(`비어 있는 정답이 ${empty}개 있습니다.\n나중에 정답 설정에서 채울 수 있습니다. 계속할까요?`)) return
     }
 
-    onConfirm({ 
-      title: title.trim() || titleFromFileName(file.name), 
+    onConfirm({
+      title: title.trim() || titleFromFileName(file.name),
       answers,
       majorUnit,
       middleUnit,
@@ -318,7 +318,9 @@ export function WorksheetAiAnswersModal({
                   <div className="flex-1 space-y-2">
                     <p className="text-xs font-bold text-red-800">
                       {result.aiProviderUsed === 'FALLBACK_LOCAL'
-                        ? 'AI 분석이 실행되지 않아 아래 단원/정답은 추정치입니다. 반드시 직접 확인 후 등록하세요.'
+                        ? (result.matchedTaxonomy
+                            ? 'AI 분석이 실행되지 않아 아래 정답은 추정치입니다. 단원 분류는 파일명 기반으로 DB와 대조되어 정확하지만, 정답은 반드시 직접 확인 후 등록하세요.'
+                            : 'AI 분석이 실행되지 않아 아래 단원/정답은 추정치입니다. 반드시 직접 확인 후 등록하세요.')
                         : '정답 구간 위치를 자동으로 확신하지 못했습니다. 아래 결과를 반드시 확인하세요.'}
                     </p>
                     <div className="flex gap-1.5">
@@ -341,7 +343,16 @@ export function WorksheetAiAnswersModal({
               <div className="bg-indigo-50/50 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
                   <Tag className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>AI 자동 단원 & 유형 분류 태깅 (클릭하여 수정 가능)</span>
+                  <span>단원 & 유형 분류 태깅 (클릭하여 수정 가능)</span>
+                  {result.matchedTaxonomy ? (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">
+                      ✓ 파일명↔DB 매칭됨
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-slate-200 text-slate-600 font-bold px-1.5 py-0.5 rounded-full">
+                      AI 추정
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>

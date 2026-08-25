@@ -77,7 +77,29 @@ function Sync-Git {
             if ($LASTEXITCODE -eq 0) {
                 Write-Log "[Git] Successfully pushed to GitHub!" "Green"
             } else {
-                Write-Log "[Git Warning] Push failed: $pushResult" "Red"
+                # Usually the other machine (PC <-> laptop) pushed first.
+                # Rebase our local commits on top of origin, then push again.
+                Write-Log "[Git Warning] Push rejected: $pushResult" "DarkYellow"
+                Write-Log "[Git] Trying 'pull --rebase origin $Branch'..." "Yellow"
+
+                $pullResult = git pull --rebase origin $Branch 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "[Git] Rebased onto origin/$Branch. Retrying push..." "Yellow"
+                    $pushResult = git push origin $Branch 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log "[Git] Successfully pushed after rebase!" "Green"
+                    } else {
+                        Write-Log "[Git Error] Push still failing: $pushResult" "Red"
+                        Write-Log "[Git] Manual action required." "Red"
+                    }
+                } else {
+                    # Conflict (or any rebase failure): abort so the repo is never
+                    # left mid-rebase, which would corrupt the next auto-commit.
+                    Write-Log "[Git Error] pull --rebase failed: $pullResult" "Red"
+                    git rebase --abort 2>&1 | Out-Null
+                    Write-Log "[Git] Rebase aborted - working tree restored." "Yellow"
+                    Write-Log "[Git] Conflict must be resolved manually. Auto-sync keeps watching." "Red"
+                }
             }
         }
     } catch {

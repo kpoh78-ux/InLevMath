@@ -24,7 +24,14 @@ if (-not (Test-Path -Path $LocalBackupDir)) {
 }
 
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$ZipFileName = "InLevMath_backup_$Timestamp.zip"
+
+# Machine tag: keeps each PC's backups separate in the shared Google Drive folder,
+# so cleanup on one machine never deletes the other machine's backups.
+$MachineName = ($env:COMPUTERNAME -replace '[^A-Za-z0-9-]', '')
+if ([string]::IsNullOrWhiteSpace($MachineName)) { $MachineName = "UNKNOWN" }
+
+$ZipFileName = "InLevMath_backup_${MachineName}_$Timestamp.zip"
+$CleanupFilter = "InLevMath_backup_${MachineName}_*.zip"
 $TempZipPath = Join-Path $env:TEMP $ZipFileName
 $FinalLocalZipPath = Join-Path $LocalBackupDir $ZipFileName
 
@@ -42,7 +49,7 @@ try {
         $StageDir,
         "/E",
         "/XD", "node_modules", ".next", ".turbo", ".expo", "dist", "build", ".cache",
-        "/XF", "*.log",
+        "/XF", "*.log", ".env", ".env.local", ".env.development", ".env.production",
         "/R:1", "/W:1",
         "/NFL", "/NDL", "/NJH", "/NJS"
     )
@@ -109,14 +116,14 @@ try {
     }
     foreach ($Folder in $BackupFolders) {
         if (Test-Path $Folder) {
-            $OldFiles = Get-ChildItem -Path $Folder -Filter "InLevMath_backup_*.zip" | 
+            $OldFiles = Get-ChildItem -Path $Folder -Filter $CleanupFilter | 
                 Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$RetentionDays) }
             foreach ($File in $OldFiles) {
                 Remove-Item $File.FullName -Force
                 Write-Host "Removed expired backup: $($File.Name)" -ForegroundColor DarkGray
             }
 
-            $AllBackups = Get-ChildItem -Path $Folder -Filter "InLevMath_backup_*.zip" | Sort-Object LastWriteTime -Descending
+            $AllBackups = Get-ChildItem -Path $Folder -Filter $CleanupFilter | Sort-Object LastWriteTime -Descending
             if ($AllBackups.Count -gt $MaxBackups) {
                 $ToRemove = $AllBackups | Select-Object -Skip $MaxBackups
                 foreach ($File in $ToRemove) {

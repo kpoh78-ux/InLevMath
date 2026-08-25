@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
   UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, stepNeedsSubType, stepDisplayLabel,
   type WorksheetStep,
@@ -111,12 +112,17 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
   const fetchStudentWorksheets = useCallback(async () => {
     setLoading(true)
+    // 학생을 바꾸는 즉시 이전 학생의 화면이 남아있지 않도록 비운다
+    setStudent(null)
+    setDistributions([])
     try {
       const res = await apiFetch(`/api/students/${studentId}/worksheets`)
       if (res.ok) {
         const data = await res.json()
         setStudent(data.student)
         setDistributions(data.distributions)
+      } else {
+        console.error('[StudentWorksheetView] 학습지 조회 실패', res.status)
       }
     } finally {
       setLoading(false)
@@ -230,6 +236,13 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* 학생 필터 해제 — 좌측 사이드바에서 학생을 고르면 이 필터가 탭을 옮겨도 유지되므로,
+          전체 학습지 목록(업로드/등록)으로 돌아갈 수 있는 명시적인 출구가 필요하다 */}
+      <Link href="/dashboard/worksheets"
+        className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+        ← 전체 학습지 목록으로
+      </Link>
+
       {/* 학생 헤더 */}
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
@@ -1099,7 +1112,9 @@ function WorksheetsPageInner() {
   const searchParams = useSearchParams()
   const studentId = searchParams.get('student')
 
-  if (studentId) return <StudentWorksheetView studentId={studentId} />
+  // key로 studentId를 넘겨 학생을 바꿀 때마다 완전히 새로 마운트한다 —
+  // props만 바뀌는 경우 이전 학생의 state가 잠깐이라도 남아 보일 여지를 원천 차단
+  if (studentId) return <StudentWorksheetView key={studentId} studentId={studentId} />
   return <AllWorksheetsView />
 }
 

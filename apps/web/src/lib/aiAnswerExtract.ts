@@ -1,13 +1,18 @@
 // 학습지 PDF/이미지에서 문제·정답 페이지를 구분하고 문항별 정답을 읽어오는 모듈
 //
 // 원본 파일은 DB에 저장하지 않는다(lib/worksheetFiles.ts 참고).
-// 선생님 PC에서 읽은 파일을 그때그때 Claude에 넘겨 정답만 받아오고 파일은 버린다.
+// 선생님 PC에서 읽은 파일을 그때그때 AI에 넘겨 정답만 받아오고 파일은 버린다.
 //
-// API 키는 반드시 .env의 ANTHROPIC_API_KEY에서만 읽는다. 코드에 하드코딩 금지.
+// 텍스트 레이어가 아니라 파일을 통째로(비전) 넘기므로, 원 문자(①~⑤) 등이 폰트 인코딩
+// 문제로 깨져서 추출되는 pdf.js 텍스트 파싱의 한계를 우회한다.
+//
+// 비용 우선순위: ① Gemini(무료 티어) → ② Claude Haiku(무료 티어 소진/실패 시 저비용 대체).
+// API 키는 반드시 .env(GEMINI_API_KEY/GOOGLE_AI_API_KEY, ANTHROPIC_API_KEY)에서만 읽는다.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenAI, Type, type Schema, createUserContent, createPartFromBase64 } from '@google/genai'
 
-/** 요청당 파일 크기 상한. Claude 요청 한도(32MB)와 서버 메모리를 고려한 값 */
+/** 요청당 파일 크기 상한. AI 요청 한도와 서버 메모리를 고려한 값 */
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 export const SUPPORTED_MEDIA_TYPES = [
@@ -35,6 +40,8 @@ export type ExtractResult = {
   answers: ExtractedAnswer[]
   /** 사람이 확인해야 할 점 (한국어 한두 문장) */
   note: string
+  /** 실제로 어떤 AI가 처리했는지 (UI 표시용) */
+  provider: 'GEMINI_VISION_FREE' | 'CLAUDE_HAIKU_VISION'
 }
 
 const SYSTEM = `당신은 한국 수학 학원의 학습지를 정리하는 조교입니다.
@@ -58,7 +65,7 @@ const SYSTEM = `당신은 한국 수학 학원의 학습지를 정리하는 조�
 note에는 선생님이 확인해야 할 점을 한국어로 짧게 적습니다.
 문제가 없으면 빈 문자열로 둡니다.`
 
-const SCHEMA = {
+const CLAUDE_SCHEMA = {
   type: 'object',
   properties: {
     problemPageFrom: { type: 'integer' },
@@ -88,19 +95,82 @@ const SCHEMA = {
   additionalProperties: false,
 } as const
 
-/** 파일 하나를 Claude에 넘겨 문제/정답 페이지 구분 + 문항별 정답을 받아온다 */
-export async function extractAnswersFromFile(opts: {
-  /** base64 (data URL 접두사 없이) */
-  data: string
-  mediaType: string
-  fileName: string
-  /** 선생님이 알려준 문항 수. 있으면 그 개수에 맞춰 채우도록 요청한다 */
-  expectedCount?: number
-}): Promise<ExtractResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY가 설정되지 않았습니다. 서버 .env를 확인해주세요.')
+const GEMINI_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    problemPageFrom: { type: Type.INTEGER },
+    problemPageTo: { type: Type.INTEGER },
+    answerPageFrom: { type: Type.INTEGER },
+    answerPageTo: { type: Type.INTEGER },
+    problemCount: { type: Type.INTEGER },
+    answers: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          no: { type: Type.INTEGER },
+          answer: { type: Type.STRING },
+          confident: { type: Type.BOOLEAN },
+        },
+        required: ['no', 'answer', 'confident'],
+      },
+    },
+    note: { type: Type.STRING },
+  },
+  required: [
+    'problemPageFrom', 'problemPageTo', 'answerPageFrom', 'answerPageTo',
+    'problemCount', 'answers', 'note',
+  ],
+}
+
+type RawExtract = Omit<ExtractResult, 'provider'>
+
+type FileInput = { data: string; mediaType: string; fileName: string; expectedCount?: number }
+
+function buildAsk(opts: FileInput) {
+  return [
+    `학습지 파일: ${opts.fileName}`,
+    opts.expectedCount
+      ? `이 학습지는 ${opts.expectedCount}문항입니다. 1번부터 ${opts.expectedCount}번까지 모두 채워주세요.`
+      : '문항 수는 학습지를 보고 판단해주세요.',
+    '문제/정답 페이지를 구분하고 문항별 정답을 뽑아주세요.',
+  ].join('\n')
+}
+
+/** 1순위: Gemini 비전 (무료 티어) — 파일을 통째로 넘겨 원문자 등 텍스트 추출 오류를 우회 */
+async function extractWithGemini(opts: FileInput): Promise<RawExtract> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY
+  if (!apiKey) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.')
+
+  const ai = new GoogleGenAI({ apiKey })
+  const filePart = createPartFromBase64(opts.data, opts.mediaType)
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.6-flash',
+    contents: createUserContent([`${SYSTEM}\n\n${buildAsk(opts)}`, filePart]),
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: GEMINI_SCHEMA,
+      temperature: 0.1,
+    },
+  })
+
+  const text = response.text
+  if (!text) throw new Error('Gemini 응답이 비어 있습니다.')
+
+  let parsed: RawExtract
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('Gemini 응답을 해석하지 못했습니다.')
   }
+  return parsed
+}
+
+/** 2순위: Claude Haiku (Gemini 무료 티어 소진/실패 시의 저비용 대체) */
+async function extractWithClaude(opts: FileInput): Promise<RawExtract> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY가 설정되지 않았습니다.')
 
   const client = new Anthropic({ apiKey })
 
@@ -119,20 +189,12 @@ export async function extractAnswersFromFile(opts: {
           },
         }
 
-  const ask = [
-    `학습지 파일: ${opts.fileName}`,
-    opts.expectedCount
-      ? `이 학습지는 ${opts.expectedCount}문항입니다. 1번부터 ${opts.expectedCount}번까지 모두 채워주세요.`
-      : '문항 수는 학습지를 보고 판단해주세요.',
-    '문제/정답 페이지를 구분하고 문항별 정답을 뽑아주세요.',
-  ].join('\n')
-
   const response = await client.messages.create({
-    model: 'claude-opus-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 16000,
     system: SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-    messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: ask }] }],
+    output_config: { format: { type: 'json_schema', schema: CLAUDE_SCHEMA } },
+    messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: buildAsk(opts) }] }],
   })
 
   if (response.stop_reason === 'refusal') {
@@ -147,18 +209,44 @@ export async function extractAnswersFromFile(opts: {
     .map(b => b.text)
     .join('')
 
-  let parsed: ExtractResult
   try {
-    parsed = JSON.parse(text)
+    return JSON.parse(text)
   } catch {
     throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.')
   }
+}
 
-  return normalize(parsed, opts.expectedCount)
+/** 파일 하나를 AI에 넘겨 문제/정답 페이지 구분 + 문항별 정답을 받아온다 */
+export async function extractAnswersFromFile(opts: {
+  /** base64 (data URL 접두사 없이) */
+  data: string
+  mediaType: string
+  fileName: string
+  /** 선생님이 알려준 문항 수. 있으면 그 개수에 맞춰 채우도록 요청한다 */
+  expectedCount?: number
+}): Promise<ExtractResult> {
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY)
+  const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY)
+  if (!hasGemini && !hasClaude) {
+    throw new Error('GEMINI_API_KEY 또는 ANTHROPIC_API_KEY가 설정되지 않았습니다. 서버 .env를 확인해주세요.')
+  }
+
+  if (hasGemini) {
+    try {
+      const raw = await extractWithGemini(opts)
+      return normalize(raw, opts.expectedCount, 'GEMINI_VISION_FREE')
+    } catch (geminiError) {
+      console.warn('[aiAnswerExtract] Gemini 실패, Claude Haiku로 대체합니다.', geminiError)
+      if (!hasClaude) throw geminiError
+    }
+  }
+
+  const raw = await extractWithClaude(opts)
+  return normalize(raw, opts.expectedCount, 'CLAUDE_HAIKU_VISION')
 }
 
 /** 번호 중복·누락을 정리해 1번부터 빈틈없는 배열로 만든다 */
-function normalize(r: ExtractResult, expectedCount?: number): ExtractResult {
+function normalize(r: RawExtract, expectedCount: number | undefined, provider: ExtractResult['provider']): ExtractResult {
   const raw = Array.isArray(r.answers) ? r.answers : []
 
   const count = Math.max(
@@ -193,5 +281,6 @@ function normalize(r: ExtractResult, expectedCount?: number): ExtractResult {
     problemCount: count,
     answers,
     note: typeof r.note === 'string' ? r.note : '',
+    provider,
   }
 }

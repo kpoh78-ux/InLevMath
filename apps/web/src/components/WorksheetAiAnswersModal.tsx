@@ -116,7 +116,7 @@ export function WorksheetAiAnswersModal({
 
       let parsedData: OmniExtractResult | null = null
 
-      // 1. PDF 파일인 경우: 클라이언트 로컬 경량 텍스트 추출 (토큰 절약)
+      // 1. PDF 파일인 경우: 클라이언트 로컬 경량 텍스트 추출 (토큰 절약, 저비용 1차 시도)
       if (ext === 'pdf') {
         try {
           const buffer = await f.arrayBuffer()
@@ -146,8 +146,9 @@ export function WorksheetAiAnswersModal({
         }
       }
 
-      // 2. 이미징 파일이거나 Omni-Route 실패 시: 기존 엔드포인트 폴백
-      if (!parsedData) {
+      // 2. 이미징 파일이거나, 텍스트 기반 1차 시도가 실패/저신뢰일 때:
+      //    파일을 통째로 비전 AI에 넘겨 다시 읽는다 (원문자 등 텍스트 추출 오류를 우회, 더 안정적)
+      if (!parsedData || parsedData.lowConfidence) {
         const mediaType = MEDIA_BY_EXT[ext] || 'application/pdf'
         const res = await apiFetch('/api/worksheets/ai-extract', {
           method: 'POST',
@@ -157,21 +158,26 @@ export function WorksheetAiAnswersModal({
         })
 
         const fallbackData = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(fallbackData.error || 'AI 정답 추출에 실패했습니다.')
-
-        parsedData = {
-          title: titleFromFileName(file.name),
-          majorUnit: '수학 교육과정',
-          middleUnit: '핵심 단원',
-          minorUnit: '소단원 평가',
-          section: '기본유형',
-          problemCount: fallbackData.problemCount || fallbackData.answers?.length || 10,
-          answers: fallbackData.answers || [],
-          aiProviderUsed: 'CLAUDE_HAIKU',
-          tokenSavedPercent: 0,
-          lowConfidence: false,
-          note: fallbackData.note || '',
+        if (res.ok) {
+          // 단원 분류는 이미 파일명↔DB 매칭으로 확정됐다면 그대로 유지하고, 정답만 비전 결과로 교체
+          parsedData = {
+            title: parsedData?.title || titleFromFileName(file.name),
+            majorUnit: parsedData?.majorUnit || '수학 교육과정',
+            middleUnit: parsedData?.middleUnit || '핵심 단원',
+            minorUnit: parsedData?.minorUnit || '소단원 평가',
+            section: parsedData?.section || '기본유형',
+            problemCount: fallbackData.problemCount || fallbackData.answers?.length || 10,
+            answers: fallbackData.answers || [],
+            aiProviderUsed: fallbackData.provider || 'CLAUDE_HAIKU_VISION',
+            tokenSavedPercent: 0,
+            lowConfidence: false,
+            matchedTaxonomy: parsedData?.matchedTaxonomy ?? null,
+            note: fallbackData.note || '',
+          }
+        } else if (!parsedData) {
+          throw new Error(fallbackData.error || 'AI 정답 추출에 실패했습니다.')
         }
+        // 비전 폴백도 실패했지만 1차(저신뢰) 결과는 있는 경우, 그 결과라도 유지한다
       }
 
       setResult(parsedData)
@@ -233,6 +239,10 @@ export function WorksheetAiAnswersModal({
         return { label: '⚡ Groq GPT-OSS 120B (초고속)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
       case 'DEEPSEEK_V3':
         return { label: '🧠 DeepSeek V3 (정밀 추론)', color: 'bg-blue-50 text-blue-700 border-blue-200' }
+      case 'GEMINI_VISION_FREE':
+        return { label: '👁️ Gemini 비전 (무료, 파일 직독)', color: 'bg-amber-50 text-amber-700 border-amber-200' }
+      case 'CLAUDE_HAIKU_VISION':
+        return { label: '🤖 Claude Haiku 비전 (파일 직독)', color: 'bg-purple-50 text-purple-700 border-purple-200' }
       case 'CLAUDE_HAIKU':
         return { label: '🤖 Claude 3.5 Haiku', color: 'bg-purple-50 text-purple-700 border-purple-200' }
       case 'FALLBACK_LOCAL':

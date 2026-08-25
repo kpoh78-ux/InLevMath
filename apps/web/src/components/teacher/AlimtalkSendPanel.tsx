@@ -187,9 +187,10 @@ export const AlimtalkSendPanel: React.FC<{
           })
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.error || '발송 요청에 실패했습니다.');
+        const resData = await res.json().catch(() => ({ success: false, error: '' }));
+        // 미연동(503)·비즈엠 오류(502)면 실제로 발송되지 않았으므로 성공 안내를 띄우지 않는다
+        if (!res.ok || !resData?.success) {
+          throw new Error(resData?.error || '발송 요청에 실패했습니다.');
         }
       }
 

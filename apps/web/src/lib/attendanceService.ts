@@ -174,7 +174,7 @@ export async function handleKioskPin(pin: string, teacherId?: string): Promise<A
           type: 'CHECK_IN',
           status: 'ON_TIME',
           checkInTime: now,
-          alimtalkSent: true,
+          alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
         },
       });
     } else {
@@ -184,21 +184,30 @@ export async function handleKioskPin(pin: string, teacherId?: string): Promise<A
           type: 'CHECK_IN',
           status: 'ON_TIME',
           checkInTime: now,
-          alimtalkSent: true,
+          alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
         },
       });
     }
 
-    // 카카오 알림톡(비즈엠) 발송
+    // 카카오 알림톡(비즈엠) 발송 — 미연동 상태면 success: false가 돌아온다
     const alimtalkResult = await sendKakaoAlimtalk({
       templateCode: 'INLEV_ATTEND_IN',
       recipientPhone: targetParentPhone,
+      message: `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 안전하게 등원(출석)하였습니다.`,
       variables: {
         studentName: student.user.name,
         checkInTime: nowTimeStr,
         academyName: 'InLevMath 학원',
       },
     });
+
+    // 실제로 발송된 경우에만 발송 완료로 기록한다
+    if (alimtalkResult.success) {
+      await prisma.attendanceLog.update({
+        where: { id: todayLog.id },
+        data: { alimtalkSent: true },
+      });
+    }
 
     // 선생님 앱 화면 실시간 SSE 브로드캐스트
     if (student.teacherId) {
@@ -310,7 +319,7 @@ export async function confirmCheckOut(
         status: 'ON_TIME',
         checkInTime: now,
         checkOutTime: now,
-        alimtalkSent: true,
+        alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
       },
     });
   } else {
@@ -319,21 +328,30 @@ export async function confirmCheckOut(
       data: {
         type: 'CHECK_OUT',
         checkOutTime: now,
-        alimtalkSent: true,
+        alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
       },
     });
   }
 
-  // 하원 카카오 알림톡 발송
+  // 하원 카카오 알림톡 발송 — 미연동 상태면 success: false가 돌아온다
   const alimtalkResult = await sendKakaoAlimtalk({
     templateCode: 'INLEV_ATTEND_OUT',
     recipientPhone: targetParentPhone,
+    message: `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.`,
     variables: {
       studentName: student.user.name,
       checkOutTime: nowTimeStr,
       academyName: 'InLevMath 학원',
     },
   });
+
+  // 실제로 발송된 경우에만 발송 완료로 기록한다
+  if (alimtalkResult.success) {
+    await prisma.attendanceLog.update({
+      where: { id: todayLog.id },
+      data: { alimtalkSent: true },
+    });
+  }
 
   // 선생님 앱 화면 실시간 SSE 브로드캐스트
   if (student.teacherId) {
@@ -440,15 +458,26 @@ export async function toggleAttendance(params: {
     const parentPhone = student.parentPhone || student.user.phone;
     const templateCode = type === 'CHECK_OUT' ? 'INLEV_ATTEND_OUT' : 'INLEV_ATTEND_IN';
 
-    await sendKakaoAlimtalk({
+    const notifyResult = await sendKakaoAlimtalk({
       templateCode,
       recipientPhone: parentPhone,
+      message:
+        type === 'CHECK_OUT'
+          ? `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.`
+          : `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 안전하게 등원(출석)하였습니다.`,
       variables: {
         studentName: student.user.name,
         time: timeStr,
         academyName: 'InLevMath 학원',
       },
     });
+
+    if (notifyResult.success) {
+      await prisma.attendanceLog.update({
+        where: { id: log.id },
+        data: { alimtalkSent: true },
+      });
+    }
   }
 
   // 실시간 브로드캐스트

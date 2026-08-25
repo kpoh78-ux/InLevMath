@@ -202,7 +202,20 @@ GEMINI_API_KEY=         # Google Gemini API 키
 ANTHROPIC_API_KEY=      # Anthropic Claude API 키
 ANSWER_IMAGE_STORAGE=   # 정답 이미지 저장 위치: 'db'(기본) | 'supabase'
 ANSWER_IMAGE_BUCKET=    # supabase 모드 버킷명 (기본 'answer-images')
+KAKAO_BIZ_USER_ID=      # 카카오 알림톡(비즈엠) userId
+KAKAO_SENDER_KEY=       # 카카오 채널 발신프로필 키
+KAKAO_ALIMTALK_TEMPLATE_ID=  # 심사 승인된 알림톡 템플릿 코드
+KAKAO_SENDER_PHONE=     # 사전등록된 SMS/LMS 대체 발송 발신번호
 ```
+
+### 카카오 알림톡 발송 상태
+- 위 카카오 키 4개가 **모두** 설정되어야 실제 발송이 이루어진다 (`src/lib/kakaoBizmsg.ts`의 `isAlimtalkConfigured()`).
+- 미설정 시 발송을 시도해도 실제로 전송되지 않으며, 로그에 `responseCode: NOT_CONFIGURED` /
+  `status: FAILED`로 남고 화면에는 **"미발송(미연동)"**으로 표시된다.
+- **발송 결과를 절대 낙관적으로 성공 처리하지 않는다.** 발송 코드는 비즈엠 응답 코드가
+  `success`일 때만 `SUCCESS`로 기록해야 한다 (과거 Mock 모드가 가짜 성공을 기록해 학부모에게
+  전달되지 않은 알림을 "발송완료"로 표시한 사고가 있었다).
+- 사전 절차: 비즈엠 계약 → 카카오 채널 발신프로필 등록 → 알림톡 템플릿 심사 승인 → 발신번호 사전등록
 
 - **모든 API 키는 반드시 `.env` 파일에만 저장한다.** 코드에 하드코딩 절대 금지.
 - `apps/web/.env`는 `.gitignore`에 포함되어 있어야 한다. 커밋 전 확인 필수.

@@ -19,11 +19,20 @@ interface SendLog {
   sentMessageText?: string;
   status: 'SUCCESS' | 'FAILED' | 'PENDING';
   sentAt: string;
+  responseCode?: string;
   responseMessage?: string;
+}
+
+/** 인증정보/템플릿/발신번호 미설정으로 애초에 발송 시도조차 못 한 상태 */
+const NOT_SENT_CODES = ['NOT_CONFIGURED', 'NO_TEMPLATE', 'NO_SENDER_PHONE'];
+
+function isNotSent(log: SendLog): boolean {
+  return log.status !== 'SUCCESS' && NOT_SENT_CODES.includes(log.responseCode || '');
 }
 
 export default function AlimtalkPage() {
   const [logs, setLogs] = useState<SendLog[]>([]);
+  const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'test'>('logs');
   const [filterChannel, setFilterChannel] = useState<string>('ALL');
@@ -45,48 +54,10 @@ export default function AlimtalkPage() {
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
+        setConfigured(data.configured !== false);
       } else {
-        // Fallback mockup logs if API empty
-        setLogs([
-          {
-            id: 'mock_1',
-            studentName: '김민준',
-            parentPhone: '010-1234-5678',
-            sendChannel: 'ALIMTALK',
-            messageType: 'AT',
-            templateCode: 'TEMPLATE_INLEVMATH_CHECKIN_01',
-            messageTitle: '[InLevMath 수학학원 등원 안내]',
-            sentMessageText: '[InLevMath 출결안내]\n김민준 학생이 오늘 14:30에 안전하게 등원(출석)하였습니다.\n\n오늘도 즐겁고 유익한 수학 학습이 진행될 수 있도록 최선을 다해 지도하겠습니다.',
-            status: 'SUCCESS',
-            sentAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-            responseMessage: '발송 성공 (비즈엠 카카오)',
-          },
-          {
-            id: 'mock_2',
-            studentName: '이서연',
-            parentPhone: '010-8765-4321',
-            sendChannel: 'ALIMTALK',
-            messageType: 'AT',
-            templateCode: 'TEMPLATE_INLEVMATH_CHECKOUT_01',
-            messageTitle: '[InLevMath 수학학원 하원 안내]',
-            sentMessageText: '[InLevMath 출결안내]\n이서연 학생이 오늘 16:30에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.\n\n오늘 하루도 수고 많았습니다!',
-            status: 'SUCCESS',
-            sentAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-            responseMessage: '발송 성공 (비즈엠 카카오)',
-          },
-          {
-            id: 'mock_3',
-            studentName: '박도현',
-            parentPhone: '010-5555-6666',
-            sendChannel: 'SMS',
-            messageType: 'SMS',
-            messageTitle: '[InLevMath 등원 안내]',
-            sentMessageText: '[InLevMath 출결안내]\n박도현 학생이 오늘 15:00에 안전하게 등원하였습니다.',
-            status: 'SUCCESS',
-            sentAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-            responseMessage: 'SMS 대체 발송 성공',
-          },
-        ]);
+        // 조회 실패 시 가짜 성공 로그를 만들어내지 않는다 (실제 발송 현황을 오해하게 만듦)
+        setLogs([]);
       }
     } catch {
       //
@@ -100,14 +71,20 @@ export default function AlimtalkPage() {
   }, [fetchLogs]);
 
   // 발송 통계 계산
+  const sentLogs = logs.filter((l) => l.status === 'SUCCESS');
   const alimtalkCount = logs.filter((l) => l.sendChannel === 'ALIMTALK').length;
   const smsCount = logs.filter((l) => l.sendChannel === 'SMS').length;
   const lmsCount = logs.filter((l) => l.sendChannel === 'LMS').length;
-  const successCount = logs.filter((l) => l.status === 'SUCCESS').length;
-  const successRate = logs.length > 0 ? Math.round((successCount / logs.length) * 100) : 100;
+  const successCount = sentLogs.length;
+  const notSentCount = logs.filter(isNotSent).length;
+  const successRate = logs.length > 0 ? Math.round((successCount / logs.length) * 100) : null;
 
   // 발송 비용 계산 (카카오 알림톡 6.5원 / 단문 SMS 11원 / 장문 LMS 33원)
-  const totalCost = alimtalkCount * 6.5 + smsCount * 11 + lmsCount * 33;
+  // 실제로 발송된 건만 과금된다. 미발송·실패 건은 비용이 발생하지 않는다.
+  const totalCost =
+    sentLogs.filter((l) => l.sendChannel === 'ALIMTALK').length * 6.5 +
+    sentLogs.filter((l) => l.sendChannel === 'SMS').length * 11 +
+    sentLogs.filter((l) => l.sendChannel === 'LMS').length * 33;
 
   const filteredLogs = logs.filter((l) => {
     if (filterChannel !== 'ALL' && l.sendChannel !== filterChannel) return false;
@@ -146,13 +123,16 @@ export default function AlimtalkPage() {
           channel: 'ALIMTALK',
         }),
       });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         setTestSuccess(`✅ 테스트 메시지가 성공적으로 발송되었습니다. (${data.messageType})`);
-        fetchLogs();
       } else {
-        alert(data.error || '발송 실패');
+        setConfigured(data.configured !== false);
+        setTestSuccess(
+          `❌ 발송되지 않았습니다. ${data.error || '발송 실패'}${data.errorCode ? ` (${data.errorCode})` : ''}`
+        );
       }
+      fetchLogs();
     } catch {
       alert('발송 중 통신 오류가 발생했습니다.');
     } finally {
@@ -194,6 +174,25 @@ export default function AlimtalkPage() {
         </div>
       </div>
 
+      {/* ── 1-1. 카카오 미연동 경고 ── */}
+      {!configured && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 text-amber-900 p-4 rounded-2xl">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+          <div className="text-xs leading-relaxed">
+            <p className="font-black text-sm mb-1">카카오 알림톡이 아직 연동되지 않았습니다 — 메시지가 실제로 발송되지 않습니다.</p>
+            <p>
+              발송을 시도해도 학부모 휴대폰에는 도착하지 않고 아래 내역에 <b>미발송(미연동)</b>으로만 기록됩니다.
+              실제 발송을 하려면 비즈엠 계약 → 카카오 채널 발신프로필 등록 → 알림톡 템플릿 심사 승인 →
+              발신번호 사전등록을 마친 뒤, <code className="px-1 py-0.5 bg-amber-100 rounded font-mono">apps/web/.env</code>에
+              <code className="px-1 py-0.5 bg-amber-100 rounded font-mono ml-1">KAKAO_BIZ_USER_ID</code>,
+              <code className="px-1 py-0.5 bg-amber-100 rounded font-mono ml-1">KAKAO_SENDER_KEY</code>,
+              <code className="px-1 py-0.5 bg-amber-100 rounded font-mono ml-1">KAKAO_ALIMTALK_TEMPLATE_ID</code>,
+              <code className="px-1 py-0.5 bg-amber-100 rounded font-mono ml-1">KAKAO_SENDER_PHONE</code>을 설정하세요.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── 2. 통계 지표 카드 ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
@@ -206,7 +205,9 @@ export default function AlimtalkPage() {
           <p className="text-2xl font-black text-slate-900">
             {alimtalkCount} <span className="text-sm font-bold text-gray-400">건</span>
           </p>
-          <p className="text-[11px] text-gray-400 mt-1">성공률 {successRate}%</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            성공률 {successRate === null ? '—' : `${successRate}%`}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
@@ -225,10 +226,19 @@ export default function AlimtalkPage() {
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs font-bold">전체 발송 성공률</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            {successCount > 0 ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+            )}
           </div>
-          <p className="text-2xl font-black text-emerald-600">{successRate}%</p>
-          <p className="text-[11px] text-gray-400 mt-1">총 {logs.length}건 발송 시도</p>
+          <p className={`text-2xl font-black ${successCount > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+            {successRate === null ? '—' : `${successRate}%`}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            총 {logs.length}건 시도 · 성공 {successCount}건
+            {notSentCount > 0 ? ` · 미발송 ${notSentCount}건` : ''}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
@@ -239,7 +249,7 @@ export default function AlimtalkPage() {
           <p className="text-2xl font-black text-indigo-600">
             {Math.round(totalCost).toLocaleString()} <span className="text-sm font-bold text-gray-400">원</span>
           </p>
-          <p className="text-[11px] text-gray-400 mt-1">알림톡 절감 효과 극대화</p>
+          <p className="text-[11px] text-gray-400 mt-1">실제 발송 성공분만 집계</p>
         </div>
       </div>
 
@@ -377,15 +387,22 @@ export default function AlimtalkPage() {
                           <td className="py-3.5 px-4">
                             <span
                               className={`inline-flex items-center gap-1 font-bold text-[11px] ${
-                                log.status === 'SUCCESS' ? 'text-emerald-600' : 'text-rose-600'
+                                log.status === 'SUCCESS'
+                                  ? 'text-emerald-600'
+                                  : isNotSent(log)
+                                    ? 'text-amber-600'
+                                    : 'text-rose-600'
                               }`}
+                              title={log.responseMessage || ''}
                             >
                               {log.status === 'SUCCESS' ? (
                                 <CheckCircle2 className="w-3.5 h-3.5" />
+                              ) : isNotSent(log) ? (
+                                <AlertCircle className="w-3.5 h-3.5" />
                               ) : (
                                 <XCircle className="w-3.5 h-3.5" />
                               )}
-                              {log.status === 'SUCCESS' ? '발송완료' : '실패'}
+                              {log.status === 'SUCCESS' ? '발송완료' : isNotSent(log) ? '미발송(미연동)' : '실패'}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-right">
@@ -493,7 +510,13 @@ export default function AlimtalkPage() {
               </div>
 
               {testSuccess && (
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3.5 rounded-2xl font-semibold">
+                <div
+                  className={`border text-xs p-3.5 rounded-2xl font-semibold ${
+                    testSuccess.startsWith('✅')
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}
+                >
                   {testSuccess}
                 </div>
               )}

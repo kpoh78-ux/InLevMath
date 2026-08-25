@@ -137,6 +137,15 @@ ${answerSnippet || '(추출되지 않음)'}${boundaryNote}
   return fallbackRegexParser(fileName, titleSnippet, answerSnippet);
 }
 
+/** 동일한 답이 문항 다수에 걸쳐 반복되면(폰트 깨짐 등 추출 실패 신호) 해당 답들을 빈칸으로 비운다 */
+function blankOutRepeatedNoise<T extends { answer: string }>(list: T[]): T[] {
+  if (list.length < 4) return list;
+  const freq = new Map<string, number>();
+  for (const a of list) freq.set(a.answer, (freq.get(a.answer) || 0) + 1);
+  const threshold = Math.max(4, Math.ceil(list.length * 0.4));
+  return list.map(a => (freq.get(a.answer)! >= threshold ? { ...a, answer: '' } : a));
+}
+
 function fallbackRegexParser(fileName: string, titleSnippet: string, answerSnippet: string): WorksheetAnalysisResult {
   // 정답 구간 텍스트에서만 매칭 (원문 전체를 훑지 않음)
   const sourceText = answerSnippet || titleSnippet;
@@ -163,6 +172,10 @@ function fallbackRegexParser(fileName: string, titleSnippet: string, answerSnipp
     }
     if (looseAnswers.length > answers.length) answers = looseAnswers;
   }
+
+  // 원 문자(①~⑤)가 깨진 폰트로 추출되면 같은 잘못된 토큰이 여러 문항에 반복되는 경우가 많다.
+  // 이런 값은 답이 아니라 추출 실패 신호이므로, 실제 정답 대신 빈칸으로 남겨 사용자가 직접 입력하게 한다.
+  answers = blankOutRepeatedNoise(answers);
 
   return {
     worksheetTitle: fileName.replace(/\.pdf$/i, ''),

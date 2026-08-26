@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const teachers = await prisma.teacher.findMany({
     include: {
       user: { select: { id: true, name: true, phone: true, createdAt: true } },
-      _count: { select: { students: true, worksheets: true, textbooks: true } },
+      _count: { select: { worksheets: true, textbooks: true } },
     },
   })
 
@@ -27,7 +27,6 @@ export async function GET(req: NextRequest) {
         phone: t.user.phone,
         isAdmin: t.isAdmin,
         createdAt: t.user.createdAt,
-        studentCount: t._count.students,
         worksheetCount: t._count.worksheets,
         textbookCount: t._count.textbooks,
         isMe: t.id === guard.auth.teacherId,
@@ -112,7 +111,8 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE /api/admin/teachers — body: { teacherId }
-// 담당 학생이 있으면 거부한다 (학생 데이터가 함께 지워지는 사고 방지)
+// 학생 데이터가 연결된 계정은 거부한다 (cascade로 학생까지 지워지는 사고 방지).
+// 학생은 담당제가 아니라 학원 대표 계정에 모여 있으므로, 실제로 걸리는 건 대표 계정뿐이다.
 export async function DELETE(req: NextRequest) {
   const guard = await requireAdmin(req)
   if ('response' in guard) return guard.response
@@ -136,8 +136,8 @@ export async function DELETE(req: NextRequest) {
   if (target._count.students > 0) {
     return NextResponse.json(
       {
-        error: `${target.user.name} 선생님에게 담당 학생 ${target._count.students}명이 있습니다. ` +
-               `학생을 다른 선생님에게 옮긴 뒤 삭제하세요.`,
+        error: `${target.user.name} 선생님 계정에 학생 ${target._count.students}명의 데이터가 연결되어 있어 ` +
+               `삭제할 수 없습니다. 이 계정을 지우면 학생 데이터가 함께 사라집니다.`,
       },
       { status: 409 }
     )

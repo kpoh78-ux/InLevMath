@@ -7,8 +7,10 @@ import { academyTeacher } from '@/lib/academy'
 
 const INITIAL_PASSWORD = process.env.STUDENT_INITIAL_PASSWORD ?? 'math1234'
 
-// GET /api/students — 선생님이 자신의 학생 목록 조회
-// ?sidebar=1 : 사이드바 전용 경량 응답 (id·grade·name 3개 필드만, results 조인 없음)
+// GET /api/students — 선생님이 학원 학생 목록 조회
+// ?sidebar=1           : 사이드바 전용 경량 응답 (id·grade·name 3개 필드만, results 조인 없음)
+// ?includeWithdrawn=1  : 퇴원 학생까지 포함 (학생관리 화면의 재원/퇴원 탭 전용)
+//                        기본값은 재원 학생만 — 현황·배포·보상 등 모든 화면에서 퇴원 학생이 빠진다
 export async function GET(req: NextRequest) {
   const user = await getAuthUser(req)
   if (!user || user.role !== 'teacher') {
@@ -20,6 +22,7 @@ export async function GET(req: NextRequest) {
 
   // 사이드바는 id·grade·name 3개 필드만 필요 — results(최근 5건) 조인 생략
   const isSidebar = req.nextUrl.searchParams.get('sidebar') === '1'
+  const includeWithdrawn = req.nextUrl.searchParams.get('includeWithdrawn') === '1'
 
   if (isSidebar) {
     const today = new Date().toLocaleDateString('sv-SE');
@@ -42,7 +45,10 @@ export async function GET(req: NextRequest) {
   }
 
   const students = await prisma.student.findMany({
-    where: { teacherId: teacher.id },
+    where: {
+      teacherId: teacher.id,
+      ...(includeWithdrawn ? {} : { status: 'active' }),
+    },
     include: {
       user: { select: { id: true, name: true, phone: true, createdAt: true } },
       results: { orderBy: { createdAt: 'desc' }, take: 5 },

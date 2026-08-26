@@ -13,7 +13,7 @@ const NAV: { href: string; label: string; brand?: true; badge?: string }[] = [
   { href: '/dashboard/worksheets',   label: '학습지' },
   { href: '/dashboard/textbooks',    label: '교재' },
   { href: '/dashboard/alimtalk',     label: '알림톡', badge: 'NEW' },
-  { href: '/dashboard/manage',       label: '학생관리' },
+  { href: '/dashboard/manage',       label: '학원관리' },
   { href: '/dashboard/rewards',      label: '보상관리' },
 ]
 

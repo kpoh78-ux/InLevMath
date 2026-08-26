@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { MonthlyAttendanceCalendar } from '@/components/attendance/MonthlyAttendanceCalendar';
 import { StudentAttendanceRoster, RosterStudent } from '@/components/attendance/StudentAttendanceRoster';
-import { Calendar } from 'lucide-react';
+import { Calendar, Smartphone, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 interface SidebarStudentResponse {
   id: string;
@@ -72,16 +73,29 @@ function AttendanceManagePageInner() {
   return (
     <div className="space-y-6">
       {/* 상단 안내 바 */}
-      <div className="flex items-center gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-          <Calendar className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">출결 관리 및 월별 캘린더</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              오른쪽 명단에서 학생을 고르면 해당 학생의 등·하원 기록이 달력에 표시됩니다.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">출결 관리 및 월별 캘린더</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            오른쪽 명단에서 학생을 고르면 해당 학생의 등·하원 기록이 달력에 표시됩니다.
-          </p>
-        </div>
+
+        {/* 학생이 직접 등·하원을 찍는 로비 화면 */}
+        <Link
+          href="/kiosk"
+          target="_blank"
+          className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-indigo-600/20 transition active:scale-95"
+        >
+          <Smartphone className="w-4 h-4" />
+          <span>로비 키오스크 열기</span>
+          <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+        </Link>
       </div>
 
       {/* 좌측 캘린더 + 우측 학생 명단 */}

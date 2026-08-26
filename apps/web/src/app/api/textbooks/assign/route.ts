@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '교재를 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  // 담당 학생만 배정 가능
+  // 학원 재원 학생에게만 배정 가능
   const students = await prisma.student.findMany({
-    where: { id: { in: studentIds }, teacherId: teacher.id },
+    where: { id: { in: studentIds }, teacherId: teacher.id, status: 'active' },
     select: { id: true },
   })
 

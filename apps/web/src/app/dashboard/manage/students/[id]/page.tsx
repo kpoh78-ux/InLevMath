@@ -200,10 +200,18 @@ export default function StudentDetailPage() {
     <div className="space-y-5">
       {/* 상단 탭 및 뒤로가기 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <Link href="/dashboard/manage/students"
-          className="text-gray-400 hover:text-gray-600 text-sm transition-colors flex items-center gap-1 font-medium">
-          ← 학생 목록
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/manage/students"
+            className="text-gray-400 hover:text-gray-600 text-sm transition-colors flex items-center gap-1 font-medium">
+            ← 학생 목록
+          </Link>
+          <span className="text-gray-300">|</span>
+          {/* 깊은 분석은 별도 화면에 있다 — 상태창에서 넘어갈 길을 열어 둔다 */}
+          <Link href={`/dashboard/students/${id}`}
+            className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline">
+            학습내역 · 채점 이력 →
+          </Link>
+        </div>
 
         <div className="flex bg-gray-200/70 p-1 rounded-xl text-xs font-bold self-start sm:self-auto">
           <button

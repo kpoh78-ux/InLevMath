@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { 
   Bell, MessageSquare, Send, CheckCircle2, XCircle, Clock, ShieldCheck, 
-  Smartphone, RefreshCw, Filter, Download, ExternalLink, Sparkles, AlertCircle 
+  RefreshCw, Filter, Download, Sparkles, AlertCircle 
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -156,22 +155,11 @@ export default function AlimtalkPage() {
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
-              키오스크 등·하원 즉시 알림, 일일 학습 리포트 자동 전송 및 비즈엠 카카오톡 실시간 연동
+              등·하원 즉시 알림, 일별·월별 출결 리포트, 일일 학습 리포트를 학부모에게 발송합니다
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/kiosk"
-            target="_blank"
-            className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition active:scale-95"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>로비 키오스크 열기</span>
-            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-          </Link>
-        </div>
       </div>
 
       {/* ── 1-1. 카카오 미연동 경고 ── */}

@@ -161,7 +161,8 @@ app/(teacher)/students.tsx        — 학생 관리 (등록/검색/비밀번호 
 - 전환 절차: Supabase → Storage → 비공개 버킷 `answer-images` 생성 → `.env`에
   `ANSWER_IMAGE_STORAGE=supabase` 설정. 기존 `db` 저장분은 그대로 계속 보인다 (혼재 가능)
 - 학습지/교재 삭제 시 `purgeAnswerImages()`를 호출해 버킷 파일까지 정리한다
-- 현재 용량은 관리자 백업 페이지(`/admin/backup`) 또는 `GET /api/admin/storage`에서 확인
+- 현재 용량은 학원관리 → 백업·용량(`/dashboard/manage/backup`, 관리자 전용) 또는
+  `GET /api/admin/storage`에서 확인
 
 ### 3. 대량 저장은 전체 교체가 아니라 증분으로
 - 교재 정답 저장(`PUT /api/textbooks/[id]/problems`)은 화면에서 바뀐 문제만 upsert한다.

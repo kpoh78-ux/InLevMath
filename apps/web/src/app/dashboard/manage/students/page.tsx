@@ -89,7 +89,8 @@ function ManageStudentsPageInner() {
 
   const fetchStudents = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/students')
+      // 학생관리 화면은 재원/퇴원 탭을 모두 쓰므로 퇴원 학생까지 받아온다
+      const res = await apiFetch('/api/students?includeWithdrawn=1')
       if (!res.ok) return
       const data = await res.json() as {
         id: string; school: string; grade: string; status: string

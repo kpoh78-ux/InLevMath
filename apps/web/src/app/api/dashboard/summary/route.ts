@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
     todaySchedule,
     recentDistributions,
   ] = await Promise.all([
-    // 학생 전체 목록 (최근 미션 결과 포함)
+    // 재원 학생 목록 (최근 미션 결과 포함) — 퇴원 학생은 현황에서 제외한다
     prisma.student.findMany({
-      where: { teacherId: teacher.id },
+      where: { teacherId: teacher.id, status: 'active' },
       include: {
         user: { select: { name: true } },
         results: { orderBy: { createdAt: 'desc' }, take: 1 },

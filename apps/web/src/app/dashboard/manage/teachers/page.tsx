@@ -7,7 +7,7 @@ import { useMe } from '@/lib/useMe'
 type TeacherRow = {
   id: string; userId: string; name: string; phone: string
   isAdmin: boolean; createdAt: string
-  studentCount: number; worksheetCount: number; textbookCount: number
+  worksheetCount: number; textbookCount: number
   isMe: boolean
 }
 
@@ -79,7 +79,9 @@ export default function ManageTeachersPage() {
   const removeTeacher = async (t: TeacherRow) => {
     if (!confirm(
       `${t.name} 선생님 계정을 삭제할까요?\n` +
-      `해당 선생님이 만든 학습지 ${t.worksheetCount}개, 교재 ${t.textbookCount}권도 함께 삭제됩니다.`
+      (t.worksheetCount + t.textbookCount > 0
+        ? `이 계정에 연결된 학습지 ${t.worksheetCount}개, 교재 ${t.textbookCount}권도 함께 삭제됩니다.`
+        : '계정만 삭제되며 학원 자료는 그대로 유지됩니다.')
     )) return
     setBusyId(t.id)
     try {
@@ -143,17 +145,15 @@ export default function ManageTeachersPage() {
               <th className="px-5 py-3 text-left font-medium">이름</th>
               <th className="px-4 py-3 text-left font-medium w-40">핸드폰 (로그인 ID)</th>
               <th className="px-4 py-3 text-center font-medium w-24">권한</th>
-              <th className="px-4 py-3 text-center font-medium w-24">담당 학생</th>
-              <th className="px-4 py-3 text-center font-medium w-28">학습지 / 교재</th>
               <th className="px-4 py-3 text-left font-medium w-28">등록일</th>
               <th className="px-4 py-3 text-left font-medium w-44">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-400">불러오는 중...</td></tr>
             ) : teachers.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">등록된 선생님이 없습니다.</td></tr>
+              <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-400">등록된 선생님이 없습니다.</td></tr>
             ) : teachers.map(t => (
               <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-5 py-3.5 font-semibold text-gray-900">
@@ -169,10 +169,6 @@ export default function ManageTeachersPage() {
                   }`}>
                     {t.isAdmin ? '관리자' : '선생님'}
                   </span>
-                </td>
-                <td className="px-4 py-3.5 text-center text-gray-700">{t.studentCount}명</td>
-                <td className="px-4 py-3.5 text-center text-gray-500 text-xs whitespace-nowrap">
-                  {t.worksheetCount} / {t.textbookCount}
                 </td>
                 <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                   {new Date(t.createdAt).toLocaleDateString('ko-KR')}
@@ -201,7 +197,9 @@ export default function ManageTeachersPage() {
         <p className="text-xs text-gray-500 leading-relaxed">
           <strong className="text-gray-700">권한 안내</strong><br />
           · <strong>선생님</strong> — 학생 등록·수정, 비밀번호 초기화, 시간표, 학습지, 교재 등 모든 기능<br />
-          · <strong>관리자</strong> — 위 전부 + 선생님 계정 등록·삭제 + 학생 퇴원(복귀) 처리
+          · <strong>관리자</strong> — 위 전부 + 선생님 계정 등록·삭제 + 학생 퇴원(복귀) 처리<br />
+          · 학생·학습지·교재는 담당제로 나누지 않고 학원 전체가 공유합니다.
+          모든 선생님이 전체 학생의 배포·채점·출결을 함께 처리합니다.
         </p>
       </div>
 

@@ -38,6 +38,13 @@ export type RealtimeNotification = {
 
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
 
+/** ISO 문자열/Date → "HH:mm" (24시간, input[type=time] 호환) */
+function toHHmm(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function groupByGrade(students: AttendedStudent[]) {
   const groups: Record<string, AttendedStudent[]> = {}
   students.forEach(s => {
@@ -85,12 +92,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       const students: AttendedStudent[] = data.map(s => {
         const todayLog = s.attendanceLogs && s.attendanceLogs.length > 0 ? s.attendanceLogs[0] : null
         const isAttended = Boolean(todayLog?.checkInTime)
-        const checkInTimeStr = todayLog?.checkInTime
-          ? new Date(todayLog.checkInTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-          : undefined
-        const checkOutTimeStr = todayLog?.checkOutTime
-          ? new Date(todayLog.checkOutTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-          : undefined
+        // toLocaleTimeString(hour12:false)은 자정을 "24:05"로 내놓을 수 있어 input[type=time]이 거부한다
+        const checkInTimeStr = todayLog?.checkInTime ? toHHmm(todayLog.checkInTime) : undefined
+        const checkOutTimeStr = todayLog?.checkOutTime ? toHHmm(todayLog.checkOutTime) : undefined
 
         return {
           id: s.id,

@@ -1,114 +1,274 @@
 'use client';
 
 // apps/web/src/components/attendance/MonthlyAttendanceCalendar.tsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Calendar, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Download, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 interface Props {
   studentName?: string;
   studentGrade?: string;
   studentId?: string;
+  /** 출결을 등록/삭제해 목록 뱃지를 갱신해야 할 때 */
+  onChanged?: () => void;
 }
 
 interface AttendanceLogItem {
   id: string;
-  studentName: string;
-  checkInTime: string;
-  checkOutTime: string;
+  date: string; // "YYYY-MM-DD"
   status: string;
+  checkInTime: string; // "오전 10:11" (없으면 '')
+  checkOutTime: string;
+}
+
+interface MonthlySummary {
+  checkIns: number;
+  checkOuts: number;
+  absents: number;
+  late: number;
+}
+
+interface CalendarCell {
+  day: number;
+  date: string;
+  inMonth: boolean;
+  weekday: number; // 0=일
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function toDateString(year: number, month: number, day: number): string {
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** 해당 월의 6주(42칸) 그리드를 실제 날짜로 만든다 */
+function buildCalendar(year: number, month: number): CalendarCell[] {
+  const firstWeekday = new Date(year, month - 1, 1).getDay();
+  const daysThisMonth = new Date(year, month, 0).getDate();
+  const daysPrevMonth = new Date(year, month - 1, 0).getDate();
+
+  const cells: CalendarCell[] = [];
+
+  for (let i = 0; i < 42; i++) {
+    const offset = i - firstWeekday;
+    let cellYear = year;
+    let cellMonth = month;
+    let day: number;
+    let inMonth = true;
+
+    if (offset < 0) {
+      day = daysPrevMonth + offset + 1;
+      cellMonth = month - 1;
+      inMonth = false;
+    } else if (offset >= daysThisMonth) {
+      day = offset - daysThisMonth + 1;
+      cellMonth = month + 1;
+      inMonth = false;
+    } else {
+      day = offset + 1;
+    }
+
+    if (cellMonth === 0) {
+      cellMonth = 12;
+      cellYear -= 1;
+    } else if (cellMonth === 13) {
+      cellMonth = 1;
+      cellYear += 1;
+    }
+
+    cells.push({
+      day,
+      date: toDateString(cellYear, cellMonth, day),
+      inMonth,
+      weekday: i % 7,
+    });
+  }
+
+  return cells;
+}
+
+function statusLabel(status: string): string {
+  if (status === 'LATE') return '지각';
+  if (status === 'ABSENT') return '결석';
+  if (status === 'MAKEUP') return '보강';
+  if (status === 'EXCUSED') return '사유결석';
+  return '정상';
 }
 
 export const MonthlyAttendanceCalendar: React.FC<Props> = ({
-  studentName = '박도은',
-  studentGrade = '중1',
+  studentName = '',
+  studentGrade,
   studentId,
+  onChanged,
 }) => {
-  const [currentYear, setCurrentYear] = useState<number>(2026);
-  const [currentMonth, setCurrentMonth] = useState<number>(8); // 8월
-  const [selectedDay, setSelectedDay] = useState<number>(23);
-  const [logs, setLogs] = useState<Record<number, AttendanceLogItem[]>>({
-    23: [
-      {
-        id: 'log_23',
-        studentName,
-        checkInTime: '오전 10:11',
-        checkOutTime: '오전 10:12',
-        status: '정상',
-      },
-    ],
-  });
+  const today = useMemo(() => new Date(), []);
+  const todayString = toDateString(today.getFullYear(), today.getMonth() + 1, today.getDate());
 
-  // 8월 출석 일자들 (사진 3에 표시된 파란 점 날짜들: 5, 7, 8, 9, 12, 14, 16, 19, 21, 22, 23)
-  const [attendedDays, setAttendedDays] = useState<number[]>([5, 7, 8, 9, 12, 14, 16, 19, 21, 22, 23]);
+  const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth() + 1);
+  const [selectedDate, setSelectedDate] = useState<string>(todayString);
 
-  // 실시간 API 데이터 동기화 (studentId가 있는 경우)
+  const [logsByDate, setLogsByDate] = useState<Record<string, AttendanceLogItem>>({});
+  const [summary, setSummary] = useState<MonthlySummary>({ checkIns: 0, checkOuts: 0, absents: 0, late: 0 });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 수동 등록 폼
+  const [addOpen, setAddOpen] = useState(false);
+  const [addCheckIn, setAddCheckIn] = useState('');
+  const [addCheckOut, setAddCheckOut] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const cells = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth]);
+
   const fetchMonthlyData = useCallback(async () => {
-    if (!studentId) return;
-    try {
-      const res = await apiFetch(`/api/attendance/monthly?studentId=${studentId}&year=${currentYear}&month=${currentMonth}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.logs && data.logs.length > 0) {
-          const daysWithAttendance: number[] = [];
-          const logMap: Record<number, AttendanceLogItem[]> = {};
-
-          data.logs.forEach((l: any) => {
-            const dayNum = parseInt(l.date.split('-')[2], 10);
-            if (!daysWithAttendance.includes(dayNum)) {
-              daysWithAttendance.push(dayNum);
-            }
-            if (!logMap[dayNum]) logMap[dayNum] = [];
-            logMap[dayNum].push({
-              id: l.id,
-              studentName,
-              checkInTime: l.checkInTime || '오전 10:11',
-              checkOutTime: l.checkOutTime || '오전 10:12',
-              status: l.status === 'LATE' ? '지각' : l.status === 'ABSENT' ? '결석' : '정상',
-            });
-          });
-
-          if (daysWithAttendance.length > 0) {
-            setAttendedDays(daysWithAttendance);
-          }
-          if (Object.keys(logMap).length > 0) {
-            setLogs((prev) => ({ ...prev, ...logMap }));
-          }
-        }
-      }
-    } catch {
-      //
+    if (!studentId) {
+      setLogsByDate({});
+      setSummary({ checkIns: 0, checkOuts: 0, absents: 0, late: 0 });
+      return;
     }
-  }, [studentId, currentYear, currentMonth, studentName]);
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(
+        `/api/attendance/monthly?studentId=${studentId}&year=${currentYear}&month=${currentMonth}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || '월별 출결을 불러오지 못했습니다.');
+      }
+
+      const data = await res.json();
+      const map: Record<string, AttendanceLogItem> = {};
+      (data.logs || []).forEach((l: AttendanceLogItem) => {
+        map[l.date] = l;
+      });
+
+      setLogsByDate(map);
+      setSummary(
+        data.summary || { checkIns: 0, checkOuts: 0, absents: 0, late: 0 }
+      );
+    } catch (e) {
+      setLogsByDate({});
+      setError(e instanceof Error ? e.message : '월별 출결을 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, [studentId, currentYear, currentMonth]);
 
   useEffect(() => {
     fetchMonthlyData();
   }, [fetchMonthlyData]);
 
-  // 8월 달력 날짜 그리드 (이전달/다음달 날짜 포함 6주 그리드)
-  const daysInMonth = [
-    { day: 26, isPrev: true }, { day: 27, isPrev: true }, { day: 28, isPrev: true }, { day: 29, isPrev: true }, { day: 30, isPrev: true }, { day: 31, isPrev: true },
-    { day: 1, isSun: false }, { day: 2, isSun: true }, { day: 3 }, { day: 4 }, { day: 5 }, { day: 6 }, { day: 7 }, { day: 8 },
-    { day: 9, isSun: true }, { day: 10 }, { day: 11 }, { day: 12 }, { day: 13 }, { day: 14 }, { day: 15 },
-    { day: 16, isSun: true }, { day: 17 }, { day: 18 }, { day: 19 }, { day: 20 }, { day: 21 }, { day: 22 },
-    { day: 23, isSun: true }, { day: 24 }, { day: 25 }, { day: 26 }, { day: 27 }, { day: 28 }, { day: 29 },
-    { day: 30, isSun: true }, { day: 31 }, { day: 1, isNext: true }, { day: 2, isNext: true }, { day: 3, isNext: true }, { day: 4, isNext: true }, { day: 5, isNext: true }
-  ];
+  // 달을 옮기면 그 달의 1일을 선택한다 (이번 달이면 오늘)
+  const goToMonth = (year: number, month: number) => {
+    setCurrentYear(year);
+    setCurrentMonth(month);
+    setAddOpen(false);
+    setSelectedDate(
+      year === today.getFullYear() && month === today.getMonth() + 1
+        ? todayString
+        : toDateString(year, month, 1)
+    );
+  };
 
-  // CSV 다운로드
+  const goPrevMonth = () =>
+    currentMonth === 1 ? goToMonth(currentYear - 1, 12) : goToMonth(currentYear, currentMonth - 1);
+  const goNextMonth = () =>
+    currentMonth === 12 ? goToMonth(currentYear + 1, 1) : goToMonth(currentYear, currentMonth + 1);
+
+  const selectedLog = logsByDate[selectedDate];
+  const selectedDay = Number(selectedDate.split('-')[2]);
+
+  /** 선택한 날짜의 출결 기록 삭제 */
+  const handleDeleteRecord = async () => {
+    if (!studentId || !selectedLog) return;
+    if (!window.confirm(`${currentMonth}월 ${selectedDay}일 출결 기록을 삭제할까요?\n등원·하원 기록이 모두 사라집니다.`)) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch('/api/attendance/record', {
+        method: 'DELETE',
+        body: JSON.stringify({ studentId, target: 'CHECK_IN', date: selectedDate }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || '출결 기록 삭제 실패');
+      }
+      await fetchMonthlyData();
+      if (onChanged) onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '출결 기록 삭제에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 지난 날짜 출결 수동 등록 */
+  const handleSaveRecord = async () => {
+    if (!studentId) return;
+    if (!addCheckIn) {
+      setError('등원 시간을 입력하세요.');
+      return;
+    }
+    if (addCheckOut && addCheckOut < addCheckIn) {
+      setError('하원 시간은 등원 시간보다 빠를 수 없습니다.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const body = addCheckOut
+        ? { studentId, type: 'CHECK_OUT', date: selectedDate, time: addCheckOut, checkInTime: addCheckIn }
+        : { studentId, type: 'CHECK_IN', date: selectedDate, time: addCheckIn };
+
+      const res = await apiFetch('/api/attendance/toggle', {
+        method: 'POST',
+        // 지난 날짜를 정리하는 작업이므로 학부모 알림은 보내지 않는다
+        body: JSON.stringify({ ...body, sendNotification: false }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || '출결 기록 저장 실패');
+      }
+
+      setAddOpen(false);
+      await fetchMonthlyData();
+      if (onChanged) onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '출결 기록 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openAddForm = () => {
+    setAddCheckIn('');
+    setAddCheckOut('');
+    setError(null);
+    setAddOpen((prev) => !prev);
+  };
+
+  /** 실제 기록만 CSV로 내려받는다 */
   const handleDownload = () => {
+    const rows = Object.values(logsByDate).sort((a, b) => a.date.localeCompare(b.date));
+    if (rows.length === 0) {
+      setError('내려받을 출결 기록이 없습니다.');
+      return;
+    }
+
     const csvContent =
-      '\uFEFF' +
-      `날짜,학생명,등원시각,하원시각,상태\n` +
-      attendedDays
-        .map((d) => {
-          const item = logs[d]?.[0] || {
-            checkInTime: '오전 10:11',
-            checkOutTime: '오전 10:12',
-            status: '정상',
-          };
-          return `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')},${studentName},${item.checkInTime},${item.checkOutTime},${item.status}`;
-        })
+      '﻿' +
+      '날짜,학생명,등원시각,하원시각,상태\n' +
+      rows
+        .map((r) => `${r.date},${studentName},${r.checkInTime || ''},${r.checkOutTime || ''},${statusLabel(r.status)}`)
         .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -120,63 +280,32 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
     URL.revokeObjectURL(url);
   };
 
-  // 등원 기록 수동 추가
-  const handleAddRecord = () => {
-    if (!attendedDays.includes(selectedDay)) {
-      setAttendedDays((prev) => [...prev, selectedDay].sort((a, b) => a - b));
-    }
-    setLogs((prev) => ({
-      ...prev,
-      [selectedDay]: [
-        {
-          id: `manual_${Date.now()}`,
-          studentName,
-          checkInTime: '오전 10:11',
-          checkOutTime: '오전 10:12',
-          status: '정상',
-        },
-      ],
-    }));
-  };
-
-  // 등원 기록 삭제
-  const handleDeleteRecord = (day: number) => {
-    if (confirm(`${currentMonth}월 ${day}일 출결 기록을 삭제하시겠습니까?`)) {
-      setAttendedDays((prev) => prev.filter((d) => d !== day));
-      setLogs((prev) => {
-        const next = { ...prev };
-        delete next[day];
-        return next;
-      });
-    }
-  };
-
-  const selectedLogs = logs[selectedDay] || (attendedDays.includes(selectedDay) ? [
-    {
-      id: `default_${selectedDay}`,
-      studentName,
-      checkInTime: '오전 10:11',
-      checkOutTime: '오전 10:12',
-      status: '정상',
-    },
-  ] : []);
-
-  const totalCheckIns = attendedDays.length;
-  const totalCheckOuts = Math.max(0, attendedDays.length - 2);
+  if (!studentId) {
+    return (
+      <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xs text-center text-sm text-slate-400">
+        오른쪽 명단에서 학생을 선택하면 출결 캘린더가 표시됩니다.
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
-      {/* ── 1. 상단 학생 출결 타이틀 & 액션 버튼 (사진 3 상단) ── */}
+      {/* ── 1. 상단 학생 출결 타이틀 & 액션 버튼 ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-slate-900">{studentName} 학생</h2>
+            {studentGrade && (
+              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                {studentGrade}
+              </span>
+            )}
             <span className="text-sm font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
-              월 등원 {totalCheckIns}회 | 하원 {totalCheckOuts}회
+              월 등원 {summary.checkIns}회 | 하원 {summary.checkOuts}회
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            최근 12개월 출결 조회 가능 (이외 개별 문의)
+            {currentYear}년 {currentMonth}월 기준 · 지각 {summary.late}회 · 결석 {summary.absents}회
           </p>
         </div>
 
@@ -189,33 +318,36 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             <span>내역 다운로드</span>
           </button>
           <button
-            onClick={handleAddRecord}
+            onClick={openAddForm}
             className="px-3.5 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>등원 기록</span>
+            <span>출결 기록</span>
           </button>
         </div>
       </div>
 
-      {/* ── 2. 좌측 월별 캘린더 & 우측 타임라인 기록 테이블 2분할 ── */}
+      {error && (
+        <p className="text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+          {error}
+        </p>
+      )}
+
+      {/* ── 2. 좌측 월별 캘린더 & 우측 선택 일자 기록 ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* 월별 캘린더 (사진 3 좌측 캘린더) */}
-        <div className="lg:col-span-6 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-          {/* 달력 헤더 (파란색 바) */}
+        {/* 월별 캘린더 */}
+        <div className="lg:col-span-7 bg-slate-50 p-5 rounded-2xl border border-slate-200">
           <div className="bg-blue-500 text-white px-4 py-3 rounded-xl flex items-center justify-between font-bold text-sm shadow-sm mb-4">
-            <button
-              onClick={() => setCurrentMonth((prev) => Math.max(1, prev - 1))}
-              className="p-1 hover:bg-blue-600 rounded-lg transition"
-            >
-              <ChevronLeft className="w-4 h-4 inline" /> {currentMonth > 1 ? `${currentMonth - 1}월` : '12월'}
+            <button onClick={goPrevMonth} className="px-2 py-1 hover:bg-blue-600 rounded-lg transition flex items-center gap-1">
+              <ChevronLeft className="w-4 h-4" />
+              {currentMonth === 1 ? '12월' : `${currentMonth - 1}월`}
             </button>
-            <span className="text-base font-extrabold">{currentYear}년 {currentMonth}월 ⌵</span>
-            <button
-              onClick={() => setCurrentMonth((prev) => Math.min(12, prev + 1))}
-              className="p-1 hover:bg-blue-600 rounded-lg transition"
-            >
-              {currentMonth < 12 ? `${currentMonth + 1}월` : '1월'} <ChevronRight className="w-4 h-4 inline" />
+            <span className="text-base font-extrabold">
+              {currentYear}년 {currentMonth}월
+            </span>
+            <button onClick={goNextMonth} className="px-2 py-1 hover:bg-blue-600 rounded-lg transition flex items-center gap-1">
+              {currentMonth === 12 ? '1월' : `${currentMonth + 1}월`}
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
@@ -227,46 +359,69 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             <span>수</span>
             <span>목</span>
             <span>금</span>
-            <span>토</span>
+            <span className="text-blue-500">토</span>
           </div>
 
           {/* 날짜 그리드 */}
-          <div className="grid grid-cols-7 gap-y-2 text-center text-xs pt-2">
-            {daysInMonth.map((item, idx) => {
-              const isAttended = !item.isPrev && !item.isNext && attendedDays.includes(item.day);
-              const isSelected = item.day === selectedDay && !item.isPrev && !item.isNext;
+          <div className={`grid grid-cols-7 gap-y-1 text-center text-xs pt-2 ${loading ? 'opacity-50' : ''}`}>
+            {cells.map((cell) => {
+              const log = cell.inMonth ? logsByDate[cell.date] : undefined;
+              const isSelected = cell.inMonth && cell.date === selectedDate;
+              const isToday = cell.date === todayString;
+              const isAbsent = log?.status === 'ABSENT';
 
               return (
                 <button
-                  key={idx}
-                  onClick={() => !item.isPrev && !item.isNext && setSelectedDay(item.day)}
-                  disabled={item.isPrev || item.isNext}
+                  key={cell.date}
+                  onClick={() => cell.inMonth && setSelectedDate(cell.date)}
+                  disabled={!cell.inMonth}
                   className={`relative py-2 flex flex-col items-center justify-center rounded-xl transition ${
-                    item.isPrev || item.isNext
+                    !cell.inMonth
                       ? 'text-slate-300 cursor-not-allowed'
                       : isSelected
-                      ? 'bg-blue-500 text-white font-bold shadow-md'
-                      : item.isSun
-                      ? 'text-rose-500 hover:bg-slate-200/60'
-                      : 'text-slate-800 hover:bg-slate-200/60'
+                        ? 'bg-blue-500 text-white font-bold shadow-md'
+                        : isToday
+                          ? 'ring-1 ring-blue-400 text-slate-800 hover:bg-slate-200/60'
+                          : cell.weekday === 0
+                            ? 'text-rose-500 hover:bg-slate-200/60'
+                            : cell.weekday === 6
+                              ? 'text-blue-600 hover:bg-slate-200/60'
+                              : 'text-slate-800 hover:bg-slate-200/60'
                   }`}
                 >
-                  <span className="text-sm font-semibold">{item.day}</span>
-                  {/* 출석 파란 닷 */}
-                  {isAttended && !isSelected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-0.5" />
-                  )}
-                  {isSelected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-white mt-0.5" />
-                  )}
+                  <span className="text-sm font-semibold">{cell.day}</span>
+                  {/* 출결 표시: 등원 있으면 점, 결석이면 빨간 점 */}
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
+                      !log
+                        ? 'bg-transparent'
+                        : isSelected
+                          ? 'bg-white'
+                          : isAbsent
+                            ? 'bg-rose-500'
+                            : 'bg-blue-500'
+                    }`}
+                  />
                 </button>
               );
             })}
           </div>
+
+          <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> 등원
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 결석
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full ring-1 ring-blue-400 inline-block" /> 오늘
+            </span>
+          </p>
         </div>
 
-        {/* 우측 선택 일자 상세 출결 테이블 (사진 3 우측) */}
-        <div className="lg:col-span-6 space-y-4">
+        {/* 선택 일자 상세 */}
+        <div className="lg:col-span-5 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             <div className="grid grid-cols-4 bg-slate-100/70 text-slate-600 text-xs font-bold px-4 py-3 border-b border-slate-200 text-center">
               <span>이름</span>
@@ -276,39 +431,92 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             </div>
 
             <div className="divide-y divide-slate-100">
-              {selectedLogs.length === 0 ? (
+              {!selectedLog ? (
                 <div className="py-8 text-center text-xs text-slate-400">
-                  {currentMonth}월 {selectedDay}일에 등록된 출결 기록이 없습니다.
+                  {currentMonth}월 {selectedDay}일 출결 내역이 없습니다.
                 </div>
               ) : (
-                selectedLogs.map((logItem) => (
-                  <div
-                    key={logItem.id}
-                    className="grid grid-cols-4 items-center px-4 py-3.5 text-xs text-slate-800 text-center hover:bg-slate-50/80 transition"
-                  >
-                    <span className="font-bold">{logItem.studentName}</span>
-                    <span className="font-mono text-slate-600">{logItem.checkInTime}</span>
-                    <span className="font-mono text-slate-600">{logItem.checkOutTime}</span>
-                    <div>
-                      <button
-                        onClick={() => handleDeleteRecord(selectedDay)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                        title="기록 삭제"
-                      >
-                        <Trash2 className="w-4 h-4 mx-auto" />
-                      </button>
-                    </div>
+                <div className="grid grid-cols-4 items-center px-4 py-3.5 text-xs text-slate-800 text-center hover:bg-slate-50/80 transition">
+                  <span className="font-bold truncate">{studentName}</span>
+                  <span className="font-mono text-slate-600">{selectedLog.checkInTime || '—'}</span>
+                  <span className="font-mono text-slate-600">{selectedLog.checkOutTime || '—'}</span>
+                  <div>
+                    <button
+                      onClick={handleDeleteRecord}
+                      disabled={saving}
+                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition disabled:opacity-40"
+                      title="이 날 출결 기록 삭제"
+                    >
+                      <Trash2 className="w-4 h-4 mx-auto" />
+                    </button>
                   </div>
-                ))
+                </div>
               )}
             </div>
           </div>
 
-          <div className="bg-blue-50/60 border border-blue-200/60 rounded-2xl p-4 text-xs text-blue-900 space-y-1">
-            <span className="font-bold block">💡 실시간 출결 통계</span>
-            <p className="text-slate-600 leading-relaxed">
-              선택한 <strong>{currentYear}년 {currentMonth}월 {selectedDay}일</strong>에 정상 등·하원이 완료되었으며, 학부모 알림톡(비즈엠)이 성공적으로 발송되었습니다.
-            </p>
+          {/* 수동 등록 폼 */}
+          {addOpen && (
+            <div className="bg-blue-50/60 border border-blue-200/60 rounded-2xl p-4 space-y-3">
+              <p className="text-xs font-bold text-blue-900">
+                {currentYear}년 {currentMonth}월 {selectedDay}일 출결 직접 입력
+              </p>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">등원 시간</span>
+                <input
+                  type="time"
+                  value={addCheckIn}
+                  onChange={(e) => setAddCheckIn(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">하원 시간 (선택)</span>
+                <input
+                  type="time"
+                  value={addCheckOut}
+                  onChange={(e) => setAddCheckOut(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                지난 기록을 정리하는 입력이므로 학부모 알림은 발송되지 않습니다.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveRecord}
+                  disabled={saving}
+                  className="flex-1 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition disabled:opacity-50"
+                >
+                  {saving ? '저장 중...' : '저장'}
+                </button>
+                <button
+                  onClick={() => setAddOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-white transition"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 월간 요약 */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: '등원', value: summary.checkIns, color: 'text-blue-600' },
+              { label: '하원', value: summary.checkOuts, color: 'text-slate-700' },
+              { label: '지각', value: summary.late, color: 'text-amber-600' },
+              { label: '결석', value: summary.absents, color: 'text-rose-600' },
+            ].map((item) => (
+              <div key={item.label} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-3 text-center">
+                <p className={`text-lg font-black ${item.color}`}>{item.value}</p>
+                <p className="text-[11px] text-slate-500 font-bold mt-0.5">{item.label}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

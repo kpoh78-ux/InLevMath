@@ -46,6 +46,43 @@ export function formatTimeKorean(date: Date = new Date()): string {
   });
 }
 
+/**
+ * 사용자가 고른 출결 시각을 해당 날짜의 Date로 변환한다.
+ * "HH:mm"(input[type=time]) / "오전 hh : mm" 두 형식을 모두 받는다.
+ * 형식이 맞지 않으면 null (호출부에서 현재 시각으로 대체)
+ */
+/** 사용자 입력 오류(400으로 응답할 값) */
+export const CHECKOUT_BEFORE_CHECKIN = '하원 시간은 등원 시간보다 빠를 수 없습니다.';
+export const ATTENDANCE_RECORD_NOT_FOUND = '삭제할 출결 기록이 없습니다.';
+
+export function parseAttendanceTime(dateStr: string, time?: string | null): Date | null {
+  if (!time) return null;
+  const trimmed = String(time).trim();
+
+  let hour: number | null = null;
+  let minute: number | null = null;
+
+  const korean = /^(오전|오후)\s*(\d{1,2})\s*:\s*(\d{1,2})$/.exec(trimmed);
+  const h24 = /^(\d{1,2})\s*:\s*(\d{1,2})$/.exec(trimmed);
+
+  if (korean) {
+    const base = Number(korean[2]) % 12;
+    hour = korean[1] === '오후' ? base + 12 : base;
+    minute = Number(korean[3]);
+  } else if (h24) {
+    hour = Number(h24[1]);
+    minute = Number(h24[2]);
+  }
+
+  if (hour === null || minute === null || hour > 23 || minute > 59) return null;
+
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return null;
+
+  const dt = new Date(y, m - 1, d, hour, minute, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
 export function getTodayDateString(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -386,16 +423,32 @@ export async function toggleAttendance(params: {
   studentId: string;
   type: 'CHECK_IN' | 'CHECK_OUT' | 'ABSENT' | 'MAKEUP';
   status?: 'ON_TIME' | 'LATE' | 'ABSENT' | 'MAKEUP';
+  /** 이번에 기록할 시각 ("HH:mm" 또는 "오전 hh : mm"). 없으면 현재 시각 */
   time?: string;
+  /** 하원 처리 시 등원 시각을 함께 수정하고 싶을 때 사용 */
+  checkInTime?: string;
   date?: string;
   sendNotification?: boolean;
   memo?: string;
   teacherId?: string;
 }) {
-  const { studentId, type, status: customStatus, time, date, sendNotification, memo, teacherId } = params;
+  const {
+    studentId,
+    type,
+    status: customStatus,
+    time,
+    checkInTime: checkInTimeInput,
+    date,
+    sendNotification,
+    memo,
+    teacherId,
+  } = params;
   const targetDate = date || getTodayDateString();
-  const timeStr = time || formatTimeKorean();
   const now = new Date();
+  // 사용자가 팝업에서 조절한 시각을 실제 기록 시각으로 사용한다 (미지정 시 현재 시각)
+  const eventAt = parseAttendanceTime(targetDate, time) || now;
+  const checkInAt = parseAttendanceTime(targetDate, checkInTimeInput);
+  const timeStr = formatTimeKorean(eventAt);
 
   const student = await prisma.student.findUnique({
     where: { id: studentId },
@@ -423,10 +476,17 @@ export async function toggleAttendance(params: {
   }
 
   if (type === 'CHECK_IN') {
-    updateData.checkInTime = now;
+    updateData.checkInTime = eventAt;
     if (!customStatus) updateData.status = 'ON_TIME';
   } else if (type === 'CHECK_OUT') {
-    updateData.checkOutTime = now;
+    updateData.checkOutTime = eventAt;
+    // 하원 처리 시 등원 시각도 함께 수정할 수 있다
+    if (checkInAt) updateData.checkInTime = checkInAt;
+
+    const effectiveCheckIn = checkInAt || log?.checkInTime || null;
+    if (effectiveCheckIn && eventAt.getTime() < new Date(effectiveCheckIn).getTime()) {
+      throw new Error(CHECKOUT_BEFORE_CHECKIN);
+    }
     if (!customStatus) updateData.status = 'ON_TIME';
   } else if (type === 'ABSENT') {
     updateData.status = 'ABSENT';
@@ -446,8 +506,8 @@ export async function toggleAttendance(params: {
         date: targetDate,
         type,
         status: updateData.status || 'ON_TIME',
-        checkInTime: type === 'CHECK_IN' ? now : undefined,
-        checkOutTime: type === 'CHECK_OUT' ? now : undefined,
+        checkInTime: type === 'CHECK_IN' ? eventAt : (checkInAt ?? undefined),
+        checkOutTime: type === 'CHECK_OUT' ? eventAt : undefined,
         memo,
       },
     });
@@ -495,6 +555,65 @@ export async function toggleAttendance(params: {
   }
 
   return { success: true, log };
+}
+
+/**
+ * 잘못 등록한 출결 기록 삭제
+ * - CHECK_OUT: 하원 시각만 지우고 등원 상태로 되돌린다
+ * - CHECK_IN: 등원 없는 하원은 성립하지 않으므로 그날 기록을 통째로 지운다
+ */
+export async function deleteAttendanceRecord(params: {
+  studentId: string;
+  target: 'CHECK_IN' | 'CHECK_OUT';
+  date?: string;
+  teacherId?: string;
+}) {
+  const { studentId, target, date, teacherId } = params;
+  const targetDate = date || getTodayDateString();
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    include: { user: true },
+  });
+
+  if (!student) {
+    throw new Error('학생 정보를 찾을 수 없습니다.');
+  }
+
+  const log = await prisma.attendanceLog.findFirst({
+    where: { studentId, date: targetDate },
+  });
+
+  if (!log) {
+    throw new Error(ATTENDANCE_RECORD_NOT_FOUND);
+  }
+
+  if (target === 'CHECK_OUT') {
+    if (!log.checkOutTime) {
+      throw new Error(ATTENDANCE_RECORD_NOT_FOUND);
+    }
+    await prisma.attendanceLog.update({
+      where: { id: log.id },
+      data: { checkOutTime: null, type: 'CHECK_IN' },
+    });
+  } else {
+    // 등원 기록 삭제 = 그날 출결 자체를 없던 일로 되돌린다
+    await prisma.attendanceLog.delete({ where: { id: log.id } });
+  }
+
+  const targetTeacherId = teacherId || student.teacherId;
+  if (targetTeacherId) {
+    broadcastToTeacher(targetTeacherId, {
+      type: 'ATTENDANCE_UPDATE',
+      studentId: student.id,
+      studentName: student.user.name,
+      status: target === 'CHECK_OUT' ? 'CHECK_OUT_DELETED' : 'CHECK_IN_DELETED',
+      date: targetDate,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  return { success: true, deleted: target };
 }
 
 export const toggleTeacherAttendance = toggleAttendance;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { toggleTeacherAttendance } from '@/lib/attendanceService';
+import { toggleTeacherAttendance, CHECKOUT_BEFORE_CHECKIN } from '@/lib/attendanceService';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { studentId, date, type, status, sendNotification, memo } = body;
+    const { studentId, date, type, status, time, checkInTime, sendNotification, memo } = body;
 
     if (!studentId) {
       return NextResponse.json({ error: '학생 ID가 필요합니다.' }, { status: 400 });
@@ -23,16 +23,22 @@ export async function POST(req: Request) {
       date,
       type,
       status,
+      time,        // 팝업에서 조절한 등원/하원 시각
+      checkInTime, // 하원 처리 시 등원 시각을 함께 수정하는 경우
       sendNotification: Boolean(sendNotification),
       memo,
     });
 
     return NextResponse.json({ success: true, log: updated });
-  } catch (error: any) {
-    console.error('Attendance toggle error:', error?.message);
-    return NextResponse.json(
-      { error: error?.message || '출결 처리 실패' },
-      { status: 500 }
-    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '출결 처리 실패';
+
+    // 시간 입력 오류는 사용자 잘못이므로 400으로 구분해 응답한다
+    const isValidationError = message === CHECKOUT_BEFORE_CHECKIN;
+    if (!isValidationError) {
+      console.error('Attendance toggle error:', message);
+    }
+
+    return NextResponse.json({ error: message }, { status: isValidationError ? 400 : 500 });
   }
 }

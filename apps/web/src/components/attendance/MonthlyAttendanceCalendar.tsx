@@ -2,8 +2,9 @@
 
 // apps/web/src/components/attendance/MonthlyAttendanceCalendar.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Download, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Plus, Trash2, Send } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { AttendanceReportModal } from '@/components/attendance/AttendanceReportModal';
 
 interface Props {
   studentName?: string;
@@ -89,6 +90,16 @@ function buildCalendar(year: number, month: number): CalendarCell[] {
   return cells;
 }
 
+/** 선생님이 직접 지정할 수 있는 출결 상태 */
+const STATUS_OPTIONS = [
+  { value: 'ON_TIME', label: '정상', type: 'CHECK_IN', needsTime: true },
+  { value: 'LATE', label: '지각', type: 'CHECK_IN', needsTime: true },
+  { value: 'ABSENT', label: '결석', type: 'ABSENT', needsTime: false },
+  { value: 'MAKEUP', label: '보강', type: 'MAKEUP', needsTime: true },
+] as const;
+
+type StatusValue = (typeof STATUS_OPTIONS)[number]['value'];
+
 function statusLabel(status: string): string {
   if (status === 'LATE') return '지각';
   if (status === 'ABSENT') return '결석';
@@ -117,9 +128,13 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
 
   // 수동 등록 폼
   const [addOpen, setAddOpen] = useState(false);
+  const [addStatus, setAddStatus] = useState<StatusValue>('ON_TIME');
   const [addCheckIn, setAddCheckIn] = useState('');
   const [addCheckOut, setAddCheckOut] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // 출결 알림톡 발송 모달
+  const [reportOpen, setReportOpen] = useState(false);
 
   const cells = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth]);
 
@@ -182,6 +197,7 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
 
   const selectedLog = logsByDate[selectedDate];
   const selectedDay = Number(selectedDate.split('-')[2]);
+  const needsTime = STATUS_OPTIONS.find((o) => o.value === addStatus)?.needsTime ?? true;
 
   /** 선택한 날짜의 출결 기록 삭제 */
   const handleDeleteRecord = async () => {
@@ -210,14 +226,17 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
     }
   };
 
-  /** 지난 날짜 출결 수동 등록 */
+  /** 출결 상태 지정 (정상·지각·결석·보강) */
   const handleSaveRecord = async () => {
     if (!studentId) return;
-    if (!addCheckIn) {
+
+    const option = STATUS_OPTIONS.find((o) => o.value === addStatus)!;
+
+    if (option.needsTime && !addCheckIn) {
       setError('등원 시간을 입력하세요.');
       return;
     }
-    if (addCheckOut && addCheckOut < addCheckIn) {
+    if (addCheckOut && addCheckIn && addCheckOut < addCheckIn) {
       setError('하원 시간은 등원 시간보다 빠를 수 없습니다.');
       return;
     }
@@ -225,9 +244,19 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
     setSaving(true);
     setError(null);
     try {
-      const body = addCheckOut
-        ? { studentId, type: 'CHECK_OUT', date: selectedDate, time: addCheckOut, checkInTime: addCheckIn }
-        : { studentId, type: 'CHECK_IN', date: selectedDate, time: addCheckIn };
+      const body = !option.needsTime
+        ? // 결석은 등·하원 시각 없이 상태만 기록한다
+          { studentId, type: option.type, status: addStatus, date: selectedDate }
+        : addCheckOut
+          ? {
+              studentId,
+              type: 'CHECK_OUT',
+              status: addStatus,
+              date: selectedDate,
+              time: addCheckOut,
+              checkInTime: addCheckIn,
+            }
+          : { studentId, type: option.type, status: addStatus, date: selectedDate, time: addCheckIn };
 
       const res = await apiFetch('/api/attendance/toggle', {
         method: 'POST',
@@ -250,6 +279,9 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
   };
 
   const openAddForm = () => {
+    const existing = logsByDate[selectedDate];
+    const known = STATUS_OPTIONS.find((o) => o.value === existing?.status);
+    setAddStatus(known ? known.value : 'ON_TIME');
     setAddCheckIn('');
     setAddCheckOut('');
     setError(null);
@@ -318,11 +350,18 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             <span>내역 다운로드</span>
           </button>
           <button
+            onClick={() => setReportOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-xs shadow-md shadow-amber-400/20 transition flex items-center gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>출결 알림톡</span>
+          </button>
+          <button
             onClick={openAddForm}
             className="px-3.5 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>출결 기록</span>
+            <span>출결 처리</span>
           </button>
         </div>
       </div>
@@ -368,7 +407,8 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
               const log = cell.inMonth ? logsByDate[cell.date] : undefined;
               const isSelected = cell.inMonth && cell.date === selectedDate;
               const isToday = cell.date === todayString;
-              const isAbsent = log?.status === 'ABSENT';
+              const isAbsent = log?.status === 'ABSENT' || log?.status === 'EXCUSED';
+              const isLate = log?.status === 'LATE';
 
               return (
                 <button
@@ -399,7 +439,9 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
                           ? 'bg-white'
                           : isAbsent
                             ? 'bg-rose-500'
-                            : 'bg-blue-500'
+                            : isLate
+                              ? 'bg-amber-500'
+                              : 'bg-blue-500'
                     }`}
                   />
                 </button>
@@ -410,6 +452,9 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
           <p className="text-[11px] text-slate-400 mt-3 flex items-center gap-3">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> 등원
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 지각
             </span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 결석
@@ -423,8 +468,9 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
         {/* 선택 일자 상세 */}
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="grid grid-cols-4 bg-slate-100/70 text-slate-600 text-xs font-bold px-4 py-3 border-b border-slate-200 text-center">
+            <div className="grid grid-cols-5 bg-slate-100/70 text-slate-600 text-xs font-bold px-3 py-3 border-b border-slate-200 text-center">
               <span>이름</span>
+              <span>상태</span>
               <span>등원</span>
               <span>하원</span>
               <span>삭제</span>
@@ -436,8 +482,23 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
                   {currentMonth}월 {selectedDay}일 출결 내역이 없습니다.
                 </div>
               ) : (
-                <div className="grid grid-cols-4 items-center px-4 py-3.5 text-xs text-slate-800 text-center hover:bg-slate-50/80 transition">
+                <div className="grid grid-cols-5 items-center px-3 py-3.5 text-xs text-slate-800 text-center hover:bg-slate-50/80 transition">
                   <span className="font-bold truncate">{studentName}</span>
+                  <span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        selectedLog.status === 'ABSENT' || selectedLog.status === 'EXCUSED'
+                          ? 'bg-rose-50 text-rose-600 border-rose-200'
+                          : selectedLog.status === 'LATE'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : selectedLog.status === 'MAKEUP'
+                              ? 'bg-violet-50 text-violet-600 border-violet-200'
+                              : 'bg-blue-50 text-blue-600 border-blue-200'
+                      }`}
+                    >
+                      {statusLabel(selectedLog.status)}
+                    </span>
+                  </span>
                   <span className="font-mono text-slate-600">{selectedLog.checkInTime || '—'}</span>
                   <span className="font-mono text-slate-600">{selectedLog.checkOutTime || '—'}</span>
                   <div>
@@ -459,31 +520,64 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
           {addOpen && (
             <div className="bg-blue-50/60 border border-blue-200/60 rounded-2xl p-4 space-y-3">
               <p className="text-xs font-bold text-blue-900">
-                {currentYear}년 {currentMonth}월 {selectedDay}일 출결 직접 입력
+                {currentYear}년 {currentMonth}월 {selectedDay}일 출결 처리
               </p>
 
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700">등원 시간</span>
-                <input
-                  type="time"
-                  value={addCheckIn}
-                  onChange={(e) => setAddCheckIn(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
+              {/* 출결 상태 선택 — 정상 / 지각 / 결석 / 보강 */}
+              <div className="grid grid-cols-4 gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                {STATUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setAddStatus(option.value)}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition ${
+                      addStatus === option.value
+                        ? option.value === 'ABSENT'
+                          ? 'bg-rose-500 text-white shadow-sm'
+                          : option.value === 'LATE'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : option.value === 'MAKEUP'
+                              ? 'bg-violet-500 text-white shadow-sm'
+                              : 'bg-blue-500 text-white shadow-sm'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700">하원 시간 (선택)</span>
-                <input
-                  type="time"
-                  value={addCheckOut}
-                  onChange={(e) => setAddCheckOut(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {needsTime ? (
+                <>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">등원 시간</span>
+                    <input
+                      type="time"
+                      value={addCheckIn}
+                      onChange={(e) => setAddCheckIn(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">하원 시간 (선택)</span>
+                    <input
+                      type="time"
+                      value={addCheckOut}
+                      onChange={(e) => setAddCheckOut(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11px] text-rose-600 bg-white border border-rose-200 rounded-lg px-3 py-2 font-semibold">
+                  결석으로 기록하면 그날 등·하원 시각은 지워집니다.
+                </p>
+              )}
 
               <p className="text-[11px] text-slate-500">
-                지난 기록을 정리하는 입력이므로 학부모 알림은 발송되지 않습니다.
+                출결을 정리하는 입력이므로 학부모 알림은 즉시 발송되지 않습니다.
+                발송은 상단 <b>출결 알림톡</b>에서 일별·월별로 모아 보냅니다.
               </p>
 
               <div className="flex gap-2">
@@ -520,6 +614,14 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      <AttendanceReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        date={selectedDate}
+        year={currentYear}
+        month={currentMonth}
+      />
     </div>
   );
 };

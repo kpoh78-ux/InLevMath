@@ -489,9 +489,12 @@ export async function toggleAttendance(params: {
     }
     if (!customStatus) updateData.status = 'ON_TIME';
   } else if (type === 'ABSENT') {
-    updateData.status = 'ABSENT';
+    // 결석 처리 시 남아 있던 등·하원 시각을 지운다
+    updateData.status = customStatus || 'ABSENT';
+    updateData.checkInTime = null;
+    updateData.checkOutTime = null;
   } else if (type === 'MAKEUP') {
-    updateData.status = 'MAKEUP';
+    updateData.status = customStatus || 'MAKEUP';
   }
 
   if (log) {

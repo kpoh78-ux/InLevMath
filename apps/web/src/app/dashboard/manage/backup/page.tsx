@@ -26,7 +26,7 @@ const formatBytes = (n: number) => {
 }
 
 /** 백업 파일을 받아 브라우저에 내려준다 */
-async function download(url: string): Promise<{ savedPath: string | null }> {
+async function download(url: string): Promise<{ savedPath: string | null; mode: string | null; reason: string | null }> {
   const token = getToken()
   const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
 
@@ -39,6 +39,9 @@ async function download(url: string): Promise<{ savedPath: string | null }> {
 
   const rawPath = res.headers.get('X-Backup-Path')
   const savedPath = rawPath ? decodeURIComponent(rawPath) : null
+  const mode = res.headers.get('X-Backup-Mode')
+  const rawReason = res.headers.get('X-Backup-Reason')
+  const reason = rawReason ? decodeURIComponent(rawReason) : null
 
   const blob = await res.blob()
   const urlObj = URL.createObjectURL(blob)
@@ -57,7 +60,7 @@ async function download(url: string): Promise<{ savedPath: string | null }> {
   a.remove()
   URL.revokeObjectURL(urlObj)
 
-  return { savedPath }
+  return { savedPath, mode, reason }
 }
 
 export default function BackupPage() {
@@ -89,10 +92,15 @@ export default function BackupPage() {
     setBusy(key)
     setMessage(null)
     try {
-      const { savedPath } = await download(url)
+      const { savedPath, mode, reason } = await download(url)
       setMessage({
         ok: true,
-        text: '백업이 완료되어 파일을 다운로드했습니다.' + (savedPath ? `\n로컬 보관본: ${savedPath}` : ''),
+        text: [
+          '백업이 완료되어 파일을 다운로드했습니다.',
+          mode === 'json' ? `방식: JSON 전체 백업 — ${reason ?? ''}`.trim() : null,
+          mode === 'pg_dump' ? '방식: pg_dump 전체 덤프' : null,
+          savedPath ? `서버 보관본: ${savedPath}` : null,
+        ].filter(Boolean).join('\n'),
       })
     } catch (e) {
       setMessage({ ok: false, text: e instanceof Error ? e.message : '알 수 없는 오류' })
@@ -139,7 +147,8 @@ export default function BackupPage() {
               {busy === 'db' ? '백업 중...' : '전체 DB 백업 다운로드'}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              PostgreSQL 전체 덤프. 서버 복구용으로 가장 완전한 백업입니다.
+              모든 테이블을 통째로 받습니다. 정답 스냅샷 이미지까지 포함되므로
+              가장 완전한 백업입니다. pg_dump이 없는 서버에서는 JSON으로 받습니다.
             </p>
           </button>
 
@@ -151,7 +160,8 @@ export default function BackupPage() {
               {busy === 'core' ? '내보내는 중...' : '주요 데이터(JSON) 다운로드'}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              학생·학습지·교재 등 핵심 데이터만 JSON으로. 내용 확인이 쉽습니다.
+              학생·학습지·교재 등 핵심만 JSON으로. 내용 확인은 쉽지만
+              <b> 정답 이미지는 빠집니다.</b> 보관용으로는 왼쪽을 쓰세요.
             </p>
           </button>
         </div>

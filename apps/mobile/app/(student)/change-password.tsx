@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { apiFetch } from '../../store/api'
 import { Colors } from '../../constants/colors'
 
 export default function ChangePasswordScreen() {
@@ -28,13 +29,22 @@ export default function ChangePasswordScreen() {
     }
     setLoading(true)
     try {
-      // TODO: 실제 API 연동 — POST /api/auth/change-password
-      await new Promise(r => setTimeout(r, 600))
+      const res = await apiFetch('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      })
+
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        Alert.alert('변경 실패', data?.error ?? '비밀번호를 변경하지 못했습니다.')
+        return
+      }
+
       Alert.alert('완료', '비밀번호가 변경되었습니다.', [
         { text: '확인', onPress: () => router.back() },
       ])
     } catch {
-      Alert.alert('오류', '현재 비밀번호가 일치하지 않습니다.')
+      Alert.alert('연결 실패', '인터넷 연결을 확인한 뒤 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }

@@ -37,11 +37,20 @@ const STEP_COLOR_MAP: Record<string, string> = {
   '최다빈출': '#A29BFE', '최다오답': '#FD79A8', '서술형': '#FF7675', '모의고사': '#00B894', '기출문제': '#00CEC9',
 }
 
-const INITIAL_PROGRESS = {
-  currentLevel: 3,
-  currentMission: 'basic_problem' as MissionType,
-  abilityScore: { comprehension: 72, reasoning: 58, calculation: 45 } as AbilityScore,
-  clearedMissions: ['concept_learning', 'concept_problem'] as MissionType[],
+type Progress = {
+  currentLevel: number
+  currentMission: MissionType
+  abilityScore: AbilityScore
+  clearedMissions: MissionType[]
+}
+
+// 서버에서 읽어오기 전 화면이 깨지지 않게 두는 최소값.
+// 예전에는 여기에 Lv3 / 능력치 72·58·45가 박혀 있어 모든 학생이 같은 값을 봤다.
+const EMPTY_PROGRESS: Progress = {
+  currentLevel: 1,
+  currentMission: 'concept_learning',
+  abilityScore: { comprehension: 0, reasoning: 0, calculation: 0 },
+  clearedMissions: [],
 }
 
 function showToast(msg: string) {
@@ -51,11 +60,26 @@ function showToast(msg: string) {
 
 export default function StudentDashboard() {
   const { user, signOut } = useAuth()
-  const [progress, setProgress] = useState(INITIAL_PROGRESS)
+  const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS)
   const [worksheets, setWorksheets] = useState<DistributedWS[]>([])
   const [textbooks, setTextbooks] = useState<TextbookItem[]>([])
   const [loadingWS, setLoadingWS] = useState(true)
   const { currentLevel, currentMission, abilityScore, clearedMissions } = progress
+
+  // 레벨·능력치·미션 진행 상황 fetch
+  const fetchProgress = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/student/progress')
+      if (!res.ok) return
+      const data = await res.json()
+      setProgress({
+        currentLevel: data.currentLevel,
+        currentMission: data.currentMission,
+        abilityScore: data.abilityScore,
+        clearedMissions: data.clearedMissions ?? [],
+      })
+    } catch { /* 무시 — 다음 진입에서 다시 읽는다 */ }
+  }, [])
 
   // 배정된 교재 fetch
   const fetchTextbooks = useCallback(async () => {
@@ -78,16 +102,18 @@ export default function StudentDashboard() {
 
   const onEvent = useCallback((event: { type: string; [key: string]: unknown }) => {
     if (event.type === 'LEVEL_UP') {
-      showToast('🎉 미션 클리어! 다음 레벨로 올라갔어요!')
-      setProgress(prev => ({ ...prev, currentLevel: prev.currentLevel + 1 }))
+      showToast('🎉 미션 클리어! 다음 단계로 넘어갔어요!')
+      fetchProgress()
     } else if (event.type === 'NEW_MISSION') {
       showToast('📝 새로운 학습지 미션이 도착했어요!')
       fetchWorksheets()
     }
-  }, [fetchWorksheets])
+  }, [fetchWorksheets, fetchProgress])
   useEvents(onEvent)
 
-  useEffect(() => { fetchWorksheets(); fetchTextbooks() }, [fetchWorksheets, fetchTextbooks])
+  useEffect(() => {
+    fetchProgress(); fetchWorksheets(); fetchTextbooks()
+  }, [fetchProgress, fetchWorksheets, fetchTextbooks])
 
   const currentMissionColor = Colors.mission[currentMission]
 

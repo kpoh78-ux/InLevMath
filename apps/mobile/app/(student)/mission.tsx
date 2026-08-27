@@ -4,6 +4,8 @@ import {
   StyleSheet, ScrollView, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
+import { apiFetch } from '../../store/api'
 import { Colors } from '../../constants/colors'
 import {
   MissionType, ResultSource,
@@ -16,6 +18,7 @@ export default function MissionInputScreen() {
   const [source, setSource] = useState<ResultSource>('manual')
   const [total, setTotal] = useState('')
   const [correct, setCorrect] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const correctRate = total && correct
     ? calcCorrectRate(Number(total), Number(correct))
@@ -24,20 +27,52 @@ export default function MissionInputScreen() {
   const threshold = MISSION_CLEAR_THRESHOLD[selectedMission]
   const isCleared = correctRate !== null && correctRate >= threshold
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const t = Number(total)
     const c = Number(correct)
     if (!t || t <= 0) { Alert.alert('입력 오류', '총 문제 수를 입력하세요.'); return }
     if (c < 0 || c > t) { Alert.alert('입력 오류', '맞힌 문제 수를 다시 확인하세요.'); return }
 
-    const msg = isCleared
-      ? `🎉 미션 클리어! 정답률 ${correctRate}%\n다음 단계로 레벨업합니다!`
-      : `정답률 ${correctRate}% — 목표 ${threshold}% 달성까지 조금 더 노력해봐요!`
+    setSaving(true)
+    try {
+      const res = await apiFetch('/api/missions/results', {
+        method: 'POST',
+        body: JSON.stringify({
+          missionType: selectedMission,
+          totalProblems: t,
+          correctProblems: c,
+          source,
+        }),
+      })
 
-    Alert.alert(isCleared ? '미션 클리어! 🏆' : '결과 저장', msg, [
-      { text: '확인', onPress: () => { setTotal(''); setCorrect('') } },
-    ])
-    // TODO: 실제 API에 결과 전송
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        Alert.alert('저장 실패', data?.error ?? '결과를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+
+      // 클리어 판정은 서버가 내린다 (화면 미리보기와 어긋날 수 있다)
+      const rate = data?.correctRate ?? correctRate
+      const cleared = data?.missionCleared === true
+
+      Alert.alert(
+        cleared ? '미션 클리어! 🏆' : '결과 저장 완료',
+        cleared
+          ? `🎉 정답률 ${rate}%\n다음 미션으로 넘어갑니다!`
+          : `정답률 ${rate}% — 목표 ${threshold}%까지 조금 더 힘내요!`,
+        [{
+          text: '확인',
+          onPress: () => {
+            setTotal(''); setCorrect('')
+            router.replace('/(student)')
+          },
+        }],
+      )
+    } catch {
+      Alert.alert('연결 실패', '인터넷 연결을 확인한 뒤 다시 시도해주세요.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -124,8 +159,12 @@ export default function MissionInputScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitBtnText}>결과 저장하기</Text>
+        <TouchableOpacity
+          style={[styles.submitBtn, saving && styles.submitBtnDisabled]}
+          onPress={handleSubmit}
+          disabled={saving}
+        >
+          <Text style={styles.submitBtnText}>{saving ? '저장 중...' : '결과 저장하기'}</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
@@ -178,5 +217,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, borderRadius: 12,
     padding: 16, alignItems: 'center', marginTop: 24,
   },
+  submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
 })

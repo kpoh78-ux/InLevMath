@@ -4,6 +4,7 @@ import {
   StyleSheet, ScrollView, ActivityIndicator, Alert,
 } from 'react-native'
 import { useAuth } from '../../store/authStore'
+import { API_BASE } from '../../store/api'
 import { Colors } from '../../constants/colors'
 
 export default function LoginScreen() {
@@ -23,21 +24,33 @@ export default function LoginScreen() {
     }
     setLoading(true)
     try {
-      // TODO: 실제 API 연동 — 임시 Mock 로그인
-      await new Promise(r => setTimeout(r, 800))
-      // 선생님 테스트: 01011111111 / 학생: 그 외 번호
-      const isTeacher = phone === '01011111111'
-      await signIn(
-        {
-          id: isTeacher ? 'teacher-1' : 'student-1',
-          name: isTeacher ? '오근표 선생님' : '홍길동',
-          phone,
-          role: isTeacher ? 'teacher' : 'student',
-        },
-        'mock-token-123'
-      )
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim(), password }),
+      })
+
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.token) {
+        Alert.alert('로그인 실패', data?.error ?? '핸드폰번호 또는 비밀번호를 확인해주세요.')
+        return
+      }
+
+      // 학생 전용 앱이다. 선생님 계정은 웹으로 안내한다.
+      if (data.user?.role !== 'student') {
+        Alert.alert(
+          '학생 전용 앱입니다',
+          '선생님 계정은 이 앱에서 사용할 수 없습니다.\n태블릿이나 PC의 브라우저에서 접속해주세요.',
+        )
+        return
+      }
+
+      await signIn(data.user, data.token)
     } catch {
-      Alert.alert('로그인 실패', '핸드폰번호 또는 비밀번호를 확인해주세요.')
+      Alert.alert(
+        '연결 실패',
+        '학원 서버에 연결하지 못했습니다.\n인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+      )
     } finally {
       setLoading(false)
     }

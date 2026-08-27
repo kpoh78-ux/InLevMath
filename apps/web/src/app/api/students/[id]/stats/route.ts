@@ -69,6 +69,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'asc' },
   })
 
+  // 2-1. 숙제 — 배포했지만 아직 채점하지 않은 학습지.
+  //      집에서 풀어와 다음 시간에 확인해야 하는 것들이라 기간 제한을 두지 않는다.
+  const homeworkDistributions = await prisma.worksheetDistribution.findMany({
+    where: { studentId: id, status: { not: 'graded' }, hiddenAt: null },
+    select: {
+      id: true,
+      status: true,
+      distributedAt: true,
+      worksheet: { select: { title: true, step: true, unit: true, problemCount: true } },
+    },
+    orderBy: { distributedAt: 'desc' },
+    take: 20,
+  })
+
   // 3. 최근 30일 교재 채점 결과 (COUNT 집계로 메모리/트래픽 절감)
   const textbookResults = await prisma.textbookResult.findMany({
     where: {
@@ -190,6 +204,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       grade: item.textbook.grade,
       problemCount: item.textbook._count.problems,
       isCompleted: Boolean(item.completedAt),
+    })),
+    homework: homeworkDistributions.map(d => ({
+      id: d.id,
+      title: d.worksheet.title,
+      step: d.worksheet.step,
+      unit: d.worksheet.unit,
+      problemCount: d.worksheet.problemCount,
+      status: d.status,
+      distributedAt: d.distributedAt,
     })),
     weeklyTrend,
     byStep,

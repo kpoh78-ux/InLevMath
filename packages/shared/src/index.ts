@@ -235,7 +235,10 @@ export function normalizeForCompare(value: string): string {
 
   t = t.toLowerCase()
   t = t.replace(/\s+/g, '')            // 모든 공백 제거
-  t = t.replace(/[,]/g, '')             // 1,000 → 1000
+  // 콤마는 천단위 구분자일 때만 지운다 (1,000 → 1000).
+  // "1,2" 처럼 뒤가 세 자리가 아니면 답 두 개를 나눈 것으로 보고 그대로 둔다 —
+  // 지워 버리면 "1,2" 가 12 와 같아져 엉뚱하게 정답 처리된다.
+  t = t.replace(/,(?=\d{3}(?!\d))/g, '')
   // 학생에게 단위를 빼고 쓰라고 안내하지만 붙여 쓰는 경우가 있어 뒤쪽 단위를 떼어낸다
   t = t.replace(/(cm2|cm3|m2|m3|cm|mm|km|kg|g|ml|l|개|명|원|점|초|분|시간|도|배|쪽|권|자루)$/u, '')
   t = t.replace(/[.]$/, '')             // 끝의 마침표

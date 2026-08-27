@@ -75,86 +75,6 @@ const STEP_BADGE: Record<string, string> = {
 }
 
 // ── 3개월 꺽은선 그래프 ─────────────────────────────────────────
-function MonthlyLineChart({ data }: { data: MonthlyPoint[] }) {
-  const W = 320, H = 110, PAD = { t: 18, r: 16, b: 28, l: 32 }
-  const chartW = W - PAD.l - PAD.r
-  const chartH = H - PAD.t - PAD.b
-  const connected = data.filter(d => d.correctRate !== null)
-  const points = data.map((d, i) => ({
-    x: PAD.l + (i / Math.max(data.length - 1, 1)) * chartW,
-    y: d.correctRate !== null ? PAD.t + chartH - (d.correctRate / 100) * chartH : null,
-    rate: d.correctRate,
-    label: d.label,
-    problems: d.problems,
-  }))
-  const connectedPts = points.filter(p => p.y !== null)
-  const pathD = connectedPts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-  const areaD = connectedPts.length > 1
-    ? `${pathD} L ${connectedPts[connectedPts.length-1].x} ${PAD.t+chartH} L ${connectedPts[0].x} ${PAD.t+chartH} Z`
-    : ''
-
-  const hasData = connected.length > 0
-  const avg = hasData
-    ? Math.round(connected.reduce((s, d) => s + (d.correctRate ?? 0), 0) / connected.length)
-    : null
-  const trend = connectedPts.length >= 2
-    ? (connectedPts[connectedPts.length-1].y! < connectedPts[0].y! ? 'up' : 'down')
-    : null
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold text-gray-600">3개월 정답률 추이</span>
-        <div className="flex items-center gap-2">
-          {avg !== null && (
-            <span className={`text-xs font-bold ${avg >= 80 ? 'text-emerald-600' : avg >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>
-              평균 {avg}%
-            </span>
-          )}
-          {trend && (
-            <span className={`text-xs font-bold ${trend === 'up' ? 'text-emerald-600' : 'text-rose-500'}`}>
-              {trend === 'up' ? '▲ 향상' : '▼ 하락'}
-            </span>
-          )}
-        </div>
-      </div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
-        {[0, 50, 100].map(v => {
-          const y = PAD.t + chartH - (v / 100) * chartH
-          return (
-            <g key={v}>
-              <line x1={PAD.l} y1={y} x2={W-PAD.r} y2={y} stroke="#f3f4f6" strokeWidth="1"/>
-              <text x={PAD.l-4} y={y+4} textAnchor="end" fontSize="9" fill="#d1d5db">{v}</text>
-            </g>
-          )
-        })}
-        {hasData && areaD && <path d={areaD} fill="#6366f1" opacity="0.1"/>}
-        {hasData && connectedPts.length > 1 && (
-          <path d={pathD} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        )}
-        {points.map((p, i) => (
-          <g key={i}>
-            {p.y !== null && (
-              <>
-                <circle cx={p.x} cy={p.y} r="5" fill="#6366f1" stroke="white" strokeWidth="2"/>
-                <text x={p.x} y={p.y-10} textAnchor="middle" fontSize="10" fontWeight="700" fill="#4f46e5">{p.rate}%</text>
-              </>
-            )}
-            {p.y === null && (
-              <text x={p.x} y={PAD.t+chartH/2} textAnchor="middle" fontSize="10" fill="#d1d5db">-</text>
-            )}
-            <text x={p.x} y={H-4} textAnchor="middle" fontSize="10" fill="#9ca3af">{p.label}</text>
-          </g>
-        ))}
-      </svg>
-      {!hasData && (
-        <p className="text-xs text-center text-gray-300 -mt-4">3개월 내 채점 기록이 없습니다</p>
-      )}
-    </div>
-  )
-}
-
-// ── 학생 학습 내역 패널 ─────────────────────────────────────────
 function StudentHistoryPanel({ studentId, studentName, onClose }: {
   studentId: string; studentName: string; onClose: () => void
 }) {
@@ -174,6 +94,12 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+
+  // 숙제 = 배포했지만 아직 채점하지 않은 학습지.
+  // 집에서 풀어와 다음 시간에 확인해야 하는 것들이라, 채점하는 순간 목록에서 빠진다.
+  const homework = (data?.distributions ?? [])
+    .filter(d => d.status !== 'graded')
+    .sort((a, b) => +new Date(b.distributedAt) - +new Date(a.distributedAt))
 
   return (
     <div className="bg-white border border-indigo-200 rounded-2xl overflow-hidden shadow-lg">
@@ -207,6 +133,48 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
       ) : !data ? (
         <div className="px-5 py-10 text-center text-gray-400 text-sm">데이터를 불러올 수 없습니다.</div>
       ) : (
+        <>
+        {/* 숙제 — 집에서 풀어와 다음 시간에 확인할 학습지 (아직 채점 전) */}
+        <div className="px-5 pt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs font-bold text-gray-500">숙제 내역</p>
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+              {homework.length}건
+            </span>
+            <span className="text-[10px] text-gray-300">채점하면 목록에서 빠집니다</span>
+          </div>
+
+          {homework.length === 0 ? (
+            <p className="text-xs text-gray-300 py-3 text-center bg-gray-50 rounded-xl border border-gray-100">
+              확인할 숙제가 없습니다
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {homework.map(d => (
+                <div key={d.id}
+                  className="flex items-center gap-2.5 bg-amber-50/60 border border-amber-100 rounded-xl px-3 py-2">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${STEP_BADGE[d.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                    {d.step}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{d.title}</p>
+                    {d.unit && <p className="text-[10px] text-gray-400 truncate">{d.unit}</p>}
+                  </div>
+                  <span className="text-[10px] text-gray-400 shrink-0">{d.problemCount}문제</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                    d.status === 'submitted'
+                      ? 'bg-sky-100 text-sky-700'
+                      : 'bg-white text-amber-700 border border-amber-200'
+                  }`}>
+                    {d.status === 'submitted' ? '제출함 · 채점대기' : '풀어와야 함'}
+                  </span>
+                  <span className="text-[10px] text-gray-300 shrink-0">{formatDate(d.distributedAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 divide-x divide-gray-100">
 
           {/* 왼쪽: 최근 3회 수업 기록 */}
@@ -252,47 +220,25 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
               </div>
             )}
 
-            {/* 능력치 미니 */}
-            <div className="mt-4 pt-3 border-t border-gray-100 space-y-1.5">
+          </div>
+
+          {/* 오른쪽: 영역별 능력치 */}
+          <div className="px-5 py-4">
+            <p className="text-xs font-bold text-gray-500 mb-3">영역별 능력치</p>
+            <div className="space-y-3">
               {([
                 ['계산력', data.student.calculation, 'bg-amber-400'],
                 ['이해력', data.student.comprehension, 'bg-sky-400'],
                 ['추론력', data.student.reasoning, 'bg-violet-400'],
               ] as [string, number, string][]).map(([label, val, color]) => (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400 w-10 shrink-0">{label}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                    <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(val, 100)}%` }}/>
+                <div key={label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-gray-600">{label}</span>
+                    <span className="text-sm font-black text-gray-700 tabular-nums">{Math.round(val)}</span>
                   </div>
-                  <span className="text-[10px] font-bold text-gray-500 w-7 text-right">{Math.round(val)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 오른쪽: 3개월 꺽은선 그래프 */}
-          <div className="px-5 py-4">
-            <MonthlyLineChart data={data.monthlyTrend} />
-
-            {/* 월별 상세 */}
-            <div className="mt-4 space-y-2">
-              {data.monthlyTrend.map((m, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500 font-medium w-8">{m.label}</span>
-                  <div className="flex-1 mx-3 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                    {m.correctRate !== null && (
-                      <div
-                        className={`h-full rounded-full transition-all ${m.correctRate >= 80 ? 'bg-emerald-400' : m.correctRate >= 60 ? 'bg-amber-400' : 'bg-rose-400'}`}
-                        style={{ width: `${m.correctRate}%` }}
-                      />
-                    )}
+                  <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.min(val, 100)}%` }}/>
                   </div>
-                  <span className={`font-bold w-10 text-right ${m.correctRate !== null ? (m.correctRate >= 80 ? 'text-emerald-600' : m.correctRate >= 60 ? 'text-amber-500' : 'text-rose-500') : 'text-gray-300'}`}>
-                    {m.correctRate !== null ? `${m.correctRate}%` : '없음'}
-                  </span>
-                  {m.problems > 0 && (
-                    <span className="text-[10px] text-gray-300 ml-2 w-12 text-right">{m.problems}문제</span>
-                  )}
                 </div>
               ))}
             </div>
@@ -306,6 +252,7 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {/* 이전 시간 교재 채점 범위 + 학습지 배포·채점 현황 */}

@@ -140,6 +140,7 @@ const STEP_COLORS: Record<string, string> = {
 type Stats = {
   student: { id:string; name:string; grade:string; currentLevel:number; currentMission:string; comprehension:number; reasoning:number; calculation:number }
   summary: { totalProblems:number; correctProblems:number; avgCorrectRate:number; worksheetCount:number; textbookCount:number }
+  homework: { id:string; title:string; step:string; unit:string; problemCount:number; status:string; distributedAt:string }[]
   weeklyTrend: { label:string; problems:number; correctRate:number|null }[]
   byStep: { step:string; total:number; correct:number; rate:number }[]
 }
@@ -168,6 +169,8 @@ function StudentStatsView({ studentId }: { studentId: string }) {
   }
 
   const { student, summary, weeklyTrend, byStep } = stats
+  // 숙제 = 배포했지만 아직 채점 안 한 학습지. 집에서 풀어와 다음 시간에 확인한다.
+  const homework = stats.homework ?? []
   const noActivity = summary.totalProblems === 0
   const missionLabel = MISSION_LABELS[student.currentMission as MissionType] ?? student.currentMission
 
@@ -191,6 +194,47 @@ function StudentStatsView({ studentId }: { studentId: string }) {
             학습지 {summary.worksheetCount}회 · 교재 {summary.textbookCount}회 채점
           </p>
         </div>
+      </div>
+
+      {/* 숙제 — 다음 시간에 확인할 학습지 */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-amber-50/50">
+          <span className="text-sm">📌</span>
+          <h2 className="text-sm font-bold text-gray-800">숙제 내역</h2>
+          <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+            {homework.length}건
+          </span>
+          <span className="text-[11px] text-gray-400 ml-auto">채점하면 목록에서 빠집니다</span>
+        </div>
+
+        {homework.length === 0 ? (
+          <p className="px-5 py-6 text-center text-xs text-gray-300">확인할 숙제가 없습니다</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {homework.map(h => (
+              <div key={h.id} className="flex items-center gap-3 px-5 py-2.5">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${STEP_COLOR[h.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                  {h.step}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{h.title}</p>
+                  {h.unit && <p className="text-[11px] text-gray-400 truncate">{h.unit}</p>}
+                </div>
+                <span className="text-[11px] text-gray-400 shrink-0">{h.problemCount}문제</span>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded shrink-0 ${
+                  h.status === 'submitted'
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {h.status === 'submitted' ? '제출함 · 채점대기' : '풀어와야 함'}
+                </span>
+                <span className="text-[11px] text-gray-300 shrink-0 w-14 text-right">
+                  {new Date(h.distributedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {noActivity ? (

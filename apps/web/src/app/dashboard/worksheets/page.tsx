@@ -110,11 +110,18 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   const [answerImages, setAnswerImages] = useState<Record<number, string>>({})
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
 
+  // 여러 건 선택 → 하단 액션바 / 행 끝 ⋮ 메뉴
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
   const fetchStudentWorksheets = useCallback(async () => {
     setLoading(true)
     // 학생을 바꾸는 즉시 이전 학생의 화면이 남아있지 않도록 비운다
     setStudent(null)
     setDistributions([])
+    setSelected(new Set())
+    setOpenMenuId(null)
     try {
       const res = await apiFetch(`/api/students/${studentId}/worksheets`)
       if (res.ok) {
@@ -130,6 +137,79 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   }, [studentId])
 
   useEffect(() => { fetchStudentWorksheets() }, [fetchStudentWorksheets])
+
+  // 메뉴 밖을 누르면 닫는다
+  useEffect(() => {
+    if (!openMenuId) return
+    const close = () => setOpenMenuId(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [openMenuId])
+
+  const toggleOne = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allSelected = distributions.length > 0 && distributions.every(d => selected.has(d.id))
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(distributions.map(d => d.id)))
+
+  /** 재출제 — 낸 답과 채점을 지우고 다시 풀게 한다 */
+  const redistribute = async (ids: string[]) => {
+    if (ids.length === 0) return
+    const label = ids.length === 1 ? '이 학습지를' : `학습지 ${ids.length}개를`
+    if (!confirm(`${label} 다시 출제할까요?
+학생이 낸 답과 채점 결과가 지워지고 처음부터 다시 풀게 됩니다.`)) return
+
+    setBusy(true)
+    try {
+      const res = await apiFetch('/api/worksheets/distributions', {
+        method: 'POST',
+        body: JSON.stringify({ distributionIds: ids }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error ?? '재출제에 실패했습니다.')
+        return
+      }
+      setSelected(new Set())
+      await fetchStudentWorksheets()
+    } finally {
+      setBusy(false)
+      setOpenMenuId(null)
+    }
+  }
+
+  /** 배포 취소 — 목록에서 없앤다 */
+  const removeDistributions = async (ids: string[]) => {
+    if (ids.length === 0) return
+    const label = ids.length === 1 ? '이 학습지 배포를' : `학습지 ${ids.length}개의 배포를`
+    if (!confirm(`${label} 취소할까요?
+학생 앱에서 사라지고 채점 결과도 함께 지워집니다.`)) return
+
+    setBusy(true)
+    try {
+      const res = await apiFetch('/api/worksheets/distributions', {
+        method: 'DELETE',
+        body: JSON.stringify({ distributionIds: ids }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error ?? '삭제에 실패했습니다.')
+        return
+      }
+      setSelected(new Set())
+      await fetchStudentWorksheets()
+    } finally {
+      setBusy(false)
+      setOpenMenuId(null)
+    }
+  }
 
   const openGrading = async (dist: Distribution) => {
     const existing: number[] = dist.result ? JSON.parse(dist.result.wrongProblemsJson) : []
@@ -254,23 +334,34 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
         </div>
       </div>
 
-      {/* 배포 목록 */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* 배포 목록 — 하단 액션바가 마지막 행을 가리지 않도록 아래 여백을 둔다 */}
+      <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${selected.size > 0 ? 'mb-20' : ''}`}>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
-              <th className="px-5 py-3 text-left font-medium">학습지명</th>
+              <th className="px-3 py-3 w-10 text-center">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  disabled={distributions.length === 0}
+                  aria-label="전체 선택"
+                  className="w-4 h-4 rounded-sm text-indigo-600 focus:ring-indigo-500 align-middle"
+                />
+              </th>
+              <th className="px-2 py-3 text-left font-medium">학습지명</th>
               <th className="px-4 py-3 text-left font-medium w-28">단계</th>
               <th className="px-4 py-3 text-center font-medium w-20">문제 수</th>
               <th className="px-4 py-3 text-center font-medium w-24">상태</th>
               <th className="px-4 py-3 text-center font-medium w-20">정답률</th>
               <th className="px-4 py-3 text-left font-medium w-28">배포일</th>
               <th className="px-4 py-3 text-left font-medium w-28">채점</th>
+              <th className="px-2 py-3 w-12 text-center font-medium">더보기</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {distributions.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400 text-sm">
+              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400 text-sm">
                 배포된 학습지가 없습니다.
               </td></tr>
             ) : distributions.map(d => {
@@ -278,8 +369,17 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                 ? Math.round((d.result.correctProblems / d.worksheet.problemCount) * 100)
                 : null
               return (
-                <tr key={d.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3.5">
+                <tr key={d.id} className={`transition-colors ${selected.has(d.id) ? 'bg-indigo-50/60' : 'hover:bg-gray-50'}`}>
+                  <td className="px-3 py-3.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(d.id)}
+                      onChange={() => toggleOne(d.id)}
+                      aria-label={`${d.worksheet.title} 선택`}
+                      className="w-4 h-4 rounded-sm text-indigo-600 focus:ring-indigo-500 align-middle"
+                    />
+                  </td>
+                  <td className="px-2 py-3.5">
                     <div className="font-semibold text-gray-800">{d.worksheet.title}</div>
                     <div className="text-xs text-gray-400 mt-0.5">{d.worksheet.grade} · {d.worksheet.unit}</div>
                   </td>
@@ -315,12 +415,81 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                       {d.status === 'graded' ? '재채점' : 'O/X 채점'}
                     </button>
                   </td>
+
+                  {/* ⋮ — 재출제 / 배포 취소 */}
+                  <td className="px-2 py-3.5 text-center relative">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setOpenMenuId(prev => (prev === d.id ? null : d.id))
+                      }}
+                      aria-label="더보기"
+                      className="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors leading-none"
+                    >
+                      ⋮
+                    </button>
+
+                    {openMenuId === d.id && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="absolute right-2 top-11 z-20 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-left"
+                      >
+                        <button
+                          onClick={() => redistribute([d.id])}
+                          disabled={busy}
+                          className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                          재출제
+                        </button>
+                        <button
+                          onClick={() => removeDistributions([d.id])}
+                          disabled={busy}
+                          className="w-full px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 border-t border-gray-100 transition-colors disabled:opacity-50"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+
+      {/* ── 선택 시 하단 액션바 ── */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-0 left-0 lg:left-48 right-0 z-30 bg-slate-800 text-white shadow-2xl">
+          <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4 flex-wrap">
+            <span className="font-bold text-sm">학습지 {selected.size}개 선택됨</span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => redistribute([...selected])}
+                disabled={busy}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                {busy ? '처리 중...' : '숙제 내기'}
+              </button>
+              <button
+                onClick={() => removeDistributions([...selected])}
+                disabled={busy}
+                className="px-4 py-2 rounded-lg border border-rose-400/60 text-rose-200 hover:bg-rose-500/20 text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                삭제
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                className="ml-1 w-8 h-8 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors text-lg leading-none"
+                aria-label="선택 해제"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── O/X 채점 모달 ── */}
       {gradingDist && (

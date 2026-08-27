@@ -6,7 +6,7 @@
 // 2) Omni-Route 멀티 AI(Gemini 2.5 Flash / Groq Llama-3 / DeepSeek / Claude) 분산 호출로 0원/초고속 추출
 // 3) 대/중/소단원/유형 태깅과 문항별 정답을 표로 보여주고 검수 후 확정
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
 import { readFile, printWorksheetFile, type WorksheetFile } from '@/lib/worksheetFiles'
 import { extractLightweightPdfText, type StructureOverride } from '@/lib/pdfTextExtractor'

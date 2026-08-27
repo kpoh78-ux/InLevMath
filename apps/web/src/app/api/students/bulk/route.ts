@@ -37,8 +37,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '등록할 학생 데이터가 없습니다.' }, { status: 400 })
   }
 
-  // 현재 학생 수 확인
-  const currentCount = await prisma.student.count({ where: { teacherId: teacher.id } })
+  // 현재 학생 수 확인 — 재원생만 센다 (퇴원생은 한도에서 뺀다)
+  const currentCount = await prisma.student.count({
+    where: { teacherId: teacher.id, status: 'active' },
+  })
   if (currentCount + dataRows.length > APP_LIMITS.maxStudents) {
     return NextResponse.json({
       error: `등록 가능 학생 수를 초과합니다. (현재 ${currentCount}명 / 한도 ${APP_LIMITS.maxStudents}명 / 업로드 ${dataRows.length}명)`,

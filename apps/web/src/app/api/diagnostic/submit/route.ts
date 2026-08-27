@@ -1,6 +1,11 @@
 // apps/web/src/app/api/diagnostic/submit/route.ts
+//
+// ⚠️ 아직 화면에 연결되지 않은 기능이다 (호출하는 UI가 없다). 그래도 배포되면
+// 실제로 열리는 엔드포인트이므로 로그인 검사는 반드시 둔다 — 연결 전이라고
+// 열어 두면 아무나 세션을 만들고 리포트를 읽을 수 있다.
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getCurrentUser } from '@/lib/auth'
 import {
   estimateThetaEAP,
   selectNextItem,
@@ -16,6 +21,9 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+
   try {
     const body = await req.json().catch(() => ({}))
     const {

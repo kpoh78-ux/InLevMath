@@ -1,5 +1,11 @@
+// apps/web/src/app/api/diagnostic/[sessionId]/report/route.ts
+//
+// ⚠️ 아직 화면에 연결되지 않은 기능이다 (호출하는 UI가 없다). 그래도 배포되면
+// 실제로 열리는 엔드포인트이므로 로그인 검사는 반드시 둔다 — 연결 전이라고
+// 열어 두면 아무나 세션을 만들고 리포트를 읽을 수 있다.
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getCurrentUser } from '@/lib/auth'
 import { getDiagnosticSession, generateDiagnosticReport } from '@/lib/diagnosticStore'
 
 export const dynamic = 'force-dynamic'
@@ -9,9 +15,12 @@ export const dynamic = 'force-dynamic'
  * 4단계: 최종 5각 방사형 역량 분석 리포트 생성 API
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+
   try {
     const { sessionId } = await params
 

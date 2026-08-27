@@ -79,8 +79,11 @@ export async function POST(req: NextRequest) {
   const teacher = await academyTeacher(user.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
-  // 학생 수 한도 확인
-  const studentCount = await prisma.student.count({ where: { teacherId: teacher.id } })
+  // 학생 수 한도 확인 — 재원생만 센다.
+  // 퇴원생까지 세면 몇 해 지나 학생이 50명뿐인 학원도 등록이 막힌다.
+  const studentCount = await prisma.student.count({
+    where: { teacherId: teacher.id, status: 'active' },
+  })
   if (studentCount >= APP_LIMITS.maxStudents) {
     return NextResponse.json({ error: `학생 등록 한도(${APP_LIMITS.maxStudents}명)를 초과했습니다.` }, { status: 409 })
   }

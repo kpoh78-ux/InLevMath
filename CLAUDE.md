@@ -54,6 +54,16 @@ apps/web      — Next.js 16 App Router (선생님용 웹 + 백엔드 API)
 packages/shared — 공통 타입/상수/유틸 (TypeScript, 빌드 없이 직접 ts 임포트)
 ```
 
+워크스페이스는 이 셋뿐이다. `apps/kiosk`(고아 폴더)와 `packages/database`(쓰이지 않는
+중복 schema.prisma)는 정리했다. 키오스크 화면은 `apps/web/src/components/kiosk/` 안에 있다.
+
+### 아직 화면에 연결되지 않은 기능
+
+`/api/diagnostic/*`, `/api/knowledge/trace-deficit` 와 그 라이브러리
+(`src/lib/irt.ts`, `knowledgeGraph.ts`, `diagnosticStore.ts`)는 IRT 진단평가·지식그래프
+기능이다. **호출하는 UI가 아직 없다.** 죽은 코드가 아니라 만들다 만 기능이므로 지우지 않는다.
+다만 배포되면 실제로 열리는 엔드포인트이므로 로그인 검사는 들어가 있다.
+
 ## Common Commands
 
 ### 모바일 앱 실행
@@ -78,12 +88,25 @@ npm run lint            # turbo lint
 ```
 
 ### DB 마이그레이션
+
+> ⚠️ **`npx prisma migrate dev` 를 실행하지 않는다.**
+> 이 DB(Railway 운영)는 마이그레이션 이력에 없는 테이블이 `db push` 로 만들어져 드리프트가 있다.
+> `migrate dev` 는 이를 만나면 **DB 전체 리셋을 요구한다** — 학습지 1,200여 개와 정답이 사라진다.
+> 개발 DB가 따로 없으므로 로컬에서도 같은 운영 DB를 본다.
+
+스키마를 바꿀 때는 **SQL 을 손으로 쓰고 `migrate deploy` 로만 적용한다.**
+
 ```bash
 cd apps/web
-npx prisma migrate dev   # 스키마 변경 후 반드시 실행
-npx prisma generate      # 클라이언트 재생성
-npx prisma studio        # DB 브라우저
+# 1) prisma/schema.prisma 수정
+# 2) prisma/migrations/<YYYYMMDDHHMMSS>_<이름>/migration.sql 을 직접 작성
+#    ALTER TABLE ... ADD COLUMN IF NOT EXISTS ... 처럼 여러 번 돌려도 안전하게 쓴다
+npx prisma migrate deploy   # 이력에 없는 마이그레이션만 적용 (리셋 없음)
+npx prisma generate         # 클라이언트 재생성
+npx prisma studio           # DB 브라우저
 ```
+
+기존 예시: `20260827200000_class_schedule_students`, `20260827210000_daily_report_fields`
 
 ## Architecture
 
@@ -259,7 +282,7 @@ GET  /api/events                  — SSE 실시간 알림
 - JSX에 `import React` 불필요 (React 17+ transform)
 - `@inlevmath/shared` 타입 변경 시 모바일/웹 양쪽 영향 검토 필요
 - SSE는 단일 서버 인메모리 방식 — 다중 서버 배포 시 Redis Pub/Sub으로 교체 필요
-- 스키마 변경 시 `npx prisma migrate dev` 실행 필수
+- **스키마 변경 시 `migrate dev` 금지** — SQL 을 손으로 쓰고 `npx prisma migrate deploy` 로만 적용한다 (위 [DB 마이그레이션](#db-마이그레이션) 참고)
 
 ## Environment Variables (apps/web/.env)
 

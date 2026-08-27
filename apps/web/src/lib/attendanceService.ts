@@ -100,13 +100,22 @@ export function parseAttendanceTime(dateStr: string, time?: string | null): Date
 //
 // 등원 시각을 그날 수업 시작 시각과 맞대어 지각 여부를 계산한다.
 //
+// 10분 이상 늦으면 지각이다 (LATE_THRESHOLD_MINUTES). 늦은 정도는 화면과 같은
+// 눈금(10·20·30·40·50·60분 이상)으로 올려 담는다.
+//
 // 기준은 "그 학생이 그날 들어가는 연강 구간의 첫 수업"이다. 선생님별로 따지지
 // 않는다 — A선생님 15:00 수업 뒤에 B선생님 17:00 수업이 이어지면 학생은 15:00에
 // 한 번 등원하므로, 17:00과 맞대면 멀쩡히 온 학생이 지각으로 찍힌다.
 // 그날 수업을 모으는 일은 dailyClasses.getStudentDayClasses 가 맡는다.
 
-/** 이 시간까지는 지각으로 보지 않는다 (분) */
-export const LATE_GRACE_MINUTES = 5;
+/**
+ * 지각으로 보는 기준 (분).
+ *
+ * 10분 이상 늦어야 지각이다. 9분까지는 정상 출석으로 두고 학부모에게도
+ * 지각으로 알리지 않는다 — 수업 시작 직후 몇 분은 준비 시간에 가깝고,
+ * 그것까지 지각으로 통보하면 알림이 신뢰를 잃는다.
+ */
+export const LATE_THRESHOLD_MINUTES = 10;
 
 /** 선생님이 화면에서 고르는 값과 같은 눈금. 60은 "60분 이상" */
 export const LATE_MINUTE_BUCKETS = [10, 20, 30, 40, 50, 60];
@@ -154,7 +163,7 @@ export async function computeLateness(
   if (!start) return none;
 
   const diffMin = Math.floor((checkInAt.getTime() - start.getTime()) / 60000);
-  if (diffMin <= LATE_GRACE_MINUTES) {
+  if (diffMin < LATE_THRESHOLD_MINUTES) {
     return { status: 'ON_TIME', lateMinutes: null, scheduledStart: target.startTime, plan };
   }
   return {

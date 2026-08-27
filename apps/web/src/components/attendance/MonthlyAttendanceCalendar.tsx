@@ -578,7 +578,8 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1.5">
                     {lateLabel(addLateMinutes)} 지각으로 기록됩니다 · 키오스크로 등원하면
-                    시간표의 수업 시작 시각과 맞대어 자동으로 판정됩니다
+                    수업 시작 시각과 맞대어 <strong>10분 이상</strong> 늦은 경우에만
+                    자동으로 지각 처리됩니다
                   </p>
                 </div>
               )}

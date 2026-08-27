@@ -8,7 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 학생이 오프라인 문제를 풀고 결과를 입력하면 능력치(이해력/추론력/계산력)가 오르고 미션을 클리어해 레벨업하는 구조.
 
 - 학생 최대 300명, 선생님 최대 10명 (`APP_LIMITS` in `packages/shared/src/index.ts`)
-- 로그인 아이디: 핸드폰번호 11자리, 학생 초기 비밀번호: `math1234`
+- 로그인 아이디: 핸드폰번호 11자리, 학생·선생님 초기 비밀번호: `math1234`
+
+### 계정 비밀번호 규칙
+
+- **본인 변경** — 학원관리 → 내 계정(`/dashboard/manage/account`). 현재 비밀번호를 반드시 묻는다
+- **잊었을 때** — 관리자가 선생님 관리에서 `비번 초기화` → `math1234`. 현재 비밀번호를 묻지 않는다
+- Supabase Auth 비밀번호는 `HMAC(JWT_SECRET, "supa_"+userId)` 라 사용자 비밀번호와 무관하다.
+  비밀번호를 바꿀 때 Supabase 쪽은 건드리지 않는다
+- **로그인 아이디(핸드폰번호)를 바꾸면 반드시 `syncSupabaseEmail()` 을 함께 부른다.**
+  Supabase 계정 이메일이 `phoneToEmail(phone)` 로 만들어져 있어, 번호만 바꾸면 로그인이
+  매번 로컬 JWT 폴백으로 조용히 떨어진다
 
 ## Target Platforms
 
@@ -104,10 +114,12 @@ npx prisma studio        # DB 브라우저
 ```
 POST /api/auth/login              — 핸드폰번호+비밀번호 로그인
 POST /api/auth/register           — 선생님 계정 생성
-POST /api/auth/change-password    — 본인 비밀번호 변경
+POST /api/auth/change-password    — 본인 비밀번호 변경 (선생님·학생 공용)
 GET  /api/students                — 선생님: 담당 학생 목록
 POST /api/students                — 선생님: 학생 등록 (초기PW math1234 자동 설정)
 POST /api/students/[id]/reset-password — 선생님: 학생 비밀번호 math1234로 초기화
+GET/POST/PATCH/DELETE /api/admin/teachers — 관리자: 선생님 목록·등록·정보수정/권한·삭제
+POST /api/admin/teachers/[teacherId]/reset-password — 관리자: 선생님 비밀번호 math1234로 초기화
 POST /api/missions/results        — 학생: 미션 결과 입력 + SSE 발송
 GET  /api/missions/results        — 학생: 본인 학습 이력
 GET  /api/events                  — SSE 연결 엔드포인트

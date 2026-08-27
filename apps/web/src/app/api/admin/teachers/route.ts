@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { supabaseAdmin } from '@/lib/supabase'
-import { ensureSupabaseUser } from '@/lib/auth'
+import { ensureSupabaseUser, syncSupabaseEmail } from '@/lib/auth'
 import { requireAdmin } from '@/lib/teacherAuth'
 import { APP_LIMITS } from '@inlevmath/shared'
 
@@ -152,20 +152,57 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ ok: true })
 }
 
-// PATCH /api/admin/teachers — body: { teacherId, isAdmin } 관리자 권한 부여/회수
+// PATCH /api/admin/teachers — body: { teacherId, isAdmin?, name?, phone? }
+//
+// 관리자 권한 부여/회수와 이름·로그인 아이디(핸드폰번호) 수정을 함께 처리한다.
+// 셋 다 선택 항목이라 보낸 것만 바뀐다.
 export async function PATCH(req: NextRequest) {
   const guard = await requireAdmin(req)
   if ('response' in guard) return guard.response
 
-  const { teacherId, isAdmin } = await req.json().catch(() => ({})) as {
-    teacherId?: string; isAdmin?: boolean
+  const { teacherId, isAdmin, name, phone } = await req.json().catch(() => ({})) as {
+    teacherId?: string; isAdmin?: boolean; name?: string; phone?: string
   }
-  if (!teacherId || typeof isAdmin !== 'boolean') {
-    return NextResponse.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 })
+  if (!teacherId) {
+    return NextResponse.json({ error: '선생님을 선택하세요.' }, { status: 400 })
+  }
+
+  const target = await prisma.teacher.findUnique({
+    where: { id: teacherId },
+    select: { id: true, userId: true, user: { select: { name: true, phone: true } } },
+  })
+  if (!target) return NextResponse.json({ error: '선생님을 찾을 수 없습니다.' }, { status: 404 })
+
+  const nextName = typeof name === 'string' ? name.trim() : undefined
+  const nextPhone = typeof phone === 'string' ? phone.trim() : undefined
+
+  if (nextName !== undefined && nextName === '') {
+    return NextResponse.json({ error: '이름을 입력하세요.' }, { status: 400 })
+  }
+
+  if (nextPhone !== undefined && nextPhone !== target.user.phone) {
+    if (!/^\d{11}$/.test(nextPhone)) {
+      return NextResponse.json({ error: '핸드폰번호는 11자리 숫자로 입력하세요.' }, { status: 400 })
+    }
+    // 로그인 아이디는 학생과 한 공간을 쓴다 — 겹치면 누가 로그인되는지 알 수 없다
+    const taken = await prisma.user.findUnique({
+      where: { phone: nextPhone },
+      select: { id: true, name: true, role: true },
+    })
+    if (taken && taken.id !== target.userId) {
+      return NextResponse.json(
+        {
+          error: taken.role === 'teacher'
+            ? `이미 ${taken.name} 선생님이 쓰는 번호입니다.`
+            : `이 번호는 학생 ${taken.name}의 로그인 아이디로 사용 중입니다.`,
+        },
+        { status: 409 }
+      )
+    }
   }
 
   // 관리자가 0명이 되면 아무도 선생님을 관리할 수 없다
-  if (!isAdmin) {
+  if (isAdmin === false) {
     if (teacherId === guard.auth.teacherId) {
       return NextResponse.json({ error: '본인의 관리자 권한은 해제할 수 없습니다.' }, { status: 400 })
     }
@@ -175,6 +212,23 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  await prisma.teacher.update({ where: { id: teacherId }, data: { isAdmin } })
-  return NextResponse.json({ ok: true })
+  if (typeof isAdmin === 'boolean') {
+    await prisma.teacher.update({ where: { id: teacherId }, data: { isAdmin } })
+  }
+  let authReady = true
+  if (nextName !== undefined || nextPhone !== undefined) {
+    await prisma.user.update({
+      where: { id: target.userId },
+      data: {
+        ...(nextName !== undefined ? { name: nextName } : {}),
+        ...(nextPhone !== undefined ? { phone: nextPhone } : {}),
+      },
+    })
+    // 로그인 아이디가 바뀌면 Supabase Auth 이메일도 옮겨야 한다
+    if (nextPhone !== undefined && nextPhone !== target.user.phone) {
+      authReady = await syncSupabaseEmail(target.userId, nextPhone)
+    }
+  }
+
+  return NextResponse.json({ ok: true, authReady })
 }

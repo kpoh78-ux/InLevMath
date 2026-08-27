@@ -86,6 +86,34 @@ export async function ensureSupabaseUser(userId: string, phone: string): Promise
   return supabaseUserId
 }
 
+/**
+ * 로그인 아이디(핸드폰번호)를 바꿨을 때 Supabase Auth 이메일도 같이 옮긴다.
+ *
+ * Supabase 계정의 이메일은 phoneToEmail(phone) 로 만들어져 있다. 번호만 바꾸고
+ * 여기를 두면 signInWithSupabase 가 새 번호로 만든 이메일을 찾지 못해 매번
+ * 로컬 JWT 폴백으로 떨어진다 (로그인은 되지만 조용히 반쪽이 된다).
+ *
+ * Supabase 가 막혀 있어도 번호 변경 자체는 성공으로 둔다 — 폴백이 있어
+ * 로그인은 계속 되고, 다음에 다시 맞출 수 있다.
+ */
+export async function syncSupabaseEmail(userId: string, newPhone: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { supabaseId: true } })
+  if (!user?.supabaseId) return true // 아직 Supabase 계정이 없으면 다음 로그인 때 새 번호로 만들어진다
+
+  try {
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, {
+      email: phoneToEmail(newPhone),
+      email_confirm: true,
+    })
+    if (error) throw new Error(error.message)
+    return true
+  } catch (e) {
+    console.warn('[auth] Supabase 이메일 변경 실패 — 로컬 JWT로 로그인합니다:',
+      e instanceof Error ? e.message : e)
+    return false
+  }
+}
+
 // Supabase Auth로 로그인하여 access_token(JWT) 반환. Supabase 불가 시 로컬 JWT 폴백
 export async function signInWithSupabase(userId: string, phone: string): Promise<string> {
   try {

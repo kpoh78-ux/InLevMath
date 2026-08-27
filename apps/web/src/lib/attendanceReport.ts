@@ -1,6 +1,9 @@
 // apps/web/src/lib/attendanceReport.ts
 //
-// 출결 결과를 학부모 알림톡으로 보내기 위한 리포트 구성 + 발송.
+// 출결·학습 결과를 학부모 알림톡으로 보내기 위한 리포트 구성 + 발송.
+//
+// 일별은 출결만이 아니라 그날 수업과 5대 학습항목을 함께 담는다.
+// 한 학생이 같은 날 여러 선생님 수업을 들어도 알림톡은 한 통이다.
 //
 // ⚠️ 카카오 비즈엠이 아직 연동되지 않았으므로 실제로는 발송되지 않는다.
 // sendKakaoAlimtalk()이 NOT_CONFIGURED 실패를 돌려주고, 그 결과를 그대로
@@ -9,6 +12,7 @@
 import { prisma } from '@/lib/db';
 import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
 import { formatTimeKorean } from '@/lib/attendanceService';
+import { buildDailyStudentReport, formatDailyReportMessage } from '@/lib/dailyReportAggregator';
 
 export type ReportScope = 'DAILY' | 'MONTHLY';
 
@@ -70,54 +74,50 @@ async function activeStudents(teacherId: string) {
   });
 }
 
-/** 하루치 출결 리포트 — 그날 출결 기록이 있는 학생만 대상 */
+/**
+ * 하루치 리포트 — 그날 출결 기록이나 학습 기록이 있는 학생만 대상.
+ *
+ * 한 학생이 같은 날 여러 선생님 수업을 들어도 한 통이다.
+ * 수업 목록과 5대 항목(지각·숙제·교재·오답클리닉·단원평가) 집계는
+ * dailyReportAggregator 가 날짜 단위로 합쳐 준다.
+ */
 export async function buildDailyReport(teacherId: string, date: string): Promise<AttendanceReportRow[]> {
   const students = await activeStudents(teacherId);
-  const studentIds = students.map((s) => s.id);
 
-  const logs = await prisma.attendanceLog.findMany({
-    where: { studentId: { in: studentIds }, date },
-  });
+  const rows = await Promise.all(
+    students.map(async (s) => {
+      const report = await buildDailyStudentReport(s.id, date);
+      if (!report || !report.hasAnything) return null;
 
-  const logByStudent = new Map(logs.map((l) => [l.studentId, l]));
-
-  return students
-    .filter((s) => logByStudent.has(s.id))
-    .map((s) => {
-      const log = logByStudent.get(s.id)!;
-      const name = s.user.name;
-      const label = attendanceStatusLabel(log.status);
       const parentPhone = s.parentPhone || s.user.phone || '';
+      const label = report.lateness.recorded ? report.lateness.statusLabel : '수업';
 
-      const checkIn = log.checkInTime ? formatTimeKorean(log.checkInTime) : '';
-      const checkOut = log.checkOutTime ? formatTimeKorean(log.checkOutTime) : '';
-
-      let detail: string;
-      let message: string;
-
-      if (log.status === 'ABSENT' || log.status === 'EXCUSED') {
-        detail = label;
-        message = `[InLevMath 출결안내]\n${name} 학생이 ${formatDateKorean(date)} ${label} 처리되었습니다.\n\n문의사항은 학원으로 연락 주시기 바랍니다.`;
-      } else {
-        detail = [checkIn && `등원 ${checkIn}`, checkOut && `하원 ${checkOut}`, label].filter(Boolean).join(' · ');
-        const timeLine = [checkIn && `등원 ${checkIn}`, checkOut && `하원 ${checkOut}`].filter(Boolean).join(' / ');
-        message =
-          `[InLevMath 출결안내]\n${name} 학생 ${formatDateKorean(date)} 출결 안내입니다.\n` +
-          (timeLine ? `${timeLine}\n` : '') +
-          `상태: ${label}`;
-      }
+      const detail = [
+        report.classes.classes.length > 0 && `수업 ${report.classes.classes.length}개`,
+        report.lateness.checkInTime && `등원 ${report.lateness.checkInTime}`,
+        report.lateness.checkOutTime && `하원 ${report.lateness.checkOutTime}`,
+        report.homework.count > 0 && `숙제 ${report.homework.count}건`,
+        report.textbook.count > 0 && `교재 ${report.textbook.count}권`,
+        report.clinic.count > 0 && `오답 ${report.clinic.count}건`,
+        report.exam.count > 0 && `평가 ${report.exam.count}건`,
+        label,
+      ].filter(Boolean).join(' · ');
 
       return {
         studentId: s.id,
-        studentName: name,
+        studentName: report.studentName,
         grade: s.grade || '',
         parentPhone,
         statusLabel: label,
         detail,
-        message,
+        message: formatDailyReportMessage(report),
         sendable: Boolean(parentPhone),
-      };
+      } satisfies AttendanceReportRow;
     })
+  );
+
+  return rows
+    .filter((r): r is AttendanceReportRow => r !== null)
     .sort((a, b) => a.studentName.localeCompare(b.studentName, 'ko'));
 }
 

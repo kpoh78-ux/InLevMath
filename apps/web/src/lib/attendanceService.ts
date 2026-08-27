@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/db';
 import { broadcastToTeacher, broadcastToAll } from '@/lib/sse';
 import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
+import { getStudentDayClasses, describeClasses, type DailyClassPlan } from '@/lib/dailyClasses';
 
 export interface KioskCheckResult {
   studentName: string;
@@ -85,9 +86,12 @@ export function parseAttendanceTime(dateStr: string, time?: string | null): Date
 
 // ── 지각 자동 판정 ──────────────────────────────────────────────────────────
 //
-// 등원 시각을 그날 그 학생의 수업 시작 시각과 맞대어 지각 여부를 계산한다.
-// 수업 학생은 ClassScheduleStudent 관계로 잡혀 있어야 한다 — 이름 문자열로는
-// 동명이인을 가릴 수 없어 예전에는 이 계산을 할 수 없었다.
+// 등원 시각을 그날 수업 시작 시각과 맞대어 지각 여부를 계산한다.
+//
+// 기준은 "그 학생이 그날 들어가는 연강 구간의 첫 수업"이다. 선생님별로 따지지
+// 않는다 — A선생님 15:00 수업 뒤에 B선생님 17:00 수업이 이어지면 학생은 15:00에
+// 한 번 등원하므로, 17:00과 맞대면 멀쩡히 온 학생이 지각으로 찍힌다.
+// 그날 수업을 모으는 일은 dailyClasses.getStudentDayClasses 가 맡는다.
 
 /** 이 시간까지는 지각으로 보지 않는다 (분) */
 export const LATE_GRACE_MINUTES = 5;
@@ -101,27 +105,21 @@ export function bucketLateMinutes(minutes: number): number {
   return Math.min(Math.max(step, 10), 60);
 }
 
-/** 'YYYY-MM-DD' → 내부 요일 인덱스(0=월 … 6=일). 형식이 틀리면 null */
-function dayOfWeekOf(dateStr: string): number | null {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  if (!y || !m || !d) return null;
-  const js = new Date(y, m - 1, d).getDay();
-  return js === 0 ? 6 : js - 1;
-}
-
 export type LatenessVerdict = {
   status: 'ON_TIME' | 'LATE';
   /** 지각일 때만 값이 있다 */
   lateMinutes: number | null;
   /** 판정에 쓴 수업 시작 시각("HH:mm"). 배정된 수업이 없으면 null */
   scheduledStart: string | null;
+  /** 그날 수업 전체 — 알림톡·리포트에서 함께 쓴다 */
+  plan: DailyClassPlan;
 };
 
 /**
  * 등원 시각으로 지각 여부를 판정한다.
  *
- * 그날 배정된 수업이 여러 개면 등원 시점에 아직 끝나지 않은 첫 수업을 기준으로 삼는다.
- * (수업이 모두 끝난 뒤 왔다면 마지막 수업 기준)
+ * 연강 구간이 여러 개면(예: 오전반 + 저녁반) 등원 시점에 아직 끝나지 않은 첫
+ * 구간을 기준으로 삼는다. 모두 끝난 뒤 왔다면 마지막 구간 기준.
  * 배정된 수업이 없으면 기준이 없으므로 정상 출석으로 둔다 — 임의로 지각을 붙이지 않는다.
  */
 export async function computeLateness(
@@ -129,32 +127,30 @@ export async function computeLateness(
   dateStr: string,
   checkInAt: Date
 ): Promise<LatenessVerdict> {
-  const none: LatenessVerdict = { status: 'ON_TIME', lateMinutes: null, scheduledStart: null };
+  const plan = await getStudentDayClasses(studentId, dateStr);
+  const none: LatenessVerdict = { status: 'ON_TIME', lateMinutes: null, scheduledStart: null, plan };
 
-  const dow = dayOfWeekOf(dateStr);
-  if (dow === null) return none;
-
-  const schedules = await prisma.classSchedule.findMany({
-    where: { dayOfWeek: dow, students: { some: { studentId } } },
-    select: { startTime: true, endTime: true },
-    orderBy: { startTime: 'asc' },
-  });
-  if (schedules.length === 0) return none;
+  if (plan.blocks.length === 0) return none;
 
   const target =
-    schedules.find(sc => {
-      const end = parseAttendanceTime(dateStr, sc.endTime);
+    plan.blocks.find(b => {
+      const end = parseAttendanceTime(dateStr, b.endTime);
       return end != null && checkInAt.getTime() <= end.getTime();
-    }) ?? schedules[schedules.length - 1];
+    }) ?? plan.blocks[plan.blocks.length - 1];
 
   const start = parseAttendanceTime(dateStr, target.startTime);
   if (!start) return none;
 
   const diffMin = Math.floor((checkInAt.getTime() - start.getTime()) / 60000);
   if (diffMin <= LATE_GRACE_MINUTES) {
-    return { status: 'ON_TIME', lateMinutes: null, scheduledStart: target.startTime };
+    return { status: 'ON_TIME', lateMinutes: null, scheduledStart: target.startTime, plan };
   }
-  return { status: 'LATE', lateMinutes: bucketLateMinutes(diffMin), scheduledStart: target.startTime };
+  return {
+    status: 'LATE',
+    lateMinutes: bucketLateMinutes(diffMin),
+    scheduledStart: target.startTime,
+    plan,
+  };
 }
 
 export function getTodayDateString(date: Date = new Date()): string {
@@ -451,14 +447,22 @@ export async function confirmCheckOut(
     });
   }
 
+  // 그날 수업 전체 — 선생님이 여럿이어도 하루는 하나로 묶어 안내한다
+  const dayPlan = await getStudentDayClasses(student.id, todayStr);
+  const classLine = describeClasses(dayPlan);
+
   // 하원 카카오 알림톡 발송 — 미연동 상태면 success: false가 돌아온다
   const alimtalkResult = await sendKakaoAlimtalk({
     templateCode: 'INLEV_ATTEND_OUT',
     recipientPhone: targetParentPhone,
-    message: `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.`,
+    message:
+      `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
+      (classLine ? `\n\n오늘 수업\n${classLine}` : ''),
     variables: {
       studentName: student.user.name,
       checkOutTime: nowTimeStr,
+      classSummary: classLine,
+      teacherNames: dayPlan.teacherNames.join(', '),
       academyName: 'InLevMath 학원',
     },
   });
@@ -627,16 +631,23 @@ export async function toggleAttendance(params: {
     const parentPhone = student.parentPhone || student.user.phone;
     const templateCode = type === 'CHECK_OUT' ? 'INLEV_ATTEND_OUT' : 'INLEV_ATTEND_IN';
 
+    // 하원 안내에는 그날 수업 전체를 붙인다 — 선생님이 여럿이어도 하루는 하나다
+    const dayPlan = type === 'CHECK_OUT' ? await getStudentDayClasses(studentId, targetDate) : null;
+    const classLine = dayPlan ? describeClasses(dayPlan) : '';
+
     const notifyResult = await sendKakaoAlimtalk({
       templateCode,
       recipientPhone: parentPhone,
       message:
         type === 'CHECK_OUT'
-          ? `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.`
+          ? `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
+            (classLine ? `\n\n오늘 수업\n${classLine}` : '')
           : `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 안전하게 등원(출석)하였습니다.`,
       variables: {
         studentName: student.user.name,
         time: timeStr,
+        classSummary: classLine,
+        teacherNames: dayPlan ? dayPlan.teacherNames.join(', ') : '',
         academyName: 'InLevMath 학원',
       },
     });

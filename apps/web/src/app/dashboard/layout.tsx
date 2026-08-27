@@ -79,6 +79,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([])
+  // 좁은 화면(태블릿 세로 이하)에서 출결 사이드바를 서랍으로 여닫는다
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const fetchSidebarStudents = useCallback(async () => {
     try {
@@ -333,8 +335,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* ── 상단 헤더 ── */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
-        <div className="px-4 h-14 flex items-center justify-between">
-          <nav className="flex h-14">
+        <div className="px-2 md:px-4 h-14 flex items-center justify-between gap-2">
+          {/* 좁은 화면에서는 탭이 잘리는 대신 가로로 밀린다 */}
+          <nav className="flex h-14 overflow-x-auto no-scrollbar">
             {NAV.map(n => {
               const active = n.href === '/dashboard'
                 ? pathname === '/dashboard'
@@ -346,11 +349,11 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   className={`
                     relative flex items-center h-full border-b-2 transition-all duration-150
                     ${n.brand
-                      ? `w-[160px] pl-6 text-[18px] font-black tracking-tight
+                      ? `w-[104px] lg:w-[160px] pl-3 lg:pl-6 text-[16px] lg:text-[18px] font-black tracking-tight shrink-0
                           ${active
                             ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
                             : 'border-transparent text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`
-                      : `px-6 text-[15px] font-medium
+                      : `px-3 lg:px-6 text-[14px] lg:text-[15px] font-medium shrink-0 whitespace-nowrap
                           ${active
                             ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60'
                             : 'border-transparent text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`
@@ -373,12 +376,23 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            {/* 출결 사이드바는 좁은 화면에서 서랍으로 연다 */}
+            {showAttendanceSidebar && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden text-xs font-semibold text-indigo-600 border border-indigo-200
+                  hover:bg-indigo-50 rounded-lg px-2.5 py-1.5 transition-colors"
+                aria-label="학생 출결 목록 열기"
+              >
+                출결
+              </button>
+            )}
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+              <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
                 {teacherName.slice(0, 1)}
               </span>
-              <span>{teacherName}</span>
+              <span className="hidden md:inline">{teacherName}</span>
             </div>
             <button
               onClick={handleLogout}
@@ -393,16 +407,41 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* ── 바디 (사이드바 + 메인) ── */}
       <div className="flex flex-1 overflow-hidden">
+        {showAttendanceSidebar && sidebarOpen && (
+          <div
+            className="lg:hidden fixed inset-0 top-14 bg-black/40 z-30"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
         {showAttendanceSidebar && (
-          <aside className="w-48 bg-white border-r border-gray-200 shrink-0 flex flex-col h-[calc(100vh-3.5rem)] sticky top-14">
-            <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+          <aside
+            className={`
+              w-56 lg:w-48 bg-white border-r border-gray-200 shrink-0 flex flex-col
+              h-[calc(100vh-3.5rem)] top-14
+              fixed left-0 z-40 shadow-xl transition-transform duration-200
+              lg:sticky lg:z-auto lg:shadow-none lg:translate-x-0
+              ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+            `}
+          >
+            <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-bold text-gray-800">등록 학생</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명 (등원 {attendedTotal}명)</p>
               </div>
-              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
-                실시간
-              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                  실시간
+                </span>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="lg:hidden text-gray-400 hover:text-gray-700 text-xl leading-none px-1.5"
+                  aria-label="학생 목록 닫기"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
@@ -466,7 +505,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           </aside>
         )}
 
-        <main className="flex-1 overflow-auto px-6 py-6">
+        <main className="flex-1 min-w-0 overflow-auto px-4 md:px-6 py-4 md:py-6">
           {children}
         </main>
       </div>

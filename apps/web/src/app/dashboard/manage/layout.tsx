@@ -70,25 +70,25 @@ function ManageLayoutInner({ children }: { children: React.ReactNode }) {
   const { isAdmin } = useMe()
 
   return (
-    <div className="flex gap-0 -mx-6 -my-6 min-h-full">
-      {/* 사이드바 */}
-      <aside className="w-48 bg-white border-r border-gray-200 shrink-0 py-5">
-        <p className="px-5 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">관리</p>
-        <nav className="space-y-0.5 px-2">
+    <div className="flex flex-col md:flex-row gap-0 -mx-4 md:-mx-6 -my-4 md:-my-6 min-h-full">
+      {/* 좁은 화면: 가로 탭 줄 · md 이상: 세로 사이드바 */}
+      <aside className="md:w-44 lg:w-48 bg-white border-b md:border-b-0 md:border-r border-gray-200 shrink-0 py-2 md:py-5">
+        <p className="hidden md:block px-5 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">관리</p>
+        <nav className="flex md:block md:space-y-0.5 px-2 gap-1 overflow-x-auto no-scrollbar">
           {SIDE_NAV.map(item => {
             const locked = item.adminOnly === true && !isAdmin
             const active = !locked && pathname.startsWith(item.href)
             return locked ? (
               <div key={item.href}
                 title="관리자만 사용할 수 있습니다"
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-300 cursor-not-allowed select-none">
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-gray-300 cursor-not-allowed select-none whitespace-nowrap shrink-0">
                 {item.icon}
                 <span>{item.label}</span>
-                <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">관리자</span>
+                <span className="ml-auto hidden md:inline text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">관리자</span>
               </div>
             ) : (
               <Link key={item.href} href={withStudent(item.href)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   active
                     ? 'bg-indigo-50 text-indigo-700'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -103,7 +103,7 @@ function ManageLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* 콘텐츠 영역 */}
       {/* min-w-0 이 없으면 표가 flex 항목을 밀어내 가로 스크롤이 먹지 않는다 */}
-      <main className="flex-1 min-w-0 px-8 py-6 bg-gray-50 overflow-auto">
+      <main className="flex-1 min-w-0 px-4 md:px-8 py-4 md:py-6 bg-gray-50 overflow-auto">
         {children}
       </main>
     </div>

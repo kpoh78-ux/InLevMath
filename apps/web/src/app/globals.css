@@ -56,6 +56,15 @@ body {
   min-width: 44px;
 }
 
+/* 가로로 미는 탭 줄 — 스크롤은 되되 막대는 감춘다 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* 12인치+ 태블릿 펜슬/스타일러스 오터치 방지 및 캔버스 스크롤 락 */
 .canvas-touch-none {
   touch-action: none;

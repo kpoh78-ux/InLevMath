@@ -10,12 +10,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 학생 최대 300명, 선생님 최대 10명 (`APP_LIMITS` in `packages/shared/src/index.ts`)
 - 로그인 아이디: 핸드폰번호 11자리, 학생 초기 비밀번호: `math1234`
 
-## Target Platforms (초기 버전 기준 — 항상 적용)
+## Target Platforms
 
-| 앱 | 대상 플랫폼 | 실행 환경 |
+| 앱 | 대상 기기 | 실행 환경 |
 |---|---|---|
-| **학생용** (`apps/mobile`) | Android 스마트폰 / 태블릿 | Android OS 네이티브 앱 (Expo) |
-| **선생님용** (`apps/web`) | Windows PC | Chrome 브라우저 웹 앱 |
+| **학생용** (`apps/mobile`) | Android 스마트폰 / 태블릿 | Android 네이티브 앱 (Expo) |
+| **선생님용** (`apps/web`) | 태블릿 / 노트북 / 데스크탑 | Chrome 브라우저 웹 앱 |
 
 ### 개발 시 항상 적용할 제약
 
@@ -25,11 +25,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 터치 인터페이스 기준으로 UI 설계 — 버튼 최소 44dp 이상
 - 태블릿에서는 콘텐츠가 좌우로 너무 늘어나지 않도록 `maxWidth` 제한 권장
 
-**선생님 웹 (Windows Chrome 전용):**
-- 모바일 반응형 불필요 — 데스크탑 해상도(1280px 이상) 기준으로만 설계
-- 마우스 + 키보드 인터랙션 기준으로 UI 설계 (hover 효과, 오른쪽 클릭 등 사용 가능)
+**선생님 웹 (태블릿부터 데스크탑까지):**
+- **최소 지원 폭 768px**(태블릿 세로)부터 데스크탑까지 동작해야 한다.
+  데스크탑 전용으로 짜지 않는다 — 선생님이 수업 중 태블릿으로 출결·채점을 처리한다
+- 브레이크포인트 기준: `~767` 좁은 화면 / `md 768~1023` 태블릿 / `lg 1024+` 데스크탑
+- **터치와 마우스 양쪽**을 고려한다. hover에만 기능을 걸지 말고, 터치 대상은 최소 44px
+- 고정 폭 사이드바를 화면에 못 박지 않는다. 좁은 화면에서는 접히거나 서랍(drawer)으로 열려야 한다
+- 넓은 표·그리드는 `overflow-x: auto` 컨테이너 안에 두어 본문이 가로로 밀리지 않게 한다
 - Chrome 최신 버전 기준 — 크로스브라우저 호환성 고려 불필요
-- 테이블·그리드 레이아웃을 적극 활용해 많은 정보를 한 화면에 표시
 
 ## Monorepo Structure
 
@@ -37,7 +40,7 @@ Turborepo + npm workspaces 구성:
 
 ```
 apps/mobile   — Expo 56 + Expo Router (학생용 Android 앱)
-apps/web      — Next.js 16 App Router (선생님용 Windows Chrome 웹 + 백엔드 API)
+apps/web      — Next.js 16 App Router (선생님용 웹 + 백엔드 API)
 packages/shared — 공통 타입/상수/유틸 (TypeScript, 빌드 없이 직접 ts 임포트)
 ```
 
@@ -111,15 +114,33 @@ GET  /api/events                  — SSE 연결 엔드포인트
 ```
 
 ### 모바일 화면 구조
+
+**학생 전용 앱이다.** 선생님용 화면은 웹으로 옮겼으므로 여기에 다시 만들지 않는다.
+선생님 계정으로 로그인을 시도하면 로그인 화면에서 막고 웹으로 안내한다.
+
 ```
-app/(auth)/login.tsx              — 핸드폰번호 로그인
-app/(auth)/register.tsx           — 선생님 계정 가입
+app/(auth)/login.tsx              — 핸드폰번호 로그인 (학생 계정만 통과)
 app/(student)/index.tsx           — 학생 대시보드 (레벨/능력치/미션 로드맵)
 app/(student)/mission.tsx         — 미션 결과 입력
 app/(student)/history.tsx         — 학습 이력
+app/(student)/worksheet-omr.tsx   — 배포받은 학습지 OMR 답안 제출
+app/(student)/textbook-omr.tsx    — 배정받은 교재 OMR 답안 제출
+app/(student)/inventory.tsx       — 보상 보관창고
 app/(student)/change-password.tsx — 비밀번호 변경
-app/(teacher)/index.tsx           — 선생님 대시보드 (실시간 SSE 알림)
-app/(teacher)/students.tsx        — 학생 관리 (등록/검색/비밀번호 초기화)
+```
+
+학생 앱이 쓰는 API — 이 목록 밖의 엔드포인트는 웹 전용이다.
+```
+POST /api/auth/login              — 로그인
+POST /api/auth/change-password    — 비밀번호 변경
+GET  /api/student/progress        — 레벨·능력치·미션 진행 (홈 화면)
+GET  /api/student/worksheets      — 배포받은 학습지 목록
+GET  /api/student/textbooks       — 배정받은 교재 목록
+POST /api/student/worksheets/[distributionId]/submit — 답안 제출 (1차 자동 채점)
+POST /api/student/textbooks/[textbookId]/submit      — 교재 답안 제출
+GET/POST /api/missions/results    — 학습 이력 조회 / 미션 결과 입력
+GET  /api/student/inventory       — 보관창고
+GET  /api/events                  — SSE 실시간 알림
 ```
 
 ## 메뉴 간 데이터 연결 원칙

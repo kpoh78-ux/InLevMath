@@ -10,7 +10,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko" className="h-full">
       <body className="h-full bg-gray-50 font-sans antialiased">
-        <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+        <main className="max-w-6xl mx-auto px-3 md:px-4 py-4 md:py-6">{children}</main>
       </body>
     </html>
   )

@@ -114,7 +114,10 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
   // 여러 건 선택 → 하단 액션바 / 행 끝 ⋮ 메뉴
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // 표 컨테이너에 overflow-hidden 이 걸려 있어 absolute 메뉴는 잘린다.
+  // 화면 기준 좌표에 fixed 로 띄워 컨테이너 밖으로 나오게 한다.
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; up: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const fetchStudentWorksheets = useCallback(async () => {
@@ -143,9 +146,15 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   // 메뉴 밖을 누르면 닫는다
   useEffect(() => {
     if (!openMenuId) return
-    const close = () => setOpenMenuId(null)
+    const close = () => { setOpenMenuId(null); setMenuPos(null) }
     window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
   }, [openMenuId])
 
   const toggleOne = (id: string) => {
@@ -182,6 +191,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
     } finally {
       setBusy(false)
       setOpenMenuId(null)
+      setMenuPos(null)
     }
   }
 
@@ -208,6 +218,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
     } finally {
       setBusy(false)
       setOpenMenuId(null)
+      setMenuPos(null)
     }
   }
 
@@ -234,6 +245,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
     } finally {
       setBusy(false)
       setOpenMenuId(null)
+      setMenuPos(null)
     }
   }
 
@@ -454,7 +466,16 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                     <button
                       onClick={e => {
                         e.stopPropagation()
-                        setOpenMenuId(prev => (prev === d.id ? null : d.id))
+                        if (openMenuId === d.id) { setOpenMenuId(null); setMenuPos(null); return }
+                        const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        const MENU_H = 132   // 항목 3개 기준 대략 높이
+                        const up = r.bottom + MENU_H > window.innerHeight - 8
+                        setMenuPos({
+                          top: up ? r.top - MENU_H - 4 : r.bottom + 4,
+                          left: Math.min(r.right - 144, window.innerWidth - 152),
+                          up,
+                        })
+                        setOpenMenuId(d.id)
                       }}
                       aria-label="더보기"
                       className="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors leading-none"
@@ -465,7 +486,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                     {openMenuId === d.id && (
                       <div
                         onClick={e => e.stopPropagation()}
-                        className="absolute right-2 top-11 z-20 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-left"
+                        style={{ top: menuPos?.top ?? 0, left: menuPos?.left ?? 0 }}
+                        className="fixed z-50 w-36 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden text-left"
                       >
                         <button
                           onClick={() => setHomework([d.id], !d.homeworkAt)}

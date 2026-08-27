@@ -4,6 +4,10 @@
 //
 // 주간 수업 시간표. 원래 학원 현황(대시보드) 안의 모달이었는데,
 // 요일·교시·배정 학생을 여러 번 오가며 고치는 화면이라 URL을 가진 페이지로 옮겼다.
+//
+// 학생은 이름을 쉼표로 적는 대신 재원 학생 명단에서 골라 id 로 저장한다.
+// 이름 문자열로는 동명이인을 가릴 수 없어 등원 시각과 수업 시작 시각을 맞대어
+// 지각 분수를 자동으로 계산할 수 없었다.
 
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
@@ -21,12 +25,22 @@ function timeOptions() {
 }
 const TIME_OPTIONS = timeOptions()
 
+type ScheduleStudent = { id: string; name: string; grade: string }
+
 type ScheduleEntry = {
   id: string; dayOfWeek: number; startTime: string; endTime: string
-  subject: string; grade: string; studentNames: string[]
+  subject: string; grade: string; students: ScheduleStudent[]
 }
 
-const EMPTY_FORM = { dayOfWeek: 0, startTime: '', endTime: '', subject: '', grade: '중1', studentNames: '' }
+/** 학생 선택기에 쓰는 재원 학생 (GET /api/students?sidebar=1) */
+type Roster = { id: string; grade: string; user: { name: string } }
+
+type Form = {
+  dayOfWeek: number; startTime: string; endTime: string
+  subject: string; grade: string; studentIds: string[]
+}
+
+const EMPTY_FORM: Form = { dayOfWeek: 0, startTime: '', endTime: '', subject: '', grade: '중1', studentIds: [] }
 
 /** 오늘 요일을 내부 인덱스(0=월 … 6=일)로 */
 function todayIndex() {
@@ -36,9 +50,11 @@ function todayIndex() {
 
 export default function SchedulePage() {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([])
+  const [roster, setRoster] = useState<Roster[]>([])
+  const [pickerQuery, setPickerQuery] = useState('')
   const [activeDay, setActiveDay] = useState(todayIndex)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState<Form>(EMPTY_FORM)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -56,6 +72,14 @@ export default function SchedulePage() {
 
   useEffect(() => { load() }, [load])
 
+  // 재원 학생 명단 — 선택기에서 쓴다
+  useEffect(() => {
+    apiFetch('/api/students?sidebar=1')
+      .then(res => res.ok ? res.json() : [])
+      .then(setRoster)
+      .catch(() => setRoster([]))
+  }, [])
+
   const dayEntries = schedules
     .filter(s => s.dayOfWeek === activeDay)
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -63,6 +87,7 @@ export default function SchedulePage() {
   const openAdd = () => {
     setEditId(null)
     setForm({ ...EMPTY_FORM, dayOfWeek: activeDay })
+    setPickerQuery('')
     setError(null)
     setShowForm(true)
   }
@@ -71,8 +96,9 @@ export default function SchedulePage() {
     setEditId(s.id)
     setForm({
       dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime,
-      subject: s.subject, grade: s.grade, studentNames: s.studentNames.join(', '),
+      subject: s.subject, grade: s.grade, studentIds: s.students.map(v => v.id),
     })
+    setPickerQuery('')
     setError(null)
     setShowForm(true)
   }
@@ -97,7 +123,7 @@ export default function SchedulePage() {
         endTime: form.endTime,
         subject: form.subject.trim(),
         grade: form.grade,
-        studentNames: form.studentNames.split(',').map(s => s.trim()).filter(Boolean),
+        studentIds: form.studentIds,
       }
       const res = editId
         ? await apiFetch(`/api/schedule/${editId}`, { method: 'PUT', body: JSON.stringify(body) })
@@ -115,6 +141,27 @@ export default function SchedulePage() {
       setSaving(false)
     }
   }
+
+  const toggleStudent = (id: string) =>
+    setForm(f => ({
+      ...f,
+      studentIds: f.studentIds.includes(id)
+        ? f.studentIds.filter(v => v !== id)
+        : [...f.studentIds, id],
+    }))
+
+  const selectedStudents = form.studentIds
+    .map(id => roster.find(r => r.id === id))
+    .filter((r): r is Roster => r != null)
+
+  // 수업 학년과 같은 학생을 위로 올린다 — 대부분 그 학년에서 고르기 때문이다
+  const pickerList = roster
+    .filter(r => r.user.name.includes(pickerQuery.trim()))
+    .sort((a, b) => {
+      const ga = a.grade === form.grade ? 0 : 1
+      const gb = b.grade === form.grade ? 0 : 1
+      return ga !== gb ? ga - gb : a.user.name.localeCompare(b.user.name, 'ko')
+    })
 
   const totalClasses = schedules.length
 
@@ -178,12 +225,16 @@ export default function SchedulePage() {
                     <span className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{s.grade}</span>
                     <span className="text-sm font-semibold text-gray-800">{s.subject}</span>
                   </div>
-                  {s.studentNames.length > 0 && (
+                  {s.students.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
-                      {s.studentNames.map((n, i) => (
-                        <span key={i} className="text-[11px] bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{n}</span>
+                      {s.students.map(st => (
+                        <span key={st.id} className="text-[11px] bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{st.name}</span>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-[11px] text-amber-600">
+                      배정된 학생이 없습니다 — 지각 여부가 자동으로 계산되지 않습니다
+                    </p>
                   )}
                 </div>
                 {/* 액션 */}
@@ -244,12 +295,55 @@ export default function SchedulePage() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1">
-                  수업 학생 <span className="text-gray-400 font-normal">(쉼표로 구분: 홍길동, 김철수)</span>
-                </label>
-                <input type="text" value={form.studentNames} placeholder="홍길동, 김철수, 이영희"
-                  onChange={e => setForm(f => ({ ...f, studentNames: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">
+                    수업 학생 <span className="text-gray-400 font-normal">({form.studentIds.length}명 선택)</span>
+                  </label>
+                  {form.studentIds.length > 0 && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, studentIds: [] }))}
+                      className="text-[11px] text-gray-400 hover:text-gray-600">모두 해제</button>
+                  )}
+                </div>
+
+                {/* 고른 학생 */}
+                {selectedStudents.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {selectedStudents.map(st => (
+                      <button key={st.id} type="button" onClick={() => toggleStudent(st.id)}
+                        className="flex items-center gap-1 text-[11px] bg-indigo-600 text-white pl-2 pr-1.5 py-1 rounded-full hover:bg-indigo-700 transition-colors">
+                        {st.user.name}
+                        <span className="text-indigo-200">✕</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <input type="search" value={pickerQuery} placeholder="학생 이름으로 찾기"
+                  onChange={e => setPickerQuery(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-2" />
+
+                {/* 재원 학생 명단 — 같은 학년을 먼저 보여 준다 */}
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
+                  {pickerList.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-6">
+                      {roster.length === 0 ? '재원 학생을 불러오는 중입니다.' : '찾는 학생이 없습니다.'}
+                    </p>
+                  ) : pickerList.map(st => {
+                    const on = form.studentIds.includes(st.id)
+                    return (
+                      <label key={st.id}
+                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${on ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                        <input type="checkbox" checked={on} onChange={() => toggleStudent(st.id)}
+                          className="w-4 h-4 accent-indigo-600" />
+                        <span className="text-sm text-gray-800">{st.user.name}</span>
+                        <span className="text-[11px] text-gray-400 ml-auto">{st.grade}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  등원 시각을 이 수업의 시작 시각과 맞대어 지각 여부를 자동으로 계산합니다.
+                </p>
               </div>
 
               {error && (

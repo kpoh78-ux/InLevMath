@@ -50,6 +50,9 @@ export async function GET(req: NextRequest) {
     prisma.classSchedule.findMany({
       where: { teacherId: teacher.id, dayOfWeek: todayDow },
       orderBy: { startTime: 'asc' },
+      include: {
+        students: { select: { student: { select: { user: { select: { name: true } } } } } },
+      },
     }),
 
     // 최근 배포 10건 (숨김 처리된 건 제외 — 집계 통계에는 그대로 포함)
@@ -103,7 +106,7 @@ export async function GET(req: NextRequest) {
       endTime:      s.endTime,
       subject:      s.subject,
       grade:        s.grade,
-      studentNames: JSON.parse(s.studentNames) as string[],
+      studentNames: s.students.map(v => v.student.user.name),
     })),
 
     recentDistributions: recentDistributions.map(d => ({

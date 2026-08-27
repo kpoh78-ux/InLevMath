@@ -55,9 +55,26 @@ model ClassSchedule {
   endTime      String // "10:30"
   subject      String // 수업 과목명
   grade        String // 학년 (예: 중1, 고2)
-  studentNames String  @default("[]") // JSON 배열 ["홍길동","김철수"]
+
+  // 이 수업을 듣는 학생. 예전에는 studentNames 에 이름 문자열 배열로 들고 있었는데
+  // 동명이인이면 어느 학생인지 가릴 수 없어 지각 분수를 자동 계산할 수 없었다.
+  students     ClassScheduleStudent[]
+
+  // 이관 전 원본. 이름 매칭에 실패한 건을 되짚기 위해 남겨 둔다 — 더 이상 읽거나 쓰지 않는다.
+  studentNames String  @default("[]")
 
   @@index([teacherId, dayOfWeek])
+}
+
+/** 수업 ↔ 학생 (다대다) */
+model ClassScheduleStudent {
+  scheduleId String
+  schedule   ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([scheduleId, studentId])
+  @@index([studentId])
 }
 
 model Student {
@@ -120,6 +137,7 @@ model Student {
   weaknessConfig       StudentWeaknessConfig?
   prescriptiveMissions PrescriptiveMission[]
   reportOverrides      DailyStudentReportOverride[]
+  classSchedules       ClassScheduleStudent[]
 
   @@index([teacherId])
   @@index([attendancePin])

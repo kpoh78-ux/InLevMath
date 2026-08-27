@@ -83,6 +83,80 @@ export function parseAttendanceTime(dateStr: string, time?: string | null): Date
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+// ── 지각 자동 판정 ──────────────────────────────────────────────────────────
+//
+// 등원 시각을 그날 그 학생의 수업 시작 시각과 맞대어 지각 여부를 계산한다.
+// 수업 학생은 ClassScheduleStudent 관계로 잡혀 있어야 한다 — 이름 문자열로는
+// 동명이인을 가릴 수 없어 예전에는 이 계산을 할 수 없었다.
+
+/** 이 시간까지는 지각으로 보지 않는다 (분) */
+export const LATE_GRACE_MINUTES = 5;
+
+/** 선생님이 화면에서 고르는 값과 같은 눈금. 60은 "60분 이상" */
+export const LATE_MINUTE_BUCKETS = [10, 20, 30, 40, 50, 60];
+
+/** 늦은 분수를 화면과 같은 눈금(10·20·…·60분 이상)으로 올림한다 */
+export function bucketLateMinutes(minutes: number): number {
+  const step = Math.ceil(minutes / 10) * 10;
+  return Math.min(Math.max(step, 10), 60);
+}
+
+/** 'YYYY-MM-DD' → 내부 요일 인덱스(0=월 … 6=일). 형식이 틀리면 null */
+function dayOfWeekOf(dateStr: string): number | null {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const js = new Date(y, m - 1, d).getDay();
+  return js === 0 ? 6 : js - 1;
+}
+
+export type LatenessVerdict = {
+  status: 'ON_TIME' | 'LATE';
+  /** 지각일 때만 값이 있다 */
+  lateMinutes: number | null;
+  /** 판정에 쓴 수업 시작 시각("HH:mm"). 배정된 수업이 없으면 null */
+  scheduledStart: string | null;
+};
+
+/**
+ * 등원 시각으로 지각 여부를 판정한다.
+ *
+ * 그날 배정된 수업이 여러 개면 등원 시점에 아직 끝나지 않은 첫 수업을 기준으로 삼는다.
+ * (수업이 모두 끝난 뒤 왔다면 마지막 수업 기준)
+ * 배정된 수업이 없으면 기준이 없으므로 정상 출석으로 둔다 — 임의로 지각을 붙이지 않는다.
+ */
+export async function computeLateness(
+  studentId: string,
+  dateStr: string,
+  checkInAt: Date
+): Promise<LatenessVerdict> {
+  const none: LatenessVerdict = { status: 'ON_TIME', lateMinutes: null, scheduledStart: null };
+
+  const dow = dayOfWeekOf(dateStr);
+  if (dow === null) return none;
+
+  const schedules = await prisma.classSchedule.findMany({
+    where: { dayOfWeek: dow, students: { some: { studentId } } },
+    select: { startTime: true, endTime: true },
+    orderBy: { startTime: 'asc' },
+  });
+  if (schedules.length === 0) return none;
+
+  const target =
+    schedules.find(sc => {
+      const end = parseAttendanceTime(dateStr, sc.endTime);
+      return end != null && checkInAt.getTime() <= end.getTime();
+    }) ?? schedules[schedules.length - 1];
+
+  const start = parseAttendanceTime(dateStr, target.startTime);
+  if (!start) return none;
+
+  const diffMin = Math.floor((checkInAt.getTime() - start.getTime()) / 60000);
+  if (diffMin <= LATE_GRACE_MINUTES) {
+    return { status: 'ON_TIME', lateMinutes: null, scheduledStart: target.startTime };
+  }
+  return { status: 'LATE', lateMinutes: bucketLateMinutes(diffMin), scheduledStart: target.startTime };
+}
+
 export function getTodayDateString(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -203,13 +277,17 @@ export async function handleKioskPin(pin: string, teacherId?: string): Promise<A
 
   // 상태 A: 당일 출결 기록이 없거나 등원 전 -> [1차 입력] 등원 완료 처리 및 학부모 알림톡 자동 발송
   if (!todayLog || !todayLog.checkInTime) {
+    // 시간표에 잡힌 수업 시작 시각과 맞대어 지각 여부를 정한다
+    const verdict = await computeLateness(student.id, todayStr, now);
+
     if (!todayLog) {
       todayLog = await prisma.attendanceLog.create({
         data: {
           studentId: student.id,
           date: todayStr,
           type: 'CHECK_IN',
-          status: 'ON_TIME',
+          status: verdict.status,
+          lateMinutes: verdict.lateMinutes,
           checkInTime: now,
           alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
         },
@@ -219,7 +297,8 @@ export async function handleKioskPin(pin: string, teacherId?: string): Promise<A
         where: { id: todayLog.id },
         data: {
           type: 'CHECK_IN',
-          status: 'ON_TIME',
+          status: verdict.status,
+          lateMinutes: verdict.lateMinutes,
           checkInTime: now,
           alimtalkSent: false, // 실제 발송 결과를 확인한 뒤 갱신한다
         },
@@ -254,6 +333,8 @@ export async function handleKioskPin(pin: string, teacherId?: string): Promise<A
         studentName: student.user.name,
         grade: student.grade,
         status: 'CHECK_IN',
+        attendanceStatus: todayLog.status,
+        lateMinutes: todayLog.lateMinutes,
         time: nowTimeStr,
         timestamp: now.toISOString(),
       });
@@ -474,18 +555,34 @@ export async function toggleAttendance(params: {
     memo: memo || undefined,
   };
 
+  // 지각 판정 — 선생님이 화면에서 고른 값이 언제나 이긴다.
+  // 아무것도 고르지 않은 등원 처리만 시간표를 보고 자동으로 계산한다.
+  let resolvedStatus = customStatus;
+  let resolvedLate: number | null = Number.isInteger(lateMinutes) ? (lateMinutes as number) : null;
+
+  if (type === 'CHECK_IN') {
+    const auto = await computeLateness(studentId, targetDate, eventAt);
+    if (!customStatus) {
+      resolvedStatus = auto.status;
+      resolvedLate = auto.lateMinutes;
+    } else if (customStatus === 'LATE' && resolvedLate === null) {
+      // 지각이라고만 찍고 분을 안 고른 경우 — 시간표에서 계산해 채운다
+      resolvedLate = auto.lateMinutes;
+    }
+  }
+
   // 지각일 때만 분을 담고, 다른 상태로 바꾸면 지운다 —
   // 예전 지각 기록이 남아 정상 출석에 "20분 지각"이 붙는 일을 막는다
-  const asLate = (customStatus ?? (type === 'ABSENT' ? 'ABSENT' : 'ON_TIME')) === 'LATE';
-  updateData.lateMinutes = asLate && Number.isInteger(lateMinutes) ? lateMinutes : null;
+  const asLate = (resolvedStatus ?? (type === 'ABSENT' ? 'ABSENT' : 'ON_TIME')) === 'LATE';
+  updateData.lateMinutes = asLate ? resolvedLate : null;
 
-  if (customStatus) {
-    updateData.status = customStatus;
+  if (resolvedStatus) {
+    updateData.status = resolvedStatus;
   }
 
   if (type === 'CHECK_IN') {
     updateData.checkInTime = eventAt;
-    if (!customStatus) updateData.status = 'ON_TIME';
+    if (!resolvedStatus) updateData.status = 'ON_TIME';
   } else if (type === 'CHECK_OUT') {
     updateData.checkOutTime = eventAt;
     // 하원 처리 시 등원 시각도 함께 수정할 수 있다
@@ -517,6 +614,7 @@ export async function toggleAttendance(params: {
         date: targetDate,
         type,
         status: updateData.status || 'ON_TIME',
+        lateMinutes: updateData.lateMinutes,
         checkInTime: type === 'CHECK_IN' ? eventAt : (checkInAt ?? undefined),
         checkOutTime: type === 'CHECK_OUT' ? eventAt : undefined,
         memo,

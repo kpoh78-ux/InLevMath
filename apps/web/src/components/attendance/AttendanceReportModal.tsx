@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { X, Send, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { DailyReportEditor } from './DailyReportEditor';
 
 type ReportScope = 'DAILY' | 'MONTHLY';
 
@@ -159,9 +160,9 @@ export const AttendanceReportModal: React.FC<Props> = ({ open, onClose, date, ye
         {/* 헤더 */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div>
-            <h3 className="text-base font-bold text-slate-900">출결 알림톡 발송</h3>
+            <h3 className="text-base font-bold text-slate-900">학습리포트 발송</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {periodLabel} 출결 결과를 학부모에게 보냅니다.
+              {periodLabel} 수업·출결·학습 결과를 학부모에게 보냅니다.
             </p>
           </div>
           <button
@@ -177,7 +178,7 @@ export const AttendanceReportModal: React.FC<Props> = ({ open, onClose, date, ye
           <div className="inline-flex bg-slate-100 p-1 rounded-xl gap-1">
             {(
               [
-                { value: 'DAILY' as const, label: '일별 출결' },
+                { value: 'DAILY' as const, label: '일별 학습리포트' },
                 { value: 'MONTHLY' as const, label: '월별 요약' },
               ]
             ).map((tab) => (
@@ -290,23 +291,33 @@ export const AttendanceReportModal: React.FC<Props> = ({ open, onClose, date, ye
                 </div>
               </div>
 
-              {/* 문구 미리보기 */}
+              {/* 문구 미리보기 — 일별은 여기서 항목까지 손본다 */}
               <div className="lg:col-span-2 border border-slate-200 rounded-xl overflow-hidden flex flex-col">
                 <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700">
-                  발송 문구 미리보기
+                  {scope === 'DAILY' ? '학습리포트 편집' : '발송 문구 미리보기'}
                 </div>
-                <div className="p-3 flex-1">
-                  {preview ? (
+                <div className="p-3 flex-1 max-h-96 overflow-y-auto">
+                  {!preview ? (
+                    <p className="text-xs text-slate-400">왼쪽에서 학생을 선택하세요.</p>
+                  ) : (
                     <>
                       <p className="text-[11px] text-slate-400 mb-2 font-mono">
-                        {preview.parentPhone || '연락처 없음'}
+                        {preview.studentName} · {preview.parentPhone || '연락처 없음'}
                       </p>
-                      <pre className="whitespace-pre-wrap text-xs text-slate-700 leading-relaxed font-sans bg-amber-50/60 border border-amber-100 rounded-lg p-3">
-                        {preview.message}
-                      </pre>
+                      {scope === 'DAILY' ? (
+                        <DailyReportEditor
+                          key={`${preview.studentId}-${date}`}
+                          studentId={preview.studentId}
+                          studentName={preview.studentName}
+                          date={date}
+                          onChanged={() => fetchRows('DAILY')}
+                        />
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-xs text-slate-700 leading-relaxed font-sans bg-amber-50/60 border border-amber-100 rounded-lg p-3">
+                          {preview.message}
+                        </pre>
+                      )}
                     </>
-                  ) : (
-                    <p className="text-xs text-slate-400">왼쪽에서 학생을 선택하세요.</p>
                   )}
                 </div>
               </div>

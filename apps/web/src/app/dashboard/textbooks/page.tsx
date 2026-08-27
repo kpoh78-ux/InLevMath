@@ -7,8 +7,12 @@ import { apiFetch } from '@/lib/api'
 
 type Textbook = {
   id: string; title: string; grade: string; publisher: string
+  // 하원 학습리포트가 연산교재와 진도교재를 따로 보고한다
+  kind: '연산' | '진도'
   problemCount: number; createdAt: string
 }
+
+const KIND_OPTIONS: Textbook['kind'][] = ['진도', '연산']
 
 // 학생에게 배정된 교재 (+ 채점 상태)
 type AssignedTextbook = {
@@ -28,7 +32,8 @@ function TextbooksPageInner() {
   const [textbooks, setTextbooks] = useState<Textbook[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ title: '', grade: '', publisher: '', problemCount: '' })
+  const [form, setForm] = useState({ title: '', grade: '', publisher: '', kind: '진도', problemCount: '' })
+  const [kindSaving, setKindSaving] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -113,6 +118,23 @@ function TextbooksPageInner() {
   useEffect(() => { fetchTextbooks() }, [fetchTextbooks])
   useEffect(() => { fetchAssigned() }, [fetchAssigned])
 
+  /** 교재 종류 전환 — 리포트가 연산/진도를 나눠 보고하므로 분류가 필요하다 */
+  const toggleKind = async (t: Textbook) => {
+    const next: Textbook['kind'] = t.kind === '연산' ? '진도' : '연산'
+    setKindSaving(t.id)
+    try {
+      const res = await apiFetch(`/api/textbooks/${t.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ kind: next }),
+      })
+      if (res.ok) {
+        setTextbooks(prev => prev.map(v => (v.id === t.id ? { ...v, kind: next } : v)))
+      }
+    } finally {
+      setKindSaving(null)
+    }
+  }
+
   const filtered = textbooks.filter(t =>
     t.title.includes(search) || t.grade.includes(search) || t.publisher.includes(search)
   )
@@ -127,12 +149,13 @@ function TextbooksPageInner() {
         body: JSON.stringify({
           title: form.title, grade: form.grade,
           publisher: form.publisher || '직접 출제',
+          kind: form.kind,
           problemCount: parseInt(form.problemCount) || 0,
         }),
       })
       if (res.ok) {
         await fetchTextbooks()
-        setForm({ title: '', grade: '', publisher: '', problemCount: '' })
+        setForm({ title: '', grade: '', publisher: '', kind: '진도', problemCount: '' })
         setShowModal(false)
       } else {
         const d = await res.json().catch(() => ({})) as { error?: string }
@@ -327,7 +350,23 @@ function TextbooksPageInner() {
                 <td className="px-5 py-3.5">
                   <span className="text-xs font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{t.grade}</span>
                 </td>
-                <td className="px-5 py-3.5 text-gray-500">{t.publisher}</td>
+                <td className="px-5 py-3.5 text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <span>{t.publisher}</span>
+                    <button
+                      type="button"
+                      disabled={kindSaving === t.id}
+                      onClick={() => toggleKind(t)}
+                      title="눌러서 연산/진도를 바꿉니다 — 하원 학습리포트가 따로 보고합니다"
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors disabled:opacity-40 whitespace-nowrap ${
+                        t.kind === '연산'
+                          ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                          : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
+                      }`}>
+                      {t.kind}교재
+                    </button>
+                  </div>
+                </td>
                 <td className="px-5 py-3.5 text-gray-700 font-medium">{t.problemCount}문제</td>
                 <td className="px-5 py-3.5 text-gray-400 text-xs">
                   {new Date(t.createdAt).toLocaleDateString('ko-KR')}
@@ -380,6 +419,19 @@ function TextbooksPageInner() {
                     <button key={g} type="button" onClick={() => setForm(f => ({ ...f, grade: g }))}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${form.grade === g ? 'bg-indigo-600 text-white border-indigo-600' : 'text-gray-600 border-gray-300 hover:border-indigo-400'}`}>
                       {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  교재 종류 <span className="text-gray-400 font-normal">— 하원 학습리포트에서 따로 보고됩니다</span>
+                </label>
+                <div className="flex gap-2">
+                  {KIND_OPTIONS.map(k => (
+                    <button key={k} type="button" onClick={() => setForm(f => ({ ...f, kind: k }))}
+                      className={`px-4 py-1.5 text-xs font-medium rounded-lg border transition-colors ${form.kind === k ? 'bg-indigo-600 text-white border-indigo-600' : 'text-gray-600 border-gray-300 hover:border-indigo-400'}`}>
+                      {k}교재
                     </button>
                   ))}
                 </div>

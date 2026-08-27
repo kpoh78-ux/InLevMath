@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(textbooks.map(t => ({
     id: t.id, title: t.title, grade: t.grade,
-    publisher: t.publisher, createdAt: t.createdAt,
+    publisher: t.publisher, kind: t.kind, createdAt: t.createdAt,
     problemCount: t._count.problems,
   })))
 }
@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
   const teacher = await academyTeacher(auth.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보를 찾을 수 없습니다.' }, { status: 404 })
 
-  const { title, grade, publisher, problemCount } = await req.json() as {
-    title: string; grade: string; publisher?: string; problemCount: number
+  const { title, grade, publisher, kind, problemCount } = await req.json() as {
+    title: string; grade: string; publisher?: string; kind?: string; problemCount: number
   }
   if (!title || !grade || !problemCount) {
     return NextResponse.json({ error: '필수 항목이 누락되었습니다.' }, { status: 400 })
@@ -51,7 +51,14 @@ export async function POST(req: NextRequest) {
   }
 
   const textbook = await prisma.textbook.create({
-    data: { title, grade, publisher: publisher || '직접 출제', teacherId: teacher.id },
+    // kind 는 하원 리포트가 연산교재/진도교재를 나눠 보고하는 데 쓴다
+    data: {
+      title,
+      grade,
+      publisher: publisher || '직접 출제',
+      kind: kind === '연산' ? '연산' : '진도',
+      teacherId: teacher.id,
+    },
   })
 
   // 수천 개를 중첩 create로 만들면 쿼리가 지나치게 커지므로 createMany로 일괄 삽입

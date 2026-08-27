@@ -1,6 +1,6 @@
 // apps/web/src/lib/dailyReportAggregator.ts
 //
-// 하원 학습리포트의 5대 항목을 하루 단위로 집계한다.
+// 하원 학습리포트의 항목별 숫자를 하루 단위로 집계한다.
 //
 // ── 왜 날짜 단위인가 ────────────────────────────────────────────────────────
 // "등원부터 하원까지"를 시각으로 자르면 수업 후에 채점한 건이 빠진다.
@@ -13,16 +13,22 @@
 // 뒤에 B선생님 수업이 이어지면 학부모는 두 통이 아니라 한 통을 받아야 하고,
 // 숙제·교재·오답클리닉 숫자도 그날 전체를 합한 값이어야 한다.
 // 그날 수업 목록은 dailyClasses 가, 학습 데이터는 여기서 날짜로 모은다.
+//
+// 무엇을 담을지는 reportOptions 가 정한다 (선생님 프리셋 + 당일 오버라이드).
 
 import { prisma } from './db'
 import { getStudentDayClasses, describeClasses, type DailyClassPlan } from './dailyClasses'
 import { formatTimeKorean } from './attendanceService'
+import { DEFAULT_ITEMS, type ReportItems } from './reportOptions'
 
-/** ④ 오답 클리닉으로 볼 학습지 단계 */
+/** 오답 클리닉으로 볼 학습지 단계 */
 export const CLINIC_STEPS = ['최다오답', '오답유형', '취약유형']
 
-/** ⑤ 단원평가·모의고사로 볼 학습지 단계 */
+/** 단원평가·모의고사로 볼 학습지 단계 */
 export const EXAM_STEPS_FOR_REPORT = ['단원평가', '모의고사', '기출문제']
+
+/** 연산으로 분류한 교재 (Textbook.kind) */
+export const CALC_BOOK_KIND = '연산'
 
 /** 하루의 시작·끝 (로컬 기준) */
 export function dayRange(dateStr: string): { start: Date; end: Date } | null {
@@ -41,7 +47,7 @@ function rate(numerator: number, denominator: number): number | null {
 
 // ── 항목별 결과 ─────────────────────────────────────────────────────────────
 
-/** ① 지각 */
+/** 출결·지각 */
 export type LatenessItem = {
   recorded: boolean
   status: string | null
@@ -67,7 +73,7 @@ export type WorksheetLine = {
   completion: number | null
 }
 
-/** 학습지 묶음(②숙제 ④오답클리닉 ⑤단원평가) 공통 집계 */
+/** 학습지 묶음(숙제·오답클리닉·단원평가) 공통 집계 */
 export type WorksheetGroup = {
   count: number
   problemCount: number
@@ -80,10 +86,11 @@ export type WorksheetGroup = {
   lines: WorksheetLine[]
 }
 
-/** ③ 교재 한 권의 결과 */
+/** 교재 한 권의 결과 */
 export type TextbookLine = {
   textbookId: string
   title: string
+  kind: string
   submittedCount: number
   wrongCount: number
   accuracy: number | null
@@ -98,6 +105,13 @@ export type TextbookGroup = {
   lines: TextbookLine[]
 }
 
+/** 목표 완성률 — 그날 배정·채점된 학습지에서 얼마나 냈나 */
+export type GoalRateItem = {
+  assignedProblems: number
+  submittedProblems: number
+  rate: number | null
+}
+
 export type DailyStudentReport = {
   studentId: string
   studentName: string
@@ -105,11 +119,16 @@ export type DailyStudentReport = {
   date: string
   /** 그날 수업 — 여러 선생님 수업이 하나로 합쳐져 있다 */
   classes: DailyClassPlan
-  lateness: LatenessItem      // ①
-  homework: WorksheetGroup    // ②
-  textbook: TextbookGroup     // ③
-  clinic: WorksheetGroup      // ④
-  exam: WorksheetGroup        // ⑤
+  lateness: LatenessItem
+  homework: WorksheetGroup
+  calcBook: TextbookGroup
+  progressBook: TextbookGroup
+  clinic: WorksheetGroup
+  exam: WorksheetGroup
+  goalRate: GoalRateItem
+  /** 선생님이 그날 직접 적는 값 (당일 오버라이드에서 온다) */
+  attitude: string | null
+  comment: string | null
   /** 그날 기록이 하나라도 있는가 */
   hasAnything: boolean
 }
@@ -148,15 +167,31 @@ function toGroup(lines: WorksheetLine[]): WorksheetGroup {
   }
 }
 
+function toTextbookGroup(lines: TextbookLine[]): TextbookGroup {
+  const submittedCount = lines.reduce((s, l) => s + l.submittedCount, 0)
+  const wrongCount = lines.reduce((s, l) => s + l.wrongCount, 0)
+  return {
+    count: lines.length,
+    submittedCount,
+    wrongCount,
+    accuracy: rate(submittedCount - wrongCount, submittedCount),
+    lines,
+  }
+}
+
 /**
  * 한 학생의 하루치 학습리포트.
  *
  * 그날 수업이 여러 개여도(선생님이 달라도) 숫자는 하나로 합쳐진다 —
  * 숙제·교재·학습지 결과가 모두 날짜 단위라 자연히 합산된다.
+ *
+ * extras 는 선생님이 그날 직접 적은 값(수업 태도·코멘트)이다. 데이터로 뽑을 수
+ * 없으므로 호출부가 reportOptions 에서 읽어 넘긴다.
  */
 export async function buildDailyStudentReport(
   studentId: string,
-  date: string
+  date: string,
+  extras: { attitude?: string | null; comment?: string | null } = {}
 ): Promise<DailyStudentReport | null> {
   const range = dayRange(date)
   if (!range) return null
@@ -172,17 +207,22 @@ export async function buildDailyStudentReport(
 
     prisma.attendanceLog.findFirst({ where: { studentId, date } }),
 
-    // 그날 채점된 학습지 — 숙제·오답클리닉·단원평가를 한 번에 읽고 나중에 가른다
+    // 그날 배포됐거나 그날 채점된 학습지.
+    // 채점된 것만 보면 목표 완성률의 분모(오늘 낸 숙제)가 빠지고,
+    // 배포된 것만 보면 어제 낸 숙제를 오늘 채점한 건이 빠진다.
     prisma.worksheetDistribution.findMany({
       where: {
         studentId,
-        result: { submittedAt: { gte: range.start, lt: range.end } },
+        OR: [
+          { distributedAt: { gte: range.start, lt: range.end } },
+          { result: { submittedAt: { gte: range.start, lt: range.end } } },
+        ],
       },
       select: {
         id: true,
         homeworkAt: true,
         worksheet: { select: { title: true, step: true, problemCount: true } },
-        result: { select: { correctProblems: true, submittedCount: true } },
+        result: { select: { correctProblems: true, submittedCount: true, submittedAt: true } },
       },
     }),
 
@@ -192,12 +232,12 @@ export async function buildDailyStudentReport(
         textbookId: true,
         submittedCount: true,
         wrongProblemsJson: true,
-        textbook: { select: { title: true } },
+        textbook: { select: { title: true, kind: true } },
       },
     }),
   ])
 
-  // ── ① 지각 ──
+  // ── 출결·지각 ──
   const lateness: LatenessItem = {
     recorded: log != null,
     status: log?.status ?? null,
@@ -208,7 +248,12 @@ export async function buildDailyStudentReport(
     scheduledStart: classes.blocks[0]?.startTime ?? null,
   }
 
-  // ── ②④⑤ 학습지 가르기 ──
+  // ── 학습지 가르기 ──
+  const gradedToday = (d: (typeof distributions)[number]) => {
+    const at = d.result?.submittedAt
+    return at != null && at >= range.start && at < range.end
+  }
+
   const toLine = (d: (typeof distributions)[number]): WorksheetLine => {
     const submitted = d.result?.submittedCount ?? 0
     const correct = d.result?.correctProblems ?? 0
@@ -229,6 +274,7 @@ export async function buildDailyStudentReport(
   const examLines: WorksheetLine[] = []
 
   for (const d of distributions) {
+    if (!gradedToday(d)) continue
     const line = toLine(d)
     // 숙제 지정 여부와 단계는 배타적이지 않다. 숙제로 낸 오답클리닉이면 양쪽에
     // 모두 들어가는 것이 맞다 — 학부모는 "숙제를 했는가"와 "오답을 정리했는가"를
@@ -238,7 +284,16 @@ export async function buildDailyStudentReport(
     if (EXAM_STEPS_FOR_REPORT.includes(line.step)) examLines.push(line)
   }
 
-  // ── ③ 교재 ──
+  // ── 목표 완성률 — 그날 걸린 학습지 전체가 분모 ──
+  const assignedProblems = distributions.reduce((s, d) => s + d.worksheet.problemCount, 0)
+  const submittedProblems = distributions.reduce((s, d) => s + (d.result?.submittedCount ?? 0), 0)
+  const goalRate: GoalRateItem = {
+    assignedProblems,
+    submittedProblems,
+    rate: rate(submittedProblems, assignedProblems),
+  }
+
+  // ── 교재 — 연산 / 진도로 나눠 보고한다 ──
   const textbookLines: TextbookLine[] = textbookResults.map(r => {
     let wrong = 0
     try {
@@ -250,21 +305,15 @@ export async function buildDailyStudentReport(
     return {
       textbookId: r.textbookId,
       title: r.textbook.title,
+      kind: r.textbook.kind,
       submittedCount: r.submittedCount,
       wrongCount: wrong,
       accuracy: rate(r.submittedCount - wrong, r.submittedCount),
     }
   })
 
-  const tbSubmitted = textbookLines.reduce((s, l) => s + l.submittedCount, 0)
-  const tbWrong = textbookLines.reduce((s, l) => s + l.wrongCount, 0)
-  const textbook: TextbookGroup = {
-    count: textbookLines.length,
-    submittedCount: tbSubmitted,
-    wrongCount: tbWrong,
-    accuracy: rate(tbSubmitted - tbWrong, tbSubmitted),
-    lines: textbookLines,
-  }
+  const calcBook = toTextbookGroup(textbookLines.filter(l => l.kind === CALC_BOOK_KIND))
+  const progressBook = toTextbookGroup(textbookLines.filter(l => l.kind !== CALC_BOOK_KIND))
 
   const homework = toGroup(homeworkLines)
   const clinic = toGroup(clinicLines)
@@ -278,55 +327,51 @@ export async function buildDailyStudentReport(
     classes,
     lateness,
     homework,
-    textbook,
+    calcBook,
+    progressBook,
     clinic,
     exam,
+    goalRate,
+    attitude: extras.attitude ?? null,
+    comment: extras.comment ?? null,
     hasAnything:
-      lateness.recorded || homework.count > 0 || textbook.count > 0 ||
+      lateness.recorded || homework.count > 0 || calcBook.count > 0 || progressBook.count > 0 ||
       clinic.count > 0 || exam.count > 0 || classes.classes.length > 0,
   }
 }
 
 // ── 알림톡 문구 ─────────────────────────────────────────────────────────────
 
-/** 선생님이 켠 항목만 골라 담는다 (기본값: 전부) */
-export type ReportOptions = {
-  classes?: boolean
-  lateness?: boolean
-  homework?: boolean
-  textbook?: boolean
-  clinic?: boolean
-  exam?: boolean
-}
-
-const ALL_ON: Required<ReportOptions> = {
-  classes: true, lateness: true, homework: true, textbook: true, clinic: true, exam: true,
-}
-
 function pct(v: number | null): string {
   return v == null ? '-' : `${v}%`
 }
 
+function textbookLine(g: TextbookGroup): string {
+  return `${g.count}권 · ${g.submittedCount}문항 중 ${g.submittedCount - g.wrongCount}문항 정답 (정답률 ${pct(g.accuracy)})`
+}
+
 /**
  * 하루치 리포트를 알림톡 본문으로.
+ *
  * 그날 수업이 여러 개여도 한 통이다 — 숫자는 이미 합산돼 있다.
+ * 켜진 항목이라도 그날 기록이 없으면 줄을 넣지 않는다. 빈 항목을 "0건"으로
+ * 채우면 학부모가 매일 같은 껍데기를 받게 된다.
  */
 export function formatDailyReportMessage(
   report: DailyStudentReport,
-  options: ReportOptions = {}
+  items: ReportItems = DEFAULT_ITEMS
 ): string {
-  const on = { ...ALL_ON, ...options }
   const [, m, d] = report.date.split('-')
   const lines: string[] = [
     '[InLevMath 학습리포트]',
     `${report.studentName} 학생 ${Number(m)}월 ${Number(d)}일 학습 안내입니다.`,
   ]
 
-  if (on.classes && report.classes.classes.length > 0) {
+  if (report.classes.classes.length > 0) {
     lines.push('', '■ 오늘 수업', describeClasses(report.classes))
   }
 
-  if (on.lateness && report.lateness.recorded) {
+  if (items.includeAttendance && report.lateness.recorded) {
     const times = [
       report.lateness.checkInTime && `등원 ${report.lateness.checkInTime}`,
       report.lateness.checkOutTime && `하원 ${report.lateness.checkOutTime}`,
@@ -334,29 +379,60 @@ export function formatDailyReportMessage(
     lines.push('', '■ 출결', [report.lateness.statusLabel, times].filter(Boolean).join(' · '))
   }
 
-  if (on.homework && report.homework.count > 0) {
+  if (items.includeHomework && report.homework.count > 0) {
     const g = report.homework
     lines.push('', '■ 숙제',
       `${g.count}건 · 완성도 ${pct(g.completion)} (${g.submittedCount}/${g.problemCount}문항) · 정답률 ${pct(g.accuracy)}`)
   }
 
-  if (on.textbook && report.textbook.count > 0) {
-    const g = report.textbook
-    lines.push('', '■ 교재',
-      `${g.count}권 · ${g.submittedCount}문항 중 ${g.submittedCount - g.wrongCount}문항 정답 (정답률 ${pct(g.accuracy)})`)
+  if (items.includeCalcBook && report.calcBook.count > 0) {
+    lines.push('', '■ 연산교재', textbookLine(report.calcBook))
   }
 
-  if (on.clinic && report.clinic.count > 0) {
+  if (items.includeProgressBook && report.progressBook.count > 0) {
+    lines.push('', '■ 진도교재', textbookLine(report.progressBook))
+  }
+
+  if (items.includeWorksheet && report.clinic.count > 0) {
     const g = report.clinic
     lines.push('', '■ 오답 클리닉',
       `${g.count}건 · ${g.submittedCount}문항 중 ${g.correctProblems}문항 정답 (정답률 ${pct(g.accuracy)})`)
   }
 
-  if (on.exam && report.exam.count > 0) {
+  if (items.includeUnitExam && report.exam.count > 0) {
     const g = report.exam
     lines.push('', '■ 단원평가·모의고사',
       `${g.count}건 · 정답률 ${pct(g.accuracy)} (${g.correctProblems}/${g.submittedCount}문항)`)
   }
 
+  if (items.includeGoalRate && report.goalRate.rate != null) {
+    const g = report.goalRate
+    lines.push('', '■ 목표 완성률',
+      `${pct(g.rate)} (${g.submittedProblems}/${g.assignedProblems}문항)`)
+  }
+
+  if (items.includeAttitude && report.attitude) {
+    lines.push('', '■ 수업 태도', report.attitude)
+  }
+
+  if (items.includeComment && report.comment) {
+    lines.push('', '■ 선생님 코멘트', report.comment)
+  }
+
   return lines.join('\n')
+}
+
+/** 화면 목록의 한 줄 요약 */
+export function summarizeReport(report: DailyStudentReport, items: ReportItems = DEFAULT_ITEMS): string {
+  return [
+    report.classes.classes.length > 0 && `수업 ${report.classes.classes.length}개`,
+    items.includeAttendance && report.lateness.checkInTime && `등원 ${report.lateness.checkInTime}`,
+    items.includeAttendance && report.lateness.checkOutTime && `하원 ${report.lateness.checkOutTime}`,
+    items.includeHomework && report.homework.count > 0 && `숙제 ${report.homework.count}건`,
+    items.includeCalcBook && report.calcBook.count > 0 && `연산 ${report.calcBook.count}권`,
+    items.includeProgressBook && report.progressBook.count > 0 && `진도 ${report.progressBook.count}권`,
+    items.includeWorksheet && report.clinic.count > 0 && `오답 ${report.clinic.count}건`,
+    items.includeUnitExam && report.exam.count > 0 && `평가 ${report.exam.count}건`,
+    report.lateness.recorded && report.lateness.statusLabel,
+  ].filter(Boolean).join(' · ')
 }

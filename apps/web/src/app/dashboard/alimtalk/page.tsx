@@ -6,6 +6,7 @@ import {
   RefreshCw, Filter, Download, Sparkles, AlertCircle 
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { ReportItemsPanel } from '@/components/alimtalk/ReportItemsPanel';
 
 interface SendLog {
   id: string;
@@ -33,7 +34,7 @@ export default function AlimtalkPage() {
   const [logs, setLogs] = useState<SendLog[]>([]);
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'test'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'report' | 'templates' | 'test'>('logs');
   const [filterChannel, setFilterChannel] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [selectedLog, setSelectedLog] = useState<SendLog | null>(null);
@@ -243,10 +244,10 @@ export default function AlimtalkPage() {
 
       {/* ── 3. 탭 네비게이션 ── */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-xs overflow-hidden">
-        <div className="flex border-b border-gray-100 px-6 pt-3 gap-3 bg-gray-50/50">
+        <div className="flex border-b border-gray-100 px-6 pt-3 gap-3 bg-gray-50/50 overflow-x-auto">
           <button
             onClick={() => setActiveTab('logs')}
-            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 ${
+            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'logs'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -260,8 +261,20 @@ export default function AlimtalkPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab('report')}
+            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'report'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>학습리포트 항목</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('templates')}
-            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 ${
+            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'templates'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -273,7 +286,7 @@ export default function AlimtalkPage() {
 
           <button
             onClick={() => setActiveTab('test')}
-            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 ${
+            className={`pb-3 px-3 text-xs font-bold transition border-b-2 flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'test'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -286,6 +299,9 @@ export default function AlimtalkPage() {
 
         {/* ── 4. 탭별 컨텐츠 ── */}
         <div className="p-6">
+          {/* TAB: 학습리포트 항목 (선생님 프리셋) */}
+          {activeTab === 'report' && <ReportItemsPanel />}
+
           {/* TAB 1: 발송 내역 */}
           {activeTab === 'logs' && (
             <div className="space-y-4">

@@ -4,6 +4,18 @@ import { broadcastToTeacher, broadcastToAll } from '@/lib/sse';
 import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
 import { getStudentDayClasses, describeClasses, type DailyClassPlan } from '@/lib/dailyClasses';
 
+// 하원 리포트 자동 발송. dispatcher 가 집계를 거쳐 이 파일을 다시 참조하므로
+// 정적 import 로 묶으면 순환이 된다 — 쓰는 자리에서 동적으로 불러온다.
+async function fireCheckOutReport(teacherId: string | null, studentId: string, date: string) {
+  try {
+    const { dispatchOnCheckOut } = await import('@/lib/kakaoReportDispatcher');
+    await dispatchOnCheckOut({ teacherId, studentId, date });
+  } catch (e) {
+    // 발송이 안 돼도 하원 기록은 남아야 한다
+    console.error('[attendance] 하원 리포트 발송 실패:', e instanceof Error ? e.message : e);
+  }
+}
+
 export interface KioskCheckResult {
   studentName: string;
   grade: string;
@@ -488,6 +500,9 @@ export async function confirmCheckOut(
     });
   }
 
+  // 하원 학습리포트 자동 발송 (선생님이 켰을 때만)
+  await fireCheckOutReport(student.teacherId ?? null, student.id, todayStr);
+
   return {
     studentId: student.id,
     studentName: student.user.name,
@@ -672,6 +687,11 @@ export async function toggleAttendance(params: {
       date: targetDate,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // 하원 학습리포트 자동 발송 (선생님이 켰을 때만)
+  if (type === 'CHECK_OUT') {
+    await fireCheckOutReport(targetTeacherId ?? null, studentId, targetDate);
   }
 
   return { success: true, log };

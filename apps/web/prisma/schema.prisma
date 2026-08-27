@@ -149,6 +149,8 @@ model Textbook {
   title     String
   grade     String
   publisher String   @default("직접 출제")
+  // 하원 리포트가 연산교재와 진도교재를 따로 보고한다 ('진도' | '연산')
+  kind      String   @default("진도")
   teacherId String
   teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -698,6 +700,10 @@ model AttendanceNotificationConfig {
   includeAttitude     Boolean @default(false) // 수업 태도
   includeComment      Boolean @default(false) // 선생님 코멘트
 
+  // 하원 처리 시 학습리포트를 자동 발송할지. 기본은 꺼짐 —
+  // 선생님이 켜기 전에는 학부모에게 아무것도 나가지 않는다
+  autoSendOnCheckOut Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -720,6 +726,11 @@ model DailyStudentReportOverride {
   includeGoalRate     Boolean @default(false)
   includeAttitude     Boolean @default(false)
   includeComment      Boolean @default(false)
+
+  /** 수업 태도 — 데이터로 뽑을 수 없어 선생님이 그날 직접 적는다 */
+  attitude  String?
+  /** 선생님 코멘트 (자유 문장) */
+  comment   String?
 
   /** 누가 고쳤는지 — 나중에 "왜 이 항목이 갔지"를 따라갈 수 있어야 한다 */
   editedBy  String?

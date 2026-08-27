@@ -12,7 +12,8 @@
 import { prisma } from '@/lib/db';
 import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
 import { formatTimeKorean } from '@/lib/attendanceService';
-import { buildDailyStudentReport, formatDailyReportMessage } from '@/lib/dailyReportAggregator';
+import { buildDailyStudentReport, formatDailyReportMessage, summarizeReport } from '@/lib/dailyReportAggregator';
+import { resolveReportOptionsForStudents } from '@/lib/reportOptions';
 
 export type ReportScope = 'DAILY' | 'MONTHLY';
 
@@ -78,39 +79,36 @@ async function activeStudents(teacherId: string) {
  * 하루치 리포트 — 그날 출결 기록이나 학습 기록이 있는 학생만 대상.
  *
  * 한 학생이 같은 날 여러 선생님 수업을 들어도 한 통이다.
- * 수업 목록과 5대 항목(지각·숙제·교재·오답클리닉·단원평가) 집계는
- * dailyReportAggregator 가 날짜 단위로 합쳐 준다.
+ * 수업 목록과 항목별 집계는 dailyReportAggregator 가 날짜 단위로 합쳐 준다.
+ * 무엇을 담을지는 reportOptions 가 정한다 (선생님 프리셋 + 당일 오버라이드).
  */
 export async function buildDailyReport(teacherId: string, date: string): Promise<AttendanceReportRow[]> {
   const students = await activeStudents(teacherId);
+  const optionsByStudent = await resolveReportOptionsForStudents(
+    teacherId,
+    students.map((s) => s.id),
+    date
+  );
 
   const rows = await Promise.all(
     students.map(async (s) => {
-      const report = await buildDailyStudentReport(s.id, date);
+      const options = optionsByStudent.get(s.id)!;
+      const report = await buildDailyStudentReport(s.id, date, {
+        attitude: options.attitude,
+        comment: options.comment,
+      });
       if (!report || !report.hasAnything) return null;
 
       const parentPhone = s.parentPhone || s.user.phone || '';
-      const label = report.lateness.recorded ? report.lateness.statusLabel : '수업';
-
-      const detail = [
-        report.classes.classes.length > 0 && `수업 ${report.classes.classes.length}개`,
-        report.lateness.checkInTime && `등원 ${report.lateness.checkInTime}`,
-        report.lateness.checkOutTime && `하원 ${report.lateness.checkOutTime}`,
-        report.homework.count > 0 && `숙제 ${report.homework.count}건`,
-        report.textbook.count > 0 && `교재 ${report.textbook.count}권`,
-        report.clinic.count > 0 && `오답 ${report.clinic.count}건`,
-        report.exam.count > 0 && `평가 ${report.exam.count}건`,
-        label,
-      ].filter(Boolean).join(' · ');
 
       return {
         studentId: s.id,
         studentName: report.studentName,
         grade: s.grade || '',
         parentPhone,
-        statusLabel: label,
-        detail,
-        message: formatDailyReportMessage(report),
+        statusLabel: report.lateness.recorded ? report.lateness.statusLabel : '수업',
+        detail: summarizeReport(report, options.items),
+        message: formatDailyReportMessage(report, options.items),
         sendable: Boolean(parentPhone),
       } satisfies AttendanceReportRow;
     })

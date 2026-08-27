@@ -271,6 +271,11 @@ model WorksheetDistribution {
   distributedAt DateTime           @default(now())
   hiddenAt      DateTime? // 선생님 배포목록에서만 숨김. 학생앱·학습이력·집계에는 영향 없음
 
+  // 숙제로 지정한 시각. null이면 수업 중 푸는 일반 배포다.
+  // 배포한 뒤 학생별 학습지 목록에서 체크해 지정한다.
+  // 채점을 마치면 숙제 목록에서는 빠지지만 이 값은 기록으로 남긴다.
+  homeworkAt    DateTime?
+
   result WorksheetResult?
 
   @@unique([worksheetId, studentId])

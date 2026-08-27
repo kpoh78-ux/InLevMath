@@ -37,6 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       id: d.id,
       status: d.status,
       distributedAt: d.distributedAt,
+      homeworkAt: d.homeworkAt,
       worksheet: {
         id: d.worksheet.id,
         title: d.worksheet.title,

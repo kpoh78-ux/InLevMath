@@ -32,6 +32,8 @@ type Distribution = {
   id: string
   status: string
   distributedAt: string
+  /** 숙제로 지정한 시각. null이면 수업 중 푸는 일반 배포 */
+  homeworkAt: string | null
   worksheet: {
     id: string; title: string; grade: string; unit: string
     step: string; problemCount: number; answersJson?: string | null
@@ -156,8 +158,32 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
   }
 
   const allSelected = distributions.length > 0 && distributions.every(d => selected.has(d.id))
+  const selectedRows = distributions.filter(d => selected.has(d.id))
+  const allHomework = selectedRows.length > 0 && selectedRows.every(d => d.homeworkAt)
   const toggleAll = () =>
     setSelected(allSelected ? new Set() : new Set(distributions.map(d => d.id)))
+
+  /** 숙제 지정·해제 — 집에서 풀어와 다음 시간에 확인할 학습지로 표시한다 */
+  const setHomework = async (ids: string[], on: boolean) => {
+    if (ids.length === 0) return
+    setBusy(true)
+    try {
+      const res = await apiFetch('/api/worksheets/distributions', {
+        method: 'PATCH',
+        body: JSON.stringify({ distributionIds: ids, homework: on }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error ?? '숙제 지정에 실패했습니다.')
+        return
+      }
+      setSelected(new Set())
+      await fetchStudentWorksheets()
+    } finally {
+      setBusy(false)
+      setOpenMenuId(null)
+    }
+  }
 
   /** 재출제 — 낸 답과 채점을 지우고 다시 풀게 한다 */
   const redistribute = async (ids: string[]) => {
@@ -380,7 +406,14 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                     />
                   </td>
                   <td className="px-2 py-3.5">
-                    <div className="font-semibold text-gray-800">{d.worksheet.title}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {d.homeworkAt && (
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
+                          숙제
+                        </span>
+                      )}
+                      <span className="font-semibold text-gray-800">{d.worksheet.title}</span>
+                    </div>
                     <div className="text-xs text-gray-400 mt-0.5">{d.worksheet.grade} · {d.worksheet.unit}</div>
                   </td>
                   <td className="px-4 py-3.5">
@@ -435,9 +468,16 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                         className="absolute right-2 top-11 z-20 w-36 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-left"
                       >
                         <button
+                          onClick={() => setHomework([d.id], !d.homeworkAt)}
+                          disabled={busy}
+                          className="w-full px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                        >
+                          {d.homeworkAt ? '숙제 해제' : '숙제로 지정'}
+                        </button>
+                        <button
                           onClick={() => redistribute([d.id])}
                           disabled={busy}
-                          className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                          className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 border-t border-gray-100 transition-colors disabled:opacity-50"
                         >
                           재출제
                         </button>
@@ -466,11 +506,22 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setHomework([...selected], !allHomework)}
+                disabled={busy}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50 ${
+                  allHomework
+                    ? 'border border-amber-300/60 text-amber-200 hover:bg-amber-400/20'
+                    : 'bg-amber-400 hover:bg-amber-300 text-slate-900'
+                }`}
+              >
+                {busy ? '처리 중...' : allHomework ? '숙제 해제' : '숙제 내기'}
+              </button>
+              <button
                 onClick={() => redistribute([...selected])}
                 disabled={busy}
                 className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-colors disabled:opacity-50"
               >
-                {busy ? '처리 중...' : '숙제 내기'}
+                다시 출제
               </button>
               <button
                 onClick={() => removeDistributions([...selected])}

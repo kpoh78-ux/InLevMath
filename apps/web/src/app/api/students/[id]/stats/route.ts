@@ -69,14 +69,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'asc' },
   })
 
-  // 2-1. 숙제 — 배포했지만 아직 채점하지 않은 학습지.
+  // 2-1. 숙제 — 선생님이 숙제로 지정한 배포 중 아직 채점하지 않은 것.
   //      집에서 풀어와 다음 시간에 확인해야 하는 것들이라 기간 제한을 두지 않는다.
   const homeworkDistributions = await prisma.worksheetDistribution.findMany({
-    where: { studentId: id, status: { not: 'graded' }, hiddenAt: null },
+    where: {
+      studentId: id,
+      homeworkAt: { not: null },
+      status: { not: 'graded' },
+      hiddenAt: null,
+    },
     select: {
       id: true,
       status: true,
       distributedAt: true,
+      homeworkAt: true,
       worksheet: { select: { title: true, step: true, unit: true, problemCount: true } },
     },
     orderBy: { distributedAt: 'desc' },
@@ -213,6 +219,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       problemCount: d.worksheet.problemCount,
       status: d.status,
       distributedAt: d.distributedAt,
+      homeworkAt: d.homeworkAt,
     })),
     weeklyTrend,
     byStep,

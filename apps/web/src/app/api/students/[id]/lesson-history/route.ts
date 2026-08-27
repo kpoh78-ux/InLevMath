@@ -149,7 +149,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { distributedAt: 'desc' },
     take: 10,
     select: {
-      id: true, status: true, distributedAt: true,
+      id: true, status: true, distributedAt: true, homeworkAt: true,
       worksheet: { select: { title: true, step: true, unit: true, problemCount: true } },
       result: { select: { correctProblems: true, submittedAt: true, gradedBy: true } },
     },
@@ -213,6 +213,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       problemCount: d.worksheet.problemCount,
       status: d.status,
       distributedAt: d.distributedAt,
+      homeworkAt: d.homeworkAt,
       graded: d.result !== null,
       correctProblems: d.result?.correctProblems ?? null,
       correctRate: d.result

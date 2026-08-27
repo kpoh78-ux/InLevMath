@@ -41,6 +41,7 @@ type DistributionRow = {
   status: string; distributedAt: string
   graded: boolean; correctProblems: number | null; correctRate: number | null
   gradedBy: string | null; submittedAt: string | null
+  homeworkAt: string | null
 }
 
 type TextbookRange = {
@@ -95,10 +96,10 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 
-  // 숙제 = 배포했지만 아직 채점하지 않은 학습지.
-  // 집에서 풀어와 다음 시간에 확인해야 하는 것들이라, 채점하는 순간 목록에서 빠진다.
+  // 숙제 = 선생님이 숙제로 지정한 배포 중 아직 채점하지 않은 것.
+  // 채점하는 순간 목록에서 빠진다 (지정 기록 homeworkAt 은 남는다).
   const homework = (data?.distributions ?? [])
-    .filter(d => d.status !== 'graded')
+    .filter(d => d.homeworkAt && d.status !== 'graded')
     .sort((a, b) => +new Date(b.distributedAt) - +new Date(a.distributedAt))
 
   return (
@@ -141,7 +142,7 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
             <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
               {homework.length}건
             </span>
-            <span className="text-[10px] text-gray-300">채점하면 목록에서 빠집니다</span>
+            <span className="text-[10px] text-gray-300">학습지 화면에서 체크해 지정 · 채점하면 빠짐</span>
           </div>
 
           {homework.length === 0 ? (

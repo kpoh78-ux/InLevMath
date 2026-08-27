@@ -5,6 +5,7 @@ import { academyTeacher } from '@/lib/academy'
 import { broadcastToStudentsOfTeacher } from '@/lib/sse'
 
 // 학생별 학습지 목록에서 쓰는 배포 건 관리.
+//   PATCH  — 숙제 지정·해제 (집에서 풀어와 다음 시간에 확인할 학습지)
 //   POST   — 재출제 (기존 답안·채점을 지우고 다시 풀게 한다)
 //   DELETE — 배포 취소 (여러 건 한 번에)
 //
@@ -36,6 +37,30 @@ async function ownedIds(teacherId: string, raw: unknown): Promise<string[] | nul
   // 남의 학원 건이 섞이면 그 건만 빼지 않고 요청 전체를 막는다
   if (owned.length !== ids.length) return null
   return owned.map(o => o.id)
+}
+
+/**
+ * PATCH — 숙제 지정·해제.
+ * 배포는 그대로 두고 homeworkAt 만 켜고 끈다. 채점을 마치면 숙제 목록에서는
+ * 빠지지만 이 값은 "숙제였다"는 기록으로 남긴다.
+ */
+export async function PATCH(req: NextRequest) {
+  const teacher = await requireTeacher(req)
+  if (teacher instanceof NextResponse) return teacher
+
+  const body = await req.json().catch(() => ({}))
+  const ids = await ownedIds(teacher.id, body.distributionIds)
+  if (!ids) {
+    return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  const on = body.homework !== false   // 기본은 지정
+  await prisma.worksheetDistribution.updateMany({
+    where: { id: { in: ids } },
+    data: { homeworkAt: on ? new Date() : null },
+  })
+
+  return NextResponse.json({ success: true, count: ids.length, homework: on })
 }
 
 /**

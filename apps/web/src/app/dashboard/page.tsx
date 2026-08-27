@@ -204,7 +204,7 @@ function StudentStatsView({ studentId }: { studentId: string }) {
           <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
             {homework.length}건
           </span>
-          <span className="text-[11px] text-gray-400 ml-auto">채점하면 목록에서 빠집니다</span>
+          <span className="text-[11px] text-gray-400 ml-auto">학습지 → 학생 목록에서 체크해 지정합니다 · 채점하면 빠집니다</span>
         </div>
 
         {homework.length === 0 ? (

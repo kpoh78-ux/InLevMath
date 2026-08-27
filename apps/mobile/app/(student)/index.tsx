@@ -34,6 +34,7 @@ type DistributedWS = {
 
 const STEP_COLOR_MAP: Record<string, string> = {
   '기초': '#74B9FF', '기본': '#55EFC4', '발전': '#FDCB6E', '최상위': '#E17055',
+  '취약유형': '#D980FA', '오답유형': '#FF6B6B', '단원평가': '#7C83FD',
   '최다빈출': '#A29BFE', '최다오답': '#FD79A8', '서술형': '#FF7675', '모의고사': '#00B894', '기출문제': '#00CEC9',
 }
 

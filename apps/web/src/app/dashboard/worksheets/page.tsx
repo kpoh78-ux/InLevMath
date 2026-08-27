@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, stepNeedsSubType, stepDisplayLabel,
+  UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, stepNeedsSubType, stepDisplayLabel, type UnitStep,
   type WorksheetStep,
 } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
@@ -58,6 +58,9 @@ const STEP_BADGE: Record<string, string> = {
   '기본': 'bg-emerald-50 text-emerald-600 border-emerald-200',
   '발전': 'bg-amber-50 text-amber-600 border-amber-200',
   '최상위': 'bg-rose-50 text-rose-600 border-rose-200',
+  '취약유형': 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200',
+  '오답유형': 'bg-red-50 text-red-600 border-red-200',
+  '단원평가': 'bg-indigo-50 text-indigo-600 border-indigo-200',
   '최다빈출': 'bg-violet-50 text-violet-600 border-violet-200',
   '최다오답': 'bg-orange-50 text-orange-600 border-orange-200',
   '서술형': 'bg-pink-50 text-pink-600 border-pink-200',
@@ -1345,7 +1348,7 @@ function AllWorksheetsView() {
               problemCount: String(answers.length),
               source: 'manual', 
               category: '단원별', 
-              step: section && ['기초', '기본', '발전', '최상위'].includes(section) ? (section as any) : '기본', 
+              step: section && UNIT_STEPS.includes(section as UnitStep) ? (section as any) : '기본', 
               examSubType: '',
             })
             setShowAddModal(true)

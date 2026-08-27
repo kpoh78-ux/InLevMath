@@ -20,6 +20,7 @@ interface AttendanceLogItem {
   status: string;
   checkInTime: string; // "오전 10:11" (없으면 '')
   checkOutTime: string;
+  lateMinutes?: number | null;
 }
 
 interface MonthlySummary {
@@ -100,6 +101,13 @@ const STATUS_OPTIONS = [
 
 type StatusValue = (typeof STATUS_OPTIONS)[number]['value'];
 
+/** 지각 정도(분). 60은 "60분 이상"을 뜻한다 */
+const LATE_MINUTE_OPTIONS = [10, 20, 30, 40, 50, 60] as const;
+
+function lateLabel(m: number): string {
+  return m >= 60 ? '60분 이상' : `${m}분`;
+}
+
 function statusLabel(status: string): string {
   if (status === 'LATE') return '지각';
   if (status === 'ABSENT') return '결석';
@@ -129,6 +137,7 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
   // 수동 등록 폼
   const [addOpen, setAddOpen] = useState(false);
   const [addStatus, setAddStatus] = useState<StatusValue>('ON_TIME');
+  const [addLateMinutes, setAddLateMinutes] = useState<number>(10);
   const [addCheckIn, setAddCheckIn] = useState('');
   const [addCheckOut, setAddCheckOut] = useState('');
   const [saving, setSaving] = useState(false);
@@ -258,10 +267,13 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             }
           : { studentId, type: option.type, status: addStatus, date: selectedDate, time: addCheckIn };
 
+      // 지각일 때만 분을 함께 보낸다
+      const payload = addStatus === 'LATE' ? { ...body, lateMinutes: addLateMinutes } : body;
+
       const res = await apiFetch('/api/attendance/toggle', {
         method: 'POST',
         // 지난 날짜를 정리하는 작업이므로 학부모 알림은 보내지 않는다
-        body: JSON.stringify({ ...body, sendNotification: false }),
+        body: JSON.stringify({ ...payload, sendNotification: false }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -282,6 +294,7 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
     const existing = logsByDate[selectedDate];
     const known = STATUS_OPTIONS.find((o) => o.value === existing?.status);
     setAddStatus(known ? known.value : 'ON_TIME');
+    setAddLateMinutes(existing?.lateMinutes ?? 10);
     setAddCheckIn('');
     setAddCheckOut('');
     setError(null);
@@ -490,7 +503,9 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
                               : 'bg-blue-50 text-blue-600 border-blue-200'
                       }`}
                     >
-                      {statusLabel(selectedLog.status)}
+                      {selectedLog.status === 'LATE' && selectedLog.lateMinutes
+                        ? `지각 ${selectedLog.lateMinutes >= 60 ? '60분+' : selectedLog.lateMinutes + '분'}`
+                        : statusLabel(selectedLog.status)}
                     </span>
                   </span>
                   <span className="font-mono text-slate-600">{selectedLog.checkInTime || '—'}</span>
@@ -540,6 +555,32 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
                   </button>
                 ))}
               </div>
+
+              {/* 지각 정도 — 지각을 골랐을 때만 */}
+              {addStatus === 'LATE' && (
+                <div className="bg-white border border-amber-200 rounded-xl px-3 py-2.5">
+                  <p className="text-[11px] font-bold text-amber-800 mb-2">얼마나 늦었나요?</p>
+                  <div className="grid grid-cols-6 gap-1">
+                    {LATE_MINUTE_OPTIONS.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setAddLateMinutes(m)}
+                        className={`py-1.5 rounded-lg text-[11px] font-bold transition ${
+                          addLateMinutes === m
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                        }`}
+                      >
+                        {m >= 60 ? '60+' : m}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    {lateLabel(addLateMinutes)} 지각으로 기록됩니다
+                  </p>
+                </div>
+              )}
 
               {needsTime ? (
                 <>

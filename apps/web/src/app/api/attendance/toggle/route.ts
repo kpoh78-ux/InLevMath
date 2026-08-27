@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { studentId, date, type, status, time, checkInTime, sendNotification, memo } = body;
+    const { studentId, date, type, status, time, checkInTime, lateMinutes, sendNotification, memo } = body;
 
     if (!studentId) {
       return NextResponse.json({ error: '학생 ID가 필요합니다.' }, { status: 400 });
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
       status,
       time,        // 팝업에서 조절한 등원/하원 시각
       checkInTime, // 하원 처리 시 등원 시각을 함께 수정하는 경우
+      lateMinutes, // 지각 정도(분)
       sendNotification: Boolean(sendNotification),
       memo,
     });

@@ -362,7 +362,11 @@ export interface StudentProgress {
 export type WorksheetCategory = '단원별' | '내신대비'
 
 // 단원별 스텝 (계산력·이해력·추론력 순으로 난이도 상승)
-export type UnitStep = '기초' | '기본' | '발전' | '최상위'
+// 최상위 다음은 '틀린 문제로 다시 만든 학습지' 두 종류다.
+//   취약유형 — 자주 틀리는 유형을 모아 다시 낸다 (유형 단위)
+//   오답유형 — 실제로 틀린 문항을 다시 낸다 (문항 단위)
+// 단원평가는 그 단원을 마무리하며 보는 시험이라 맨 끝에 온다.
+export type UnitStep = '기초' | '기본' | '발전' | '최상위' | '취약유형' | '오답유형' | '단원평가'
 // 내신대비 스텝
 export type ExamStep = '최다빈출' | '최다오답' | '서술형' | '모의고사' | '기출문제'
 // 모의고사 세부 유형
@@ -371,7 +375,7 @@ export type MockExamType = '실전모의고사' | '기출모의고사' | '직전
 export type PastExamType = '학교별기출' | '연도별기출' | '중간고사기출' | '기말고사기출'
 export type WorksheetStep = UnitStep | ExamStep
 
-export const UNIT_STEPS: UnitStep[] = ['기초', '기본', '발전', '최상위']
+export const UNIT_STEPS: UnitStep[] = ['기초', '기본', '발전', '최상위', '취약유형', '오답유형', '단원평가']
 export const EXAM_STEPS: ExamStep[] = ['최다빈출', '최다오답', '서술형', '모의고사', '기출문제']
 export const MOCK_EXAM_TYPES: MockExamType[] = ['실전모의고사', '기출모의고사', '직전대비모의고사']
 export const PAST_EXAM_TYPES: PastExamType[] = ['학교별기출', '연도별기출', '중간고사기출', '기말고사기출']
@@ -404,6 +408,9 @@ export const STEP_CLEAR_THRESHOLD: Record<WorksheetStep, number> = {
   '기본':    75,
   '발전':    70,
   '최상위':  65,
+  '취약유형': 70,
+  '오답유형': 70,
+  '단원평가': 70,
   '최다빈출': 75,
   '최다오답': 70,
   '서술형':  60,
@@ -417,6 +424,11 @@ export const STEP_ABILITY_WEIGHT: Record<WorksheetStep, Partial<AbilityScore>> =
   '기본':    { calculation: 0.4, comprehension: 0.4, reasoning: 0.2 },
   '발전':    { reasoning: 0.4, comprehension: 0.4, calculation: 0.2 },
   '최상위':  { reasoning: 0.5, comprehension: 0.3, calculation: 0.2 },
+  // 약한 곳을 다시 푸는 단계라 이해력에 무게를 둔다
+  '취약유형': { comprehension: 0.5, reasoning: 0.3, calculation: 0.2 },
+  '오답유형': { comprehension: 0.5, reasoning: 0.3, calculation: 0.2 },
+  // 단원 전체를 확인하는 시험이라 세 영역을 고르게 본다
+  '단원평가': { comprehension: 0.34, reasoning: 0.33, calculation: 0.33 },
   '최다빈출': { comprehension: 0.4, reasoning: 0.4, calculation: 0.2 },
   '최다오답': { comprehension: 0.5, reasoning: 0.3, calculation: 0.2 },
   '서술형':  { reasoning: 0.5, comprehension: 0.4, calculation: 0.1 },
@@ -427,6 +439,7 @@ export const STEP_ABILITY_WEIGHT: Record<WorksheetStep, Partial<AbilityScore>> =
 // 스텝 레이블 (UI 표시용)
 export const STEP_LABEL: Record<WorksheetStep, string> = {
   '기초': '기초', '기본': '기본', '발전': '발전', '최상위': '최상위',
+  '취약유형': '취약유형', '오답유형': '오답유형', '단원평가': '단원평가',
   '최다빈출': '최다빈출', '최다오답': '최다오답', '서술형': '서술형', '모의고사': '모의고사',
   '기출문제': '기출문제',
 }
@@ -437,6 +450,9 @@ export const STEP_COLOR: Record<WorksheetStep, { bg: string; text: string; borde
   '기본':    { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
   '발전':    { bg: 'bg-amber-50',  text: 'text-amber-600',  border: 'border-amber-200' },
   '최상위':  { bg: 'bg-rose-50',   text: 'text-rose-600',   border: 'border-rose-200' },
+  '취약유형': { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', border: 'border-fuchsia-200' },
+  '오답유형': { bg: 'bg-red-50',    text: 'text-red-600',    border: 'border-red-200' },
+  '단원평가': { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200' },
   '최다빈출': { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200' },
   '최다오답': { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
   '서술형':  { bg: 'bg-pink-50',   text: 'text-pink-600',   border: 'border-pink-200' },

@@ -9,6 +9,7 @@ function parseWrong(json: string): number[] {
 
 const CLEAR_THRESHOLD: Record<string, number> = {
   '기초': 80, '기본': 75, '발전': 70, '최상위': 65,
+  '취약유형': 70, '오답유형': 70, '단원평가': 70,
   '최다빈출': 75, '최다오답': 70, '서술형': 60, '모의고사': 70, '기출문제': 70,
 }
 
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     stepMap[step].correct += correct
     stepMap[step].count++
   }
-  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제']
+  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '취약유형', '오답유형', '단원평가', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제']
   const stepStats = STEP_ORDER.filter(s => stepMap[s]).map(s => ({
     step: s,
     rate: Math.round((stepMap[s].correct / stepMap[s].total) * 100),

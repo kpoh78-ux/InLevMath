@@ -427,6 +427,8 @@ export async function toggleAttendance(params: {
   time?: string;
   /** 하원 처리 시 등원 시각을 함께 수정하고 싶을 때 사용 */
   checkInTime?: string;
+  /** 지각 정도(분). 10·20·30·40·50, 60은 "60분 이상". status가 LATE일 때만 쓴다 */
+  lateMinutes?: number;
   date?: string;
   sendNotification?: boolean;
   memo?: string;
@@ -438,6 +440,7 @@ export async function toggleAttendance(params: {
     status: customStatus,
     time,
     checkInTime: checkInTimeInput,
+    lateMinutes,
     date,
     sendNotification,
     memo,
@@ -470,6 +473,11 @@ export async function toggleAttendance(params: {
     type,
     memo: memo || undefined,
   };
+
+  // 지각일 때만 분을 담고, 다른 상태로 바꾸면 지운다 —
+  // 예전 지각 기록이 남아 정상 출석에 "20분 지각"이 붙는 일을 막는다
+  const asLate = (customStatus ?? (type === 'ABSENT' ? 'ABSENT' : 'ON_TIME')) === 'LATE';
+  updateData.lateMinutes = asLate && Number.isInteger(lateMinutes) ? lateMinutes : null;
 
   if (customStatus) {
     updateData.status = customStatus;
@@ -651,6 +659,7 @@ export async function getMonthlyAttendance(studentId: string, year: number, mont
     status: l.status,
     checkInTime: l.checkInTime ? formatTimeKorean(l.checkInTime) : '',
     checkOutTime: l.checkOutTime ? formatTimeKorean(l.checkOutTime) : '',
+    lateMinutes: l.lateMinutes,
     alimtalkSent: l.alimtalkSent,
     memo: l.memo,
   }));

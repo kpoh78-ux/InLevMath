@@ -171,7 +171,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     stepMap['교재'] = { total: tbTotal, correct: tbCorrect }
   }
 
-  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제', '교재']
+  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '취약유형', '오답유형', '단원평가', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제', '교재']
   const byStep = STEP_ORDER
     .filter(s => stepMap[s])
     .map(s => ({

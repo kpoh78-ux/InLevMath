@@ -11,7 +11,7 @@ import { apiFetch } from '@/lib/api'
 import { IMAGE_ANSWER_MARKER, isImageAnswer } from '@/lib/answers'
 import {
   AnswerLightbox, AnswerThumb, SnapshotHint, SymbolPalette,
-  AttachImageButton, RemoveImageButton, useSymbolPalette, useImageAttach,
+  AttachImageButton, RemoveImageButton, useSymbolPalette, useImageAttach, ChoicePalette,
 } from '@/components/AnswerInput'
 import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
 import { WorksheetAiAnswersModal } from '@/components/WorksheetAiAnswersModal'
@@ -993,6 +993,16 @@ function AllWorksheetsView() {
                     <span className="ml-2 text-gray-300">예: ①  15  2x+3  정삼각형</span>
                   </p>
                   <div className="mt-1"><SnapshotHint /></div>
+                </div>
+
+                {/* 객관식 빠른 입력 — 원문자 ①~⑤ (복수정답 지원) */}
+                <div className="px-6 pt-3">
+                  <ChoicePalette
+                    value={palette.focusedKey !== null ? (answerInputs[palette.focusedKey] ?? '') : ''}
+                    onChange={v => { if (palette.focusedKey !== null) setAnswerAt(palette.focusedKey, v) }}
+                    disabled={palette.focusedKey === null}
+                    hint={palette.focusedKey !== null ? `${palette.focusedKey + 1}번 칸` : undefined}
+                  />
                 </div>
 
                 {/* 수식 기호 팔레트 — 마지막으로 클릭한 입력칸에 삽입 */}

@@ -53,9 +53,13 @@ export async function parseWorksheetWithOmniRoute(
   fileName: string,
   titleSnippet: string,
   answerSnippet: string,
-  opts?: { boundaryConfident?: boolean }
+  opts?: { boundaryConfident?: boolean; expectedCount?: number }
 ): Promise<WorksheetAnalysisResult> {
   const boundaryConfident = opts?.boundaryConfident ?? true;
+  // 문항 수를 알려주지 않으면 AI가 스스로 판단하다 중간에서 끊긴다
+  const countNote = opts?.expectedCount
+    ? `\n[문항 수]: 이 학습지는 ${opts.expectedCount}문항입니다. 1번부터 ${opts.expectedCount}번까지 하나도 빠뜨리지 말고 answers 배열에 담으세요. 정답을 못 읽은 번호는 answer를 빈 문자열로 두되 번호는 반드시 포함하세요.`
+    : '';
   const boundaryNote = boundaryConfident
     ? ''
     : '\n[주의] 정답 구간의 시작 위치를 키워드로 확신하지 못해 페이지 위치 추정으로 잘라낸 텍스트입니다. 아래 텍스트가 실제 정답표/해설이 아닐 수 있으니 신중히 판단하고, 확신이 서지 않으면 answers를 비워두세요.';
@@ -77,7 +81,7 @@ ${answerSnippet || '(추출되지 않음)'}${boundaryNote}
    정답·해설이 결합된 형식(예: "10) [정답] ② / [해설] 원 밖의 한 점에서...")인 경우, 정답은 반드시
    "[정답]" 표시 바로 뒤에 오는 값 하나뿐입니다. [해설] 본문에 등장하는 중간·최종 계산값은
    절대 정답이 아니니 무시하세요. 객관식은 [정답] 뒤의 원문자(①②③④⑤)를 그대로 씁니다.
-3. 배점이 없는 경우 기본 4점으로 설정하세요.`;
+3. 배점이 없는 경우 기본 4점으로 설정하세요.${countNote}`;
 
   // 1차 시도: Google Gemini 2.5 Flash (무료 티어 활용)
   try {

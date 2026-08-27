@@ -96,6 +96,87 @@ export function useSymbolPalette<K extends string | number>(
   )
 }
 
+/** 객관식 보기 원문자 — 팔레트를 뒤지지 않고 한 번에 고른다 */
+const CHOICE_SYMBOLS = ['①', '②', '③', '④', '⑤'] as const
+
+/**
+ * 객관식 정답 빠른 입력.
+ *  - 한 개만 고르면 그 값으로 바꾼다 (기존 값 대체)
+ *  - '복수'를 켜면 누를 때마다 붙이거나 떼어낸다 — "①③" 처럼 2개 이상 정답
+ *  - 채점은 순서를 따지지 않는다 (shared/answersMatch)
+ */
+export function ChoicePalette({
+  value, onChange, disabled, hint,
+}: {
+  value: string
+  onChange: (next: string) => void
+  disabled: boolean
+  hint?: string
+}) {
+  const [multi, setMulti] = useState(false)
+
+  const picked = useMemo(
+    () => new Set([...(value ?? '')].filter(ch => (CHOICE_SYMBOLS as readonly string[]).includes(ch))),
+    [value]
+  )
+
+  const pick = (sym: string) => {
+    if (!multi) { onChange(sym); return }
+    const next = new Set(picked)
+    if (next.has(sym)) next.delete(sym)
+    else next.add(sym)
+    // 항상 보기 번호 순서로 정렬해 눈으로 확인하기 쉽게 둔다
+    onChange(CHOICE_SYMBOLS.filter(c => next.has(c)).join(''))
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[11px] font-bold text-gray-500 shrink-0">객관식</span>
+
+      <div className="flex gap-1">
+        {CHOICE_SYMBOLS.map(sym => {
+          const on = picked.has(sym)
+          return (
+            <button
+              key={sym}
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => pick(sym)}
+              disabled={disabled}
+              className={`w-9 h-8 rounded-lg border text-base leading-none transition-colors disabled:opacity-40 ${
+                on
+                  ? 'bg-indigo-600 border-indigo-600 text-white font-bold'
+                  : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50'
+              }`}
+            >
+              {sym}
+            </button>
+          )
+        })}
+      </div>
+
+      <button
+        type="button"
+        onMouseDown={e => e.preventDefault()}
+        onClick={() => setMulti(v => !v)}
+        disabled={disabled}
+        title="정답이 2개 이상인 문항"
+        className={`text-[11px] font-bold px-2.5 h-8 rounded-lg border transition-colors disabled:opacity-40 ${
+          multi
+            ? 'bg-amber-400 border-amber-400 text-slate-900'
+            : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
+        }`}
+      >
+        복수정답
+      </button>
+
+      {disabled
+        ? <span className="text-[11px] text-gray-400">칸을 먼저 클릭하세요</span>
+        : hint && <span className="text-[11px] text-gray-400">{hint}</span>}
+    </div>
+  )
+}
+
 export function SymbolPalette({
   onInsert, disabled, hint,
 }: { onInsert: (sym: string) => void; disabled: boolean; hint?: string }) {

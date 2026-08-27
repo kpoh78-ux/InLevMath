@@ -10,7 +10,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { readFile, printWorksheetFile, type WorksheetFile } from '@/lib/worksheetFiles'
 import { extractLightweightPdfText, type StructureOverride } from '@/lib/pdfTextExtractor'
-import { SymbolPalette, useSymbolPalette } from '@/components/AnswerInput'
+import { SymbolPalette, ChoicePalette, useSymbolPalette } from '@/components/AnswerInput'
 import { Sparkles, Zap, ShieldCheck, Tag, BookOpen, Layers, CheckCircle2, RotateCcw } from 'lucide-react'
 
 type ExtractedAnswer = { 
@@ -44,6 +44,14 @@ type OmniExtractResult = {
     majorUnitName: string
   } | null
 }
+
+/**
+ * AI에게 알려줄 기본 문항 수.
+ * 이 값을 안 보내면 AI가 스스로 판단하다 14·23번쯤에서 멈추고,
+ * normalize()가 그 개수로 배열을 잘라 뒤쪽 문항이 통째로 사라진다.
+ */
+const DEFAULT_PROBLEM_COUNT = 25
+const MAX_PROBLEM_COUNT = 200
 
 const MEDIA_BY_EXT: Record<string, string> = {
   pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg',
@@ -85,7 +93,10 @@ export function WorksheetAiAnswersModal({
     section?: string;
   }) => void
 }) {
-  const [phase, setPhase] = useState<'running' | 'review' | 'error'>('running')
+  // 'ask' — 읽기 전에 문항 수를 확인받는 단계
+  const [phase, setPhase] = useState<'ask' | 'running' | 'review' | 'error'>('ask')
+  const [problemCount, setProblemCount] = useState<number>(DEFAULT_PROBLEM_COUNT)
+  const [countInput, setCountInput] = useState<string>(String(DEFAULT_PROBLEM_COUNT))
   const [error, setError] = useState('')
   const [result, setResult] = useState<OmniExtractResult | null>(null)
   const [answers, setAnswers] = useState<string[]>([])
@@ -108,7 +119,16 @@ export function WorksheetAiAnswersModal({
 
   const palette = useSymbolPalette<number>(setAnswerAt)
 
-  const run = useCallback(async (structureOverride?: StructureOverride) => {
+  /** 검수 중 문항 수를 바꾼다 — 늘리면 빈 칸이 붙고, 줄이면 뒤가 잘린다 */
+  const applyCount = useCallback((next: number) => {
+    if (!Number.isInteger(next) || next < 1 || next > MAX_PROBLEM_COUNT) return
+    setProblemCount(next)
+    setAnswers(prev => Array.from({ length: next }, (_, i) => prev[i] ?? ''))
+  }, [])
+
+  const emptyCount = answers.filter(a => (a ?? '').trim() === '').length
+
+  const run = useCallback(async (count: number, structureOverride?: StructureOverride) => {
     setPhase('running'); setError('')
     try {
       const f = await readFile(file)
@@ -129,6 +149,7 @@ export function WorksheetAiAnswersModal({
               answerSnippet: extractedPdf.answerSnippet,
               boundaryConfident: extractedPdf.boundaryConfident,
               fileName: file.name,
+              expectedCount: count,
             }),
           })
 
@@ -146,14 +167,18 @@ export function WorksheetAiAnswersModal({
         }
       }
 
-      // 2. 이미징 파일이거나, 텍스트 기반 1차 시도가 실패/저신뢰일 때:
-      //    파일을 통째로 비전 AI에 넘겨 다시 읽는다 (원문자 등 텍스트 추출 오류를 우회, 더 안정적)
-      if (!parsedData || parsedData.lowConfidence) {
+      // 2. 이미징 파일이거나, 텍스트 1차 시도가 실패·저신뢰이거나,
+      //    읽어온 문항이 알려준 개수에 못 미칠 때 (뒤쪽에서 끊긴 경우):
+      //    파일을 통째로 비전 AI에 넘겨 다시 읽는다
+      const shortRead =
+        !!parsedData && (parsedData.answers?.filter(a => (a.answer ?? '').trim() !== '').length ?? 0) < count
+      if (!parsedData || parsedData.lowConfidence || shortRead) {
         const mediaType = MEDIA_BY_EXT[ext] || 'application/pdf'
         const res = await apiFetch('/api/worksheets/ai-extract', {
           method: 'POST',
           body: JSON.stringify({
             data: await toBase64(f), mediaType, fileName: file.name,
+            expectedCount: count,
           }),
         })
 
@@ -166,7 +191,7 @@ export function WorksheetAiAnswersModal({
             middleUnit: parsedData?.middleUnit || '핵심 단원',
             minorUnit: parsedData?.minorUnit || '소단원 평가',
             section: parsedData?.section || '기본유형',
-            problemCount: fallbackData.problemCount || fallbackData.answers?.length || 10,
+            problemCount: count,
             answers: fallbackData.answers || [],
             aiProviderUsed: fallbackData.provider || 'CLAUDE_HAIKU_VISION',
             tokenSavedPercent: 0,
@@ -187,8 +212,18 @@ export function WorksheetAiAnswersModal({
       setMinorUnit(parsedData.minorUnit || '')
       setSection(parsedData.section || '')
 
-      setAnswers(parsedData.answers.map(a => a.answer))
-      setUnsure(new Set(parsedData.answers.filter(a => !a.confident).map(a => a.no)))
+      // AI가 뒤쪽을 못 읽었어도 칸은 알려준 개수만큼 만들어 둔다 — 손으로 채울 수 있게
+      const byNo = new Map(parsedData.answers.map(a => [a.no, a]))
+      const filled = Array.from({ length: count }, (_, i) => byNo.get(i + 1)?.answer ?? '')
+      const missing = Array.from({ length: count }, (_, i) => i + 1)
+        .filter(no => !byNo.get(no) || (byNo.get(no)!.answer ?? '').trim() === '')
+
+      setProblemCount(count)
+      setAnswers(filled)
+      setUnsure(new Set([
+        ...parsedData.answers.filter(a => !a.confident).map(a => a.no),
+        ...missing,
+      ]))
       palette.setFocusedKey(null)
       setPhase('review')
     } catch (e) {
@@ -197,7 +232,6 @@ export function WorksheetAiAnswersModal({
     }
   }, [file, palette])
 
-  useEffect(() => { run() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const print = async (from: number) => {
     try {
@@ -267,6 +301,75 @@ export function WorksheetAiAnswersModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none ml-4 cursor-pointer">×</button>
         </div>
 
+        {phase === 'ask' && (
+          <div className="p-8 space-y-5">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">이 학습지는 몇 문제인가요?</h3>
+              <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                문항 수를 알려주면 AI가 <b>1번부터 그 번호까지 빠짐없이</b> 채웁니다.
+                알려주지 않으면 AI가 스스로 판단하다 중간에서 끊길 수 있습니다.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={MAX_PROBLEM_COUNT}
+                value={countInput}
+                autoFocus
+                onChange={e => setCountInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key !== 'Enter') return
+                  const n = parseInt(countInput, 10)
+                  if (Number.isInteger(n) && n >= 1 && n <= MAX_PROBLEM_COUNT) run(n)
+                }}
+                className="w-28 border border-slate-300 rounded-xl px-4 py-2.5 text-lg font-bold text-slate-800 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <span className="text-sm text-slate-600">문제</span>
+
+              <div className="flex gap-1.5 ml-3">
+                {[20, 25, 30].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setCountInput(String(n))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                      countInput === String(n)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              정확하지 않아도 됩니다 — 읽은 뒤 화면에서 개수를 다시 바꿀 수 있습니다.
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={onClose}
+                className="flex-1 border border-slate-300 text-slate-600 rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  const n = parseInt(countInput, 10)
+                  run(Number.isInteger(n) && n >= 1 && n <= MAX_PROBLEM_COUNT ? n : DEFAULT_PROBLEM_COUNT)
+                }}
+                className="flex-1 bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-bold hover:bg-indigo-700 transition-colors"
+              >
+                AI로 정답 읽기
+              </button>
+            </div>
+          </div>
+        )}
+
         {phase === 'running' && (
           <div className="p-12 text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto animate-bounce shadow-inner">
@@ -288,7 +391,7 @@ export function WorksheetAiAnswersModal({
                 className="border border-slate-300 text-slate-600 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer">
                 닫기
               </button>
-              <button onClick={() => run()}
+              <button onClick={() => run(problemCount)}
                 className="bg-indigo-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer">
                 다시 시도
               </button>
@@ -318,6 +421,46 @@ export function WorksheetAiAnswersModal({
               </div>
             </div>
 
+            {/* 1-0. 문항 수 조절 — AI가 덜 읽었으면 여기서 늘려 손으로 채운다 */}
+            <div className="px-4 pt-1.5">
+              <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-700 shrink-0">문항 수</span>
+                <button
+                  type="button"
+                  onClick={() => applyCount(problemCount - 1)}
+                  className="w-6 h-6 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm leading-none cursor-pointer"
+                  aria-label="문항 수 줄이기"
+                >−</button>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_PROBLEM_COUNT}
+                  value={problemCount}
+                  onChange={e => applyCount(parseInt(e.target.value, 10))}
+                  className="w-14 border border-slate-300 rounded-lg px-1.5 py-1 text-xs font-bold text-slate-800 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => applyCount(problemCount + 1)}
+                  className="w-6 h-6 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm leading-none cursor-pointer"
+                  aria-label="문항 수 늘리기"
+                >+</button>
+
+                {emptyCount > 0 && (
+                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full ml-1">
+                    비어 있는 칸 {emptyCount}개 — 손으로 채워주세요
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => run(problemCount)}
+                  className="ml-auto text-[11px] font-bold text-slate-700 border border-slate-200 bg-white hover:border-indigo-400 hover:text-indigo-600 px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  이 개수로 다시 읽기
+                </button>
+              </div>
+            </div>
+
             {/* 1-1. 저신뢰 결과 경고 배너 (AI 미호출 또는 정답 구간 경계 추정 실패) */}
             {(result.aiProviderUsed === 'FALLBACK_LOCAL' || result.lowConfidence) && (
               <div className="px-4 pt-1.5">
@@ -332,11 +475,11 @@ export function WorksheetAiAnswersModal({
                         : '정답 구간 위치를 자동으로 확신하지 못했습니다. 아래 결과를 확인하세요.'}
                     </p>
                     <div className="flex gap-1.5">
-                      <button type="button" onClick={() => run('TABLE_ONLY')}
+                      <button type="button" onClick={() => run(problemCount, 'TABLE_ONLY')}
                         className="text-[10px] font-bold text-red-700 border border-red-300 bg-white hover:bg-red-100 px-2 py-0.5 rounded-md cursor-pointer">
                         정답표만으로 재추출
                       </button>
-                      <button type="button" onClick={() => run('WITH_EXPLANATION')}
+                      <button type="button" onClick={() => run(problemCount, 'WITH_EXPLANATION')}
                         className="text-[10px] font-bold text-red-700 border border-red-300 bg-white hover:bg-red-100 px-2 py-0.5 rounded-md cursor-pointer">
                         해설 포함 재추출
                       </button>
@@ -450,6 +593,16 @@ export function WorksheetAiAnswersModal({
               </div>
             </div>
 
+            {/* 객관식 빠른 입력 — 원문자 ①~⑤ (복수정답 지원) */}
+            <div className="px-4 pb-1.5">
+              <ChoicePalette
+                value={palette.focusedKey !== null ? (answers[palette.focusedKey] ?? '') : ''}
+                onChange={v => { if (palette.focusedKey !== null) setAnswerAt(palette.focusedKey, v) }}
+                disabled={palette.focusedKey === null}
+                hint={palette.focusedKey !== null ? `${palette.focusedKey + 1}번 칸` : undefined}
+              />
+            </div>
+
             {/* 특수기호 팔레트 */}
             <div className="px-4 pb-1">
               <SymbolPalette
@@ -466,7 +619,7 @@ export function WorksheetAiAnswersModal({
               </span>
               <button
                 type="button"
-                onClick={() => run()}
+                onClick={() => run(problemCount)}
                 className="border border-slate-300 text-slate-600 rounded-lg px-3 py-2 text-xs font-bold hover:bg-slate-50 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />

@@ -243,6 +243,33 @@ export function normalizeForCompare(value: string): string {
 }
 
 /**
+ * 객관식 복수 정답을 번호 배열로 나눈다.
+ * "①③", "1,3", "1 3", "①, ③" 모두 ['1','3'] 이 된다.
+ * 고른 순서는 채점에 영향을 주지 않으므로 정렬해 돌려준다.
+ * 복수 정답 형태가 아니면 null.
+ */
+export function splitMultiAnswer(value: string): string[] | null {
+  // NFKC 정규화는 ①③ 을 13 으로 바꿔 버린다. 원문자 판정은 반드시 그 전에 한다.
+  const raw = (value ?? '').trim()
+  if (raw === '') return null
+
+  const circled = [...raw].filter(ch => CIRCLED_DIGITS.includes(ch))
+  const nonSpace = [...raw].filter(ch => !/\s/.test(ch))
+  if (circled.length >= 2 && circled.length === nonSpace.length) {
+    // "①③" / "③ ①" — 고른 순서는 채점에 영향을 주지 않으므로 정렬한다
+    return circled.map(ch => String(CIRCLED_DIGITS.indexOf(ch) + 1)).sort()
+  }
+
+  // 구분자로 나눈 경우 — "1,3" / "1 3" / "①, ③"
+  const parts = raw.split(/[,،、\s/·]+/).map(v => v.trim()).filter(v => v !== '')
+  if (parts.length < 2) return null
+  const nums = parts.map(normalizeForCompare)
+  // 조각이 전부 1~5 보기 번호일 때만 복수 정답으로 본다 (식·좌표를 잘라먹지 않게)
+  if (!nums.every(n => /^[1-5]$/.test(n))) return null
+  return [...nums].sort()
+}
+
+/**
  * 학생 답이 정답과 같은지.
  * 판정할 수 없으면 null 을 돌려준다 (정답이 비어 있거나 이미지인 경우).
  */
@@ -252,6 +279,14 @@ export function answersMatch(
 ): boolean | null {
   const correct = (correctAnswer ?? '').trim()
   if (correct === '' || correct === IMAGE_ANSWER_MARKER) return null
+
+  // 복수 정답(객관식 2개 이상 고르기) — ①③ 과 ③① 을 같게 본다
+  const multi = splitMultiAnswer(correct)
+  if (multi) {
+    const got = splitMultiAnswer(studentAnswer)
+    if (!got) return false
+    return multi.length === got.length && multi.every((v, i) => v === got[i])
+  }
 
   const a = normalizeForCompare(studentAnswer)
   const b = normalizeForCompare(correct)

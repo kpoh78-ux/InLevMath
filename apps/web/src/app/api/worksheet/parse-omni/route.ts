@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     let fileName = '학습지.pdf';
     let titleSnippet = '';
     let answerSnippet = '';
+    let expectedCount: number | undefined;
     let boundaryConfident = true;
     let totalPageCount = 1;
 
@@ -40,6 +41,9 @@ export async function POST(req: Request) {
       titleSnippet = body.titleSnippet || '';
       answerSnippet = body.answerSnippet || '';
       boundaryConfident = body.boundaryConfident ?? true;
+      expectedCount = Number.isInteger(body.expectedCount) && body.expectedCount > 0
+        ? Math.min(body.expectedCount, 300)
+        : undefined;
     }
 
     // 2. 파일명 ↔ 시드된 K-수학 택소노미 DB 직접 대조 (AI 호출 없이 결정적으로 대/중/소단원 확정)
@@ -51,7 +55,7 @@ export async function POST(req: Request) {
     }
 
     // 3. 무료 티어 AI 로드밸런서로 라우팅 (비용 0원 최적화)
-    const analysis = await parseWorksheetWithOmniRoute(fileName, titleSnippet, answerSnippet, { boundaryConfident });
+    const analysis = await parseWorksheetWithOmniRoute(fileName, titleSnippet, answerSnippet, { boundaryConfident, expectedCount });
 
     // 택소노미 DB 매칭에 성공했다면 AI 추측보다 우선 — 파일명 번호/이름이 DB와 직접 대조된 결정값이므로
     const majorUnit = taxonomyMatch?.majorUnitName || analysis.majorUnit;
@@ -70,7 +74,7 @@ export async function POST(req: Request) {
         middleUnit,
         minorUnit,
         section: analysis.mainPatternType,
-        problemCount: analysis.answers?.length || 0,
+        problemCount: expectedCount || analysis.answers?.length || 0,
         answers: (analysis.answers || []).map(a => ({
           no: a.questionNumber,
           answer: String(a.answer || '').trim(),

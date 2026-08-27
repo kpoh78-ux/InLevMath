@@ -52,7 +52,7 @@ export function getLevelFromTheta(theta: number): {
   if (theta >= -0.6) return { level: 4, grade: 6, title: '스텐다드', percentileTop: topPercentile }
   if (theta >= -1.2) return { level: 3, grade: 7, title: '트레이니', percentileTop: topPercentile }
   if (theta >= -1.8) return { level: 2, grade: 8, title: '루키', percentileTop: topPercentile }
-  return { level: 1, grade: 9, title: '비긴너', percentileTop: topPercentile }
+  return { level: 1, grade: 9, title: '비기너', percentileTop: topPercentile }
 }
 
 /** 5각 역량 점수 계산 (0 ~ 100점 척도) */

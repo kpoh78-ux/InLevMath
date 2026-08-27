@@ -65,7 +65,7 @@ export const MISSION_LEVEL: Record<MissionType, number> = {
 // ── 레벨·칭호 (평균 정답률 기반) ────────────────────────────────────────────
 //
 // 레벨은 학생이 지금까지 푼 문제의 평균 정답률 하나로 정해진다.
-// 채점 기록이 아직 없으면 맨 아래 단계인 Lv.1 비긴너에서 시작한다.
+// 채점 기록이 아직 없으면 맨 아래 단계인 Lv.1 비기너에서 시작한다.
 //
 // 최근 학습에 무게를 둔다.
 //   70% — 지금 진도를 나가는 교재 + 최근 90일 안에 푼 학습지
@@ -89,10 +89,10 @@ export const LEVEL_TIERS: LevelTier[] = [
   { level: 4, grade: 6, title: '스텐다드',     minRate: 70 },
   { level: 3, grade: 7, title: '트레이니',     minRate: 60 },
   { level: 2, grade: 8, title: '루키',         minRate: 40 },
-  { level: 1, grade: 9, title: '비긴너',       minRate: 0 },
+  { level: 1, grade: 9, title: '비기너',       minRate: 0 },
 ]
 
-/** 채점 기록이 없는 학생도 Lv.1 비긴너에서 시작한다 */
+/** 채점 기록이 없는 학생도 Lv.1 비기너에서 시작한다 */
 export const START_LEVEL = 1
 
 /** 지난 과정(끝낸 교재 + 오래된 학습지) 반영 비중 */
@@ -108,7 +108,7 @@ export const RECENT_WORKSHEET_DAYS = 90
  * 표는 문제 수가 적은 쪽부터 본다.
  */
 export const TITLE_CAPS: { maxProblems: number; capLevel: number }[] = [
-  { maxProblems: 300, capLevel: 1 },  // 300문제 미만 — 비긴너까지
+  { maxProblems: 300, capLevel: 1 },  // 300문제 미만 — 비기너까지
   { maxProblems: 600, capLevel: 4 },  // 600문제 미만 — 스텐다드까지
   { maxProblems: 900, capLevel: 7 },  // 900문제 미만 — 마스터까지
 ]
@@ -139,7 +139,7 @@ export function levelInfoOf(
 ) {
   const tier = levelTierOf(avgRate)
   if (!tier) {
-    // 아직 채점 기록이 없다 — 맨 아래 단계(비긴너)에서 시작한다
+    // 아직 채점 기록이 없다 — 맨 아래 단계(비기너)에서 시작한다
     const start = LEVEL_TIERS.find(t => t.level === START_LEVEL) ?? LEVEL_TIERS[LEVEL_TIERS.length - 1]
     return {
       level: start.level, grade: start.grade, title: start.title,

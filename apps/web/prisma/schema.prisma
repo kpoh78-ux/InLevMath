@@ -40,6 +40,7 @@ model Teacher {
   schedules   ClassSchedule[]
   rewardItems RewardItem[]
   rewardRules RewardRule[]
+  reportConfig AttendanceNotificationConfig?
 
   @@index([userId])
 }
@@ -118,6 +119,7 @@ model Student {
   alimtalkLogs         AlimtalkLog[]
   weaknessConfig       StudentWeaknessConfig?
   prescriptiveMissions PrescriptiveMission[]
+  reportOverrides      DailyStudentReportOverride[]
 
   @@index([teacherId])
   @@index([attendancePin])
@@ -650,6 +652,64 @@ enum SendStatus {
   SUCCESS
   FAILED
   PENDING
+}
+
+// ── 하원 연동 학습리포트 발송 설정 ──────────────────────────────────────────
+//
+// 하원 시 학부모에게 보낼 항목을 정하는 두 계층.
+//   1) DailyStudentReportOverride — 그날 그 학생만, 선생님이 직접 만진 것 (우선)
+//   2) AttendanceNotificationConfig — 평상시 학원 기본값
+//   3) 둘 다 없으면 코드 상수 (lib/reportOptions.ts)
+// 3단계를 두는 이유: 설정을 한 번도 저장하지 않아도 발송이 멈추면 안 된다.
+//
+// 항목 이름은 AlimtalkSendPanel 의 checkedOptions 키와 같게 맞춘다.
+
+/** 학원 기본 프리셋 — 학생·학습지처럼 학원 대표 계정 하나에 둔다 */
+model AttendanceNotificationConfig {
+  id        String  @id @default(cuid())
+  teacherId String  @unique
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  includeAttendance   Boolean @default(true)  // 지각 유무
+  includeHomework     Boolean @default(true)  // 숙제 완성도·점수
+  includeCalcBook     Boolean @default(true)  // 연산교재
+  includeProgressBook Boolean @default(true)  // 진도교재 채점
+  includeWorksheet    Boolean @default(true)  // 오답 클리닉 학습지
+  includeUnitExam     Boolean @default(true)  // 단원평가·모의고사
+  includeGoalRate     Boolean @default(false) // 일일 목표 완성률
+  includeAttitude     Boolean @default(false) // 수업 태도
+  includeComment      Boolean @default(false) // 선생님 코멘트
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/** 당일 오버라이드 — 그날 하루만 유효하다. 없으면 위 프리셋을 쓴다 */
+model DailyStudentReportOverride {
+  id        String  @id @default(cuid())
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // AttendanceLog 와 같은 "YYYY-MM-DD" 문자열. 시각이 아니라 날짜로 잘라야
+  // 하원 뒤에 채점한 건도 같은 날로 묶인다
+  date      String
+
+  includeAttendance   Boolean @default(true)
+  includeHomework     Boolean @default(true)
+  includeCalcBook     Boolean @default(true)
+  includeProgressBook Boolean @default(true)
+  includeWorksheet    Boolean @default(true)
+  includeUnitExam     Boolean @default(true)
+  includeGoalRate     Boolean @default(false)
+  includeAttitude     Boolean @default(false)
+  includeComment      Boolean @default(false)
+
+  /** 누가 고쳤는지 — 나중에 "왜 이 항목이 갔지"를 따라갈 수 있어야 한다 */
+  editedBy  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, date])
+  @@index([date])
 }
 
 model DailyLessonReport {

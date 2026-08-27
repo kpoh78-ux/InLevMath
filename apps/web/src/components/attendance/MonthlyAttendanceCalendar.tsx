@@ -324,7 +324,7 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
     <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
       {/* ── 1. 상단 학생 출결 타이틀 & 액션 버튼 ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-slate-900">{studentName} 학생</h2>
             {studentGrade && (
@@ -341,27 +341,21 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleDownload}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>내역 다운로드</span>
-          </button>
+        {/* 자주 쓰는 두 가지만 위에 둔다. 좁은 폭에서도 글자가 접히지 않게 shrink 를 막는다 */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setReportOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-xs shadow-md shadow-amber-400/20 transition flex items-center gap-1.5"
+            className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-xs shadow-md shadow-amber-400/20 transition flex items-center gap-1.5"
           >
-            <Send className="w-3.5 h-3.5" />
-            <span>출결 알림톡</span>
+            <Send className="w-3.5 h-3.5 shrink-0" />
+            <span className="whitespace-nowrap">출결 알림톡</span>
           </button>
           <button
             onClick={openAddForm}
-            className="px-3.5 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
+            className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>출결 처리</span>
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span className="whitespace-nowrap">출결 처리</span>
           </button>
         </div>
       </div>
@@ -613,6 +607,19 @@ export const MonthlyAttendanceCalendar: React.FC<Props> = ({
             ))}
           </div>
         </div>
+      </div>
+
+      {/* 내역 다운로드 — 자주 쓰지 않으므로 아래에 둔다 */}
+      <div className="pt-4 border-t border-slate-100 flex justify-end">
+        <button
+          onClick={handleDownload}
+          className="shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition flex items-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5 shrink-0" />
+          <span className="whitespace-nowrap">
+            {currentYear}년 {currentMonth}월 내역 다운로드
+          </span>
+        </button>
       </div>
 
       <AttendanceReportModal

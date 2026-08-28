@@ -362,6 +362,57 @@ export interface StudentProgress {
 export type WorksheetCategory = '단원별' | '내신대비'
 
 // 단원별 스텝 (계산력·이해력·추론력 순으로 난이도 상승)
+// ── 문제 난이도 ─────────────────────────────────────────────────────────────
+//
+// 문제은행의 공식 척도는 1~5 하나뿐이다. 예전에는 세 군데가 제각각이었다 —
+// ConceptNode 는 1~3, MathPatternType·Question 은 3 기본값, 학습지는 기초/기본/
+// 발전/최상위 문자열. 서로 비교할 수 없어 "이 문제가 저 문제보다 어렵나"를
+// 답할 수 없었다.
+//
+// 시드된 ConceptNode.difficulty(1~3) 는 그대로 두고 읽을 때 환산한다 —
+// 1,474행을 고쳐 쓰는 것보다 환산 한 줄이 안전하다.
+
+export const DIFFICULTY_MIN = 1
+export const DIFFICULTY_MAX = 5
+export type Difficulty = 1 | 2 | 3 | 4 | 5
+export const DIFFICULTIES: Difficulty[] = [1, 2, 3, 4, 5]
+
+export const DIFFICULTY_LABEL: Record<Difficulty, string> = {
+  1: '최하',
+  2: '하',
+  3: '중',
+  4: '상',
+  5: '최상',
+}
+
+/** 1~5 밖의 값이 들어오면 잘라 낸다. 숫자가 아니면 null */
+export function clampDifficulty(value: unknown): Difficulty | null {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n)) return null
+  return Math.min(DIFFICULTY_MAX, Math.max(DIFFICULTY_MIN, n)) as Difficulty
+}
+
+/** ConceptNode 의 1~3 척도를 공식 1~5 로 환산한다 */
+export function conceptDifficultyTo5(value: number): Difficulty {
+  if (value <= 1) return 1
+  if (value >= 3) return 5
+  return 3
+}
+
+/** 학습지 단계 → 난이도. 단계가 없거나 모르는 값이면 null */
+export function stepToDifficulty(step: string): Difficulty | null {
+  switch (step) {
+    case '기초': return 2
+    case '기본': return 3
+    case '발전': return 4
+    case '최상위': return 5
+    case '서술형': return 4
+    case '최다빈출': return 3
+    case '최다오답': return 4
+    default: return null
+  }
+}
+
 // 최상위 다음은 '틀린 문제로 다시 만든 학습지' 두 종류다.
 //   취약유형 — 자주 틀리는 유형을 모아 다시 낸다 (유형 단위)
 //   오답유형 — 실제로 틀린 문항을 다시 낸다 (문항 단위)
@@ -615,3 +666,6 @@ export * from './hooks/useResponsiveViewport'
 
 
 
+
+// 문제 반입 계약 — 문제집 반입 앱과 주고받는 JSON 형식과 난이도 규칙
+export * from "./questionImport"

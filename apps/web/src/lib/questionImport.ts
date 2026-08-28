@@ -15,8 +15,11 @@ import type { MathGradeSubject } from '@prisma/client'
 import {
   resolveDifficulty,
   normalizeSection,
+  applyVariantDifficulty,
+  type Difficulty,
   type ImportPayload,
   type ImportQuestion,
+  type VariantKind,
 } from '@inlevmath/shared'
 
 /** 이름만으로 소단원을 찾을 때의 하한. taxonomyMatcher 의 FUZZY 기준과 맞춘다 */
@@ -186,6 +189,52 @@ export function matchCoordinates(ctx: MatchContext, q: ImportQuestion): Coordina
   }
 }
 
+export type ConceptMatch = {
+  /** 반입 앱이 보낸 이름 */
+  given: string
+  /** 붙은 개념노드 제목. 못 찾았으면 null */
+  matchedTitle: string | null
+  id: string | null
+  score: number
+}
+
+/**
+ * 복합 유형이 함께 쓰는 개념 이름들을 개념노드로 옮긴다.
+ *
+ * 유사도 매칭이라 "이차방정식의 근과 계수의 관계"가 "세 근의 합·곱 이용"에
+ * 붙는 식으로 비슷하지만 다른 개념에 걸릴 수 있다. 조용히 넘기면 잘못된 분류가
+ * 쌓이므로 **무엇이 무엇으로 붙었는지 그대로 돌려준다.** 화면과 반입 결과에서
+ * 확인하고 선생님이 고칠 수 있어야 한다.
+ */
+export function matchExtraConcepts(
+  ctx: MatchContext,
+  names: string[] | undefined
+): ConceptMatch[] {
+  if (!names?.length) return []
+  const out: ConceptMatch[] = []
+  const seen = new Set<string>()
+
+  for (const name of names) {
+    const probe = String(name ?? '').trim()
+    if (!probe) continue
+
+    let best: { id: string; title: string; score: number } | null = null
+    for (const c of ctx.concepts) {
+      const score = Math.max(similarity(probe, c.title), similarity(probe, c.typeName))
+      if (!best || score > best.score) best = { id: c.id, title: c.title, score }
+    }
+
+    if (best && best.score >= MIN_CONCEPT_SIMILARITY) {
+      if (seen.has(best.id)) continue
+      seen.add(best.id)
+      out.push({ given: probe, matchedTitle: best.title, id: best.id, score: Number(best.score.toFixed(3)) })
+    } else {
+      out.push({ given: probe, matchedTitle: null, id: null, score: Number((best?.score ?? 0).toFixed(3)) })
+    }
+  }
+  return out
+}
+
 function matchConcept(ctx: MatchContext, minor: string, typeName: string): string | null {
   const probe = `${minor} ${typeName}`.trim()
   if (!probe) return null
@@ -211,6 +260,17 @@ export type ImportOutcome = {
   /** 소단원을 못 찾은 문항 — 화면에서 사람이 붙여야 한다 */
   unmatched: { ref: string; minor: string; reason: string }[]
   difficultyBasis: Record<string, number>
+  /** 변형 종류별 개수 */
+  variants: Record<string, number>
+  /** 원본 ref 를 찾지 못해 연결하지 못한 변형 — 원본을 먼저 반입해야 한다 */
+  danglingVariants: { ref: string; variantOf: string }[]
+  /** 선생님이 고쳐 둬서 내용을 갱신하지 않은 문항 */
+  skippedEdited: string[]
+  /**
+   * 복합 유형의 개념 매칭 결과 — 유사도 매칭이라 비슷하지만 다른 개념에
+   * 걸릴 수 있다. 무엇이 무엇으로 붙었는지 그대로 돌려주어 확인하게 한다.
+   */
+  conceptMatches: { ref: string; matches: ConceptMatch[] }[]
 }
 
 /**
@@ -219,9 +279,13 @@ export type ImportOutcome = {
  * 같은 (sourceType='external', ref) 로 다시 보내면 덮어쓴다 — 반입 앱에서
  * 검수를 고치고 다시 보내는 것이 정상 흐름이기 때문이다.
  *
- * 다만 **사람이 손으로 붙인 좌표는 덮어쓰지 않는다.** classifiedBy 가 'auto'가
- * 아니면 자동 매칭 결과를 무시한다 — 선생님이 고쳐 둔 것을 반입이 되돌리면
- * 같은 수정을 매번 다시 해야 한다.
+ * 사람이 손댄 것은 되돌리지 않는다. 두 가지를 따로 본다.
+ *   classifiedBy ≠ 'auto'  선생님이 좌표·난이도를 고쳤다 → 분류를 유지
+ *   editedAt 있음          선생님이 본문·답·풀이를 고쳤다 → 내용을 유지
+ * 반입이 매번 덮어쓰면 같은 수정을 계속 다시 해야 한다.
+ *
+ * 변형(숫자·표현·복합)은 원본이 먼저 있어야 연결되므로 두 번에 나눠 처리한다.
+ * 원본과 변형이 같은 페이로드에 섞여 와도 순서와 무관하게 붙는다.
  */
 export async function importQuestions(payload: ImportPayload): Promise<ImportOutcome> {
   const ctx = await buildMatchContext(payload.source.grade)
@@ -234,15 +298,25 @@ export async function importQuestions(payload: ImportPayload): Promise<ImportOut
     graded: 0,
     unmatched: [],
     difficultyBasis: {},
+    variants: {},
+    danglingVariants: [],
+    skippedEdited: [],
+    conceptMatches: [],
   }
 
   const refs = payload.questions.map(q => q.ref)
   const existing = await prisma.question.findMany({
     where: { sourceType: 'external', sourceRef: { in: refs } },
-    select: { id: true, sourceRef: true, classifiedBy: true },
+    select: { id: true, sourceRef: true, classifiedBy: true, editedAt: true },
   })
   const existingByRef = new Map(existing.map(e => [e.sourceRef!, e]))
 
+  // ref → 저장된 문항 id. 2차 통과에서 변형을 원본에 붙일 때 쓴다
+  const idByRef = new Map<string, string>()
+  // 2차 통과로 미룬 것들 — 원본 난이도를 물려받아야 해서 원본 저장 후에 정한다
+  const pending: { q: ImportQuestion; id: string; kind: VariantKind; own: Difficulty | null }[] = []
+
+  // ── 1차: 내용·좌표 저장 ────────────────────────────────────────────────────
   for (const q of payload.questions) {
     const coords = matchCoordinates(ctx, q)
     const { difficulty, basis } = resolveDifficulty({
@@ -250,8 +324,10 @@ export async function importQuestions(payload: ImportPayload): Promise<ImportOut
       bookDifficulty: q.bookDifficulty,
       section: q.section,
     })
+    const kind: VariantKind = q.variantKind ?? 'ORIGINAL'
+
     outcome.difficultyBasis[basis] = (outcome.difficultyBasis[basis] ?? 0) + 1
-    if (difficulty != null) outcome.graded++
+    outcome.variants[kind] = (outcome.variants[kind] ?? 0) + 1
     if (coords.matched || coords.conceptNodeId) outcome.classified++
     else {
       outcome.unmatched.push({
@@ -261,7 +337,7 @@ export async function importQuestions(payload: ImportPayload): Promise<ImportOut
       })
     }
 
-    // 문항 내용 — 반입이 언제나 최신으로 갱신한다 (검수를 고쳐 다시 보내는 것이 정상 흐름)
+    // 문항 내용 — 반입이 최신으로 갱신한다 (검수를 고쳐 다시 보내는 것이 정상 흐름)
     const content = {
       content: q.content ?? null,
       answer: q.answer,
@@ -278,31 +354,111 @@ export async function importQuestions(payload: ImportPayload): Promise<ImportOut
       rawSection: normalizeSection(q.section ?? '') ?? (q.section ?? ''),
     }
 
-    // 분류 — 좌표와 난이도는 한 묶음이다. 난이도도 "이 문제가 얼마나 어려운가"라는
-    // 분류이므로, 사람이 고쳐 뒀다면 좌표와 함께 지켜야 한다.
+    // 분류 — 좌표와 난이도는 한 묶음이다. 난이도도 "얼마나 어려운가"라는 분류다.
     const autoClassification = {
       subUnitId: coords.subUnitId,
       patternTypeId: coords.patternTypeId,
       conceptNodeId: coords.conceptNodeId,
       difficulty,
+      variantKind: kind,
       classifiedAt: coords.matched || coords.conceptNodeId ? new Date() : null,
       classifiedBy: 'auto',
     }
 
     const prev = existingByRef.get(q.ref)
+    let id: string
     if (!prev) {
-      await prisma.question.create({
+      const created = await prisma.question.create({
         data: { sourceType: 'external', sourceRef: q.ref, ...content, ...autoClassification },
+        select: { id: true },
       })
+      id = created.id
       outcome.created++
     } else {
-      // 사람이 손댄 분류는 되돌리지 않는다. 반입이 매번 덮어쓰면 같은 수정을 계속 다시 해야 한다.
       const humanClassified = prev.classifiedBy != null && prev.classifiedBy !== 'auto'
+      const humanEdited = prev.editedAt != null
+      if (humanEdited) outcome.skippedEdited.push(q.ref)
+
       await prisma.question.update({
         where: { id: prev.id },
-        data: humanClassified ? content : { ...content, ...autoClassification },
+        data: {
+          ...(humanEdited ? {} : content),
+          ...(humanClassified ? {} : autoClassification),
+        },
       })
+      id = prev.id
       outcome.updated++
+    }
+
+    idByRef.set(q.ref, id)
+    if (kind !== 'ORIGINAL' || q.extraConcepts?.length) {
+      pending.push({ q, id, kind, own: difficulty })
+    }
+  }
+
+  // ── 2차: 원본 연결 · 복합 개념 · 변형 난이도 ───────────────────────────────
+  //
+  // 원본이 이번 페이로드에 없으면 이미 DB 에 있는지 찾는다. 그것도 없으면
+  // 연결하지 못한 채로 남긴다 — 문항 자체는 이미 저장돼 있으므로 잃지 않는다.
+  const needOrigin = pending.filter(p => p.q.variantOf && !idByRef.has(p.q.variantOf))
+  if (needOrigin.length) {
+    const found = await prisma.question.findMany({
+      where: { sourceType: 'external', sourceRef: { in: needOrigin.map(p => p.q.variantOf!) } },
+      select: { id: true, sourceRef: true },
+    })
+    found.forEach(f => idByRef.set(f.sourceRef!, f.id))
+  }
+
+  for (const { q, id, kind, own } of pending) {
+    let originId: string | null = null
+    if (q.variantOf) {
+      originId = idByRef.get(q.variantOf) ?? null
+      if (!originId) outcome.danglingVariants.push({ ref: q.ref, variantOf: q.variantOf })
+    }
+
+    // 숫자·표현 변형은 원본 난이도를 물려받고, 복합 유형은 하한(4)을 적용한다
+    const originDifficulty = originId
+      ? (await prisma.question.findUnique({
+          where: { id: originId }, select: { difficulty: true },
+        }))?.difficulty ?? null
+      : null
+    const finalDifficulty = applyVariantDifficulty(
+      own,
+      kind,
+      (originDifficulty as Difficulty | null) ?? null
+    )
+
+    // 사람이 고쳐 둔 분류는 여기서도 건드리지 않는다
+    const prev = existingByRef.get(q.ref)
+    const humanClassified = prev?.classifiedBy != null && prev.classifiedBy !== 'auto'
+
+    await prisma.question.update({
+      where: { id },
+      data: {
+        originId,
+        ...(humanClassified ? {} : { difficulty: finalDifficulty }),
+      },
+    })
+
+    // 복합 유형이 함께 쓰는 개념들. 주 개념도 primary 로 같이 담아 둔다 —
+    // "개념 A와 B가 함께 나오는 문제"를 한 표에서 찾을 수 있어야 한다.
+    const extra = matchExtraConcepts(ctx, q.extraConcepts)
+    if (extra.length) outcome.conceptMatches.push({ ref: q.ref, matches: extra })
+    const extraIds = extra.map(m => m.id).filter((v): v is string => v != null)
+
+    const primary = (await prisma.question.findUnique({
+      where: { id }, select: { conceptNodeId: true },
+    }))?.conceptNodeId ?? null
+
+    if (extraIds.length || primary) {
+      await prisma.questionConcept.deleteMany({ where: { questionId: id } })
+      const rows = [
+        ...(primary ? [{ questionId: id, conceptNodeId: primary, role: 'primary' }] : []),
+        ...extraIds
+          .filter(cid => cid !== primary)
+          .map(cid => ({ questionId: id, conceptNodeId: cid, role: 'secondary' })),
+      ]
+      if (rows.length) await prisma.questionConcept.createMany({ data: rows, skipDuplicates: true })
     }
   }
 

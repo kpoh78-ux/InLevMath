@@ -7,6 +7,9 @@ import {
   QUESTION_IMPORT_VERSION,
   QUESTION_IMPORT_MAX_ITEMS,
   SECTION_DIFFICULTY,
+  VARIANT_KINDS,
+  VARIANT_HINT,
+  COMPOSITE_MIN_DIFFICULTY,
 } from '@inlevmath/shared'
 
 // POST /api/question-bank/import — 문제집 반입 앱이 검수를 마친 문항을 넘긴다.
@@ -60,6 +63,15 @@ export async function GET(req: NextRequest) {
     // 난이도 표시가 없을 때 구획으로 추론하는 표
     sectionDifficulty: SECTION_DIFFICULTY,
     difficultyPriority: ['difficulty(1~5)', 'bookDifficulty(★·상중하·A~E)', 'section', '없음(null)'],
+    // 문제 확장 — 원본 하나에서 뻗어 나가는 갈래
+    variantKinds: VARIANT_KINDS,
+    variantHint: VARIANT_HINT,
+    variantRules: {
+      NUMERIC: '난이도 단서가 없으면 원본 난이도를 물려받는다',
+      REPHRASED: '난이도 단서가 없으면 원본 난이도를 물려받는다',
+      COMPOSITE: `난이도 하한 ${COMPOSITE_MIN_DIFFICULTY} — 개념을 엮은 문제가 그보다 쉬울 수 없다`,
+      원본순서: '원본과 변형을 같은 페이로드에 섞어 보내도 된다. 순서와 무관하게 연결된다',
+    },
     example: {
       format: QUESTION_IMPORT_FORMAT,
       version: QUESTION_IMPORT_VERSION,
@@ -81,6 +93,24 @@ export async function GET(req: NextRequest) {
             minor: '이차함수 y=ax²+bx+c의 그래프',
             type: '유형 07 최대·최소',
           },
+        },
+        {
+          ref: 'ssen-m3-1-p042-07-num1',
+          variantOf: 'ssen-m3-1-p042-07',
+          variantKind: 'NUMERIC',
+          content: '이차함수 y = x² - 6x + 2 의 최솟값을 구하시오.',
+          answer: '-7',
+          solution: 'y = (x-3)² - 7 이므로 x=3 일 때 최솟값 -7',
+          answerType: 'short',
+        },
+        {
+          ref: 'ssen-m3-1-p042-07-comp1',
+          variantOf: 'ssen-m3-1-p042-07',
+          variantKind: 'COMPOSITE',
+          content: '이차함수 y = x² - 4x + 1 의 최솟값이 이차방정식 x² + ax + 3 = 0 의 한 근일 때 a 의 값은?',
+          answer: '4',
+          answerType: 'short',
+          extraConcepts: ['이차방정식의 근과 계수의 관계'],
         },
       ],
     },

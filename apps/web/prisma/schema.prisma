@@ -505,6 +505,8 @@ model ConceptNode {
   // 이 개념에 걸린 문항들 (문제은행 · 교재)
   questions        Question[]
   textbookProblems TextbookProblem[]
+  // 복합 유형이 이 개념을 함께 쓰는 경우
+  questionConcepts QuestionConcept[]
 
   @@index([domain, gradeLevel])
   @@index([sequence])
@@ -655,11 +657,37 @@ model Question {
   rawTypeName   String           @default("") // 문제집 유형명
   rawSection    String           @default("") // 문제집 구획 — 난이도 추론의 근거
 
+  // ── 변형 관계 ─────────────────────────────────────────────────────────────
+  // 문제 하나에서 뻗어 나가는 세 갈래. 원본은 ORIGINAL 이고 origin 이 없다.
+  //   NUMERIC   숫자 바꾼 문제 — 같은 문제, 수치만 다르다
+  //   REPHRASED 표현 바꾼 문제 — 같은 개념·공식을 다른 말로 묻는다
+  //   COMPOSITE 복합 유형 — 원본 개념에 다른 단원 개념을 얹었다
+  variantKind   String           @default("ORIGINAL")
+  originId      String?
+  origin        Question?        @relation("QuestionVariants", fields: [originId], references: [id], onDelete: SetNull)
+  variants      Question[]       @relation("QuestionVariants")
+
+  // 복합 유형이 끌어다 쓴 다른 단원 개념들.
+  // 주 개념은 conceptNodeId 하나지만, 복합 유형은 여러 개념에 동시에 걸린다.
+  // "개념 A와 B가 함께 나오는 문제"를 뽑으려면 다대다여야 한다.
+  concepts      QuestionConcept[]
+
   // ── 분류 상태 ─────────────────────────────────────────────────────────────
   // 좌표가 붙은 시점과 누가 붙였는지. 'auto' | 선생님 이름.
   // 자동 매칭이 틀렸을 때 사람이 고친 것과 구분해야 재매칭 시 덮어쓰지 않는다.
   classifiedAt  DateTime?
   classifiedBy  String?
+
+  // ── 사람이 고친 흔적 ──────────────────────────────────────────────────────
+  // 선생님이 본문·답·풀이를 고쳤으면 재반입이 그것을 되돌리지 않는다.
+  // 분류(classifiedBy)와 따로 두는 이유: 좌표만 고친 경우와 내용을 고친 경우가 다르다.
+  editedAt      DateTime?
+  editedBy      String?
+
+  // 'active' | 'flagged'(오류 의심) | 'retired'(더 쓰지 않음).
+  // 오류 문제를 지우지 않고 표시만 하는 이유 — 이미 학생에게 나간 기록이 남아 있다.
+  status        String           @default("active")
+  flagReason    String?
 
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
@@ -671,6 +699,25 @@ model Question {
   // 아직 좌표가 안 붙은 문제를 모아 보는 화면용
   @@index([classifiedAt])
   @@index([sourceBook, sourcePage, sourceNumber])
+  // 원본에서 파생된 변형을 모아 보기
+  @@index([originId, variantKind])
+  // 오류로 표시된 문제 모아 보기 / 출제 시 retired 제외
+  @@index([status])
+}
+
+/// 문항 ↔ 개념 (다대다) — 복합 유형이 여러 단원 개념에 걸리는 것을 담는다.
+/// 주 개념은 Question.conceptNodeId 에도 그대로 두어, 단일 개념만 필요한
+/// 기존 조회가 이 표를 거치지 않아도 되게 한다.
+model QuestionConcept {
+  questionId    String
+  question      Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  conceptNodeId String
+  conceptNode   ConceptNode @relation(fields: [conceptNodeId], references: [id], onDelete: Cascade)
+  /// 'primary'(원본 개념) | 'secondary'(융합된 다른 단원 개념)
+  role          String      @default("secondary")
+
+  @@id([questionId, conceptNodeId])
+  @@index([conceptNodeId, role])
 }
 
 // 7. 학생 소단원별 정답률 누적 통계

@@ -132,6 +132,55 @@ export function resolveDifficulty(input: {
   return { difficulty: null, basis: 'none' }
 }
 
+// ── 문제 확장(변형) ─────────────────────────────────────────────────────────
+//
+// 문제집 문제 하나에서 세 갈래로 뻗어 나간다. 반입 앱이 만들어 함께 보낸다.
+
+export type VariantKind = 'ORIGINAL' | 'NUMERIC' | 'REPHRASED' | 'COMPOSITE'
+
+export const VARIANT_KINDS: VariantKind[] = ['ORIGINAL', 'NUMERIC', 'REPHRASED', 'COMPOSITE']
+
+export const VARIANT_LABEL: Record<VariantKind, string> = {
+  ORIGINAL: '원본',
+  NUMERIC: '숫자 바꾼 문제',
+  REPHRASED: '표현 바꾼 문제',
+  COMPOSITE: '복합 유형',
+}
+
+export const VARIANT_HINT: Record<VariantKind, string> = {
+  ORIGINAL: '문제집에 실린 그대로',
+  NUMERIC: '같은 문제, 수치만 다르다. 난이도는 원본과 같다',
+  REPHRASED: '같은 개념·공식을 다른 말로 묻는다. 난이도는 원본과 같다',
+  COMPOSITE: '원본 개념에 다른 단원 개념을 얹었다. 원본보다 어렵다',
+}
+
+/** 복합 유형의 난이도 하한 — 개념을 둘 이상 엮으면 유형 문제보다 쉬울 수 없다 */
+export const COMPOSITE_MIN_DIFFICULTY: Difficulty = 4
+
+/**
+ * 변형 종류에 따라 난이도를 보정한다.
+ *
+ *   NUMERIC·REPHRASED  단서가 없으면 원본 난이도를 물려받는다 (같은 문제이므로)
+ *   COMPOSITE          최소 4. 개념을 엮은 문제가 '하'일 수는 없다
+ *
+ * 반입 앱이나 문제집이 난이도를 명시했으면 그것을 존중하되,
+ * 복합 유형의 하한만은 끌어올린다.
+ */
+export function applyVariantDifficulty(
+  difficulty: Difficulty | null,
+  kind: VariantKind,
+  originDifficulty: Difficulty | null
+): Difficulty | null {
+  if (kind === 'COMPOSITE') {
+    const base = difficulty ?? originDifficulty ?? COMPOSITE_MIN_DIFFICULTY
+    return Math.max(base, COMPOSITE_MIN_DIFFICULTY) as Difficulty
+  }
+  if (kind === 'NUMERIC' || kind === 'REPHRASED') {
+    return difficulty ?? originDifficulty
+  }
+  return difficulty
+}
+
 // ── 반입 형식 ───────────────────────────────────────────────────────────────
 
 /** 문제집에 적힌 단원 표기 — 있는 그대로 보낸다. ID 로 바꾸지 않는다 */
@@ -170,6 +219,18 @@ export interface ImportQuestion {
   /** 문제집 쪽번호·문항번호 */
   page?: number
   number?: number
+
+  // ── 확장 문제일 때 ────────────────────────────────────────────────────────
+  /** 이 문제가 어디서 파생됐는지. 원본의 ref 를 그대로 적는다 */
+  variantOf?: string
+  /** 파생 종류. variantOf 가 있으면 ORIGINAL 이 아니어야 한다 */
+  variantKind?: VariantKind
+  /**
+   * 복합 유형이 함께 쓰는 다른 단원 개념들 — 이름 문자열로 보낸다.
+   * 예: ["이차방정식의 판별식", "확률의 덧셈정리"]
+   * 여기서도 개념 ID 를 보내지 않는다. 매칭은 InLevMath 가 한다.
+   */
+  extraConcepts?: string[]
 }
 
 export interface ImportPayload {
@@ -259,6 +320,24 @@ export function validateImportPayload(input: unknown): {
     }
     if (q.difficulty != null && !(Number(q.difficulty) >= 1 && Number(q.difficulty) <= 5)) {
       fail('difficulty 는 1~5 여야 합니다.', i, ref)
+    }
+
+    // 확장 문제
+    if (q.variantKind && !VARIANT_KINDS.includes(q.variantKind)) {
+      fail(`variantKind 는 ${VARIANT_KINDS.join(' | ')} 중 하나여야 합니다.`, i, ref)
+    }
+    if (q.variantOf) {
+      if (q.variantOf === ref) {
+        fail('variantOf 가 자기 자신을 가리킵니다.', i, ref)
+      }
+      if (!q.variantKind || q.variantKind === 'ORIGINAL') {
+        fail('variantOf 가 있으면 variantKind 를 NUMERIC | REPHRASED | COMPOSITE 로 지정해야 합니다.', i, ref)
+      }
+    } else if (q.variantKind && q.variantKind !== 'ORIGINAL') {
+      fail('variantKind 를 지정했으면 variantOf(원본 ref)도 있어야 합니다.', i, ref)
+    }
+    if (q.extraConcepts != null && !Array.isArray(q.extraConcepts)) {
+      fail('extraConcepts 는 문자열 배열이어야 합니다.', i, ref)
     }
   })
 

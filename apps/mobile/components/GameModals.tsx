@@ -13,6 +13,7 @@ import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import {
   MISSION_LABELS, MISSION_CLEAR_THRESHOLD,
+  NEXT_MISSION_LABEL,
   type MissionType, type AbilityScore, type GradingFeedback,
 } from '@inlevmath/shared'
 import { Colors } from '../constants/colors'
@@ -128,7 +129,9 @@ export function GradingResultModal({ visible, feedback, onClose }: {
 
   // 레벨이 움직였으면 그 색이 창 전체를 물들인다. 축하든 경고든 그것이 주인공이다.
   const accent = LEVEL_ACCENT_COLOR[feedback.levelAccent] ?? TONE_COLOR[feedback.tone]
-  const isAlarm = feedback.levelChange === 'down' || feedback.levelChange === 'near_down'
+  const isAlarm =
+    feedback.levelChange === 'down' || feedback.levelChange === 'near_down' ||
+    feedback.grade === 'restart'
   const trendColor =
     feedback.trend === 'up' ? Colors.success
     : feedback.trend === 'down' ? '#E17055'
@@ -139,10 +142,11 @@ export function GradingResultModal({ visible, feedback, onClose }: {
       visible={visible}
       onClose={onClose}
       accent={accent}
-      eyebrow={feedback.levelTitle ? undefined : 'RESULT'}
-      title={feedback.levelTitle ?? feedback.title}
+      title={feedback.headline}
+      neonTitle
       confirmLabel="확인"
       celebrate={feedback.levelChange === 'up' || feedback.grade === 'perfect'}
+      flash={feedback.flash}
       // 경고는 배경을 눌러 흘려보내지 못하게 한다. 읽고 닫아야 한다.
       dismissOnBackdrop={!isAlarm}
     >
@@ -155,11 +159,11 @@ export function GradingResultModal({ visible, feedback, onClose }: {
         </Text>
       </View>
 
-      {/* 레벨이 움직였으면 등급 문구를 아래로 내린다 */}
+      {/* 레벨이 움직였으면 그 말이 먼저 */}
       {feedback.levelMessage ? (
         <SystemLine center color={accent} bold>{feedback.levelMessage}</SystemLine>
       ) : null}
-      <SystemLine center>{feedback.levelTitle ? feedback.title : feedback.message}</SystemLine>
+      <SystemLine center>{feedback.message}</SystemLine>
 
       {/* 지난번과 견주기 */}
       <View style={[styles.block, { borderColor: accent + '44' }]}>
@@ -180,15 +184,17 @@ export function GradingResultModal({ visible, feedback, onClose }: {
         )}
       </View>
 
-      {/* 다음에 할 일 */}
-      {feedback.nextStep ? (
-        <SystemQuestRow
-          icon={isAlarm ? '⚠️' : '➡️'}
-          label="다음에 할 일"
-          hint={feedback.nextStep}
-          color={accent}
-        />
-      ) : null}
+      {/* 다음 미션 — 점수에 따라 무엇을 받는지 */}
+      <SystemQuestRow
+        icon={
+          feedback.nextMission === 'clear' ? '🚀'
+          : feedback.nextMission === 'weak_type' ? '🎯'
+          : feedback.nextMission === 'type_study' ? '📗' : '🔄'
+        }
+        label={`다음 미션 · ${NEXT_MISSION_LABEL[feedback.nextMission]}`}
+        hint={feedback.nextStep ?? undefined}
+        color={accent}
+      />
     </SystemModal>
   )
 }

@@ -1,6 +1,9 @@
 import { useEffect } from 'react'
 import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { useFonts } from 'expo-font'
+import { Orbitron_800ExtraBold, Orbitron_900Black } from '@expo-google-fonts/orbitron'
+import { BlackHanSans_400Regular } from '@expo-google-fonts/black-han-sans'
 import { AuthProvider, useAuth } from '../store/authStore'
 import { BgmProvider } from '../store/useBgm'
 
@@ -27,6 +30,14 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  // 게임풍 글씨체. Orbitron 은 영문 전용이라 한글은 BlackHanSans 가 받는다.
+  // 다 못 읽어도 앱은 뜬다 — 기본 글씨체로 나올 뿐이다.
+  useFonts({
+    Orbitron_800ExtraBold,
+    Orbitron_900Black,
+    BlackHanSans_400Regular,
+  })
+
   return (
     <AuthProvider>
       {/* 배경음악은 화면을 옮겨도 끊기지 않아야 해서 최상단에 둔다 */}

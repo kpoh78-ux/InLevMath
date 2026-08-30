@@ -16,62 +16,88 @@
 // 레벨은 누적 평균이라 한 번 잘 봐도 안 오를 수 있다. 셋을 뭉뚱그리면
 // "잘했다"와 "성적이 떨어졌다"가 동시에 나와 학생이 헷갈린다.
 
-import { LEVEL_TIERS } from './index'
+// index.ts 를 거치면 순환 참조가 된다 — 등급표를 직접 가져온다
+import { LEVEL_TIERS } from './levels'
 
 // ── 1. 5단계 등급 ───────────────────────────────────────────────────────────
 
-export type FeedbackGrade = 'perfect' | 'great' | 'good' | 'soso' | 'poor'
+export type FeedbackGrade = 'perfect' | 'clear' | 'weak' | 'concept' | 'restart'
 
-export const FEEDBACK_GRADES: FeedbackGrade[] = ['perfect', 'great', 'good', 'soso', 'poor']
+export const FEEDBACK_GRADES: FeedbackGrade[] = ['perfect', 'clear', 'weak', 'concept', 'restart']
 
 export type FeedbackTone = 'celebrate' | 'praise' | 'neutral' | 'nudge' | 'warn'
+
+/**
+ * 이 점수를 받으면 다음에 무엇을 하나.
+ *   clear      미션 클리어 — 다음 단계로 넘어간다
+ *   weak_type  취약유형 미션 — 자주 틀리는 유형만 모아 다시 푼다
+ *   type_study 유형별 학습미션 — 개념과 유형을 함께 본다
+ *   restart    개념부터 다시
+ */
+export type NextMission = 'clear' | 'weak_type' | 'type_study' | 'restart'
+
+export const NEXT_MISSION_LABEL: Record<NextMission, string> = {
+  clear: '미션 클리어',
+  weak_type: '취약유형 미션',
+  type_study: '유형별 학습미션',
+  restart: '개념부터 다시',
+}
 
 export type FeedbackGradeInfo = {
   grade: FeedbackGrade
   /** 이 등급에 드는 최소 정답률 */
   minRate: number
+  /** 화면 한가운데 크게 뜨는 영어 문구 (게임 폰트로 그린다) */
+  headline: string
+  /** 한국어 보조 설명 */
   label: string
-  /** 팝업 제목 */
-  title: string
-  /** 팝업 본문 */
   message: string
   tone: FeedbackTone
   /** 상황에 맞는 소리 단서. 앱이 이 이름으로 파일을 찾는다 */
   sound: SoundCue
   icon: string
+  nextMission: NextMission
+  /** 화면을 번쩍이며 강조할 것인가 (축하 또는 경고) */
+  flash: boolean
 }
 
 /**
  * 정답률 5단계.
  *
- * 경계를 70/50 에 둔 이유 — 미션 클리어 기준이 70~85% 라
- * 70 미만은 "다시 봐야 하는" 구간이고, 50 미만은 개념을 놓친 구간이다.
+ * 경계(80 / 60 / 50)는 다음에 줄 미션이 갈리는 지점이다.
+ *   80 이상  미션 클리어
+ *   60~79   취약유형 미션 — 유형은 알지만 자주 틀리는 곳이 있다
+ *   50~59   유형별 학습미션 — 개념과 유형을 함께 봐야 한다
+ *   50 미만  개념부터 다시
+ *
+ * 95 이상을 따로 둔 것은 클리어 안에서도 완벽한 경우를 축하하기 위해서다.
+ * 다음 미션은 클리어와 같다.
  */
 export const FEEDBACK_GRADE_TABLE: FeedbackGradeInfo[] = [
   {
-    grade: 'perfect', minRate: 95, label: '완벽',
-    title: '완벽합니다!', message: '거의 다 맞혔습니다. 이 단원은 확실히 잡았습니다.',
-    tone: 'celebrate', sound: 'perfect', icon: '🏆',
+    grade: 'perfect', minRate: 95, headline: 'PERFECT', label: '완벽',
+    message: '거의 다 맞혔습니다. 이 단원은 확실히 잡았습니다.',
+    tone: 'celebrate', sound: 'perfect', icon: '🏆', nextMission: 'clear', flash: true,
   },
   {
-    grade: 'great', minRate: 85, label: '훌륭',
-    title: '훌륭합니다!', message: '잘 풀었습니다. 틀린 문제만 다시 보면 됩니다.',
-    tone: 'praise', sound: 'great', icon: '⭐',
+    grade: 'clear', minRate: 80, headline: 'MISSION CLEAR', label: '미션 클리어',
+    message: '기준을 넘겼습니다. 다음 미션으로 넘어갑니다.',
+    tone: 'praise', sound: 'great', icon: '⭐', nextMission: 'clear', flash: true,
   },
   {
-    grade: 'good', minRate: 70, label: '좋음',
-    title: '잘했습니다', message: '기준을 넘었습니다. 틀린 문제를 꼭 확인하세요.',
-    tone: 'neutral', sound: 'good', icon: '👍',
+    grade: 'weak', minRate: 60, headline: 'WEAK POINT', label: '취약유형',
+    message: '자주 틀리는 유형이 있습니다. 취약유형 미션을 받았습니다.',
+    tone: 'neutral', sound: 'good', icon: '🎯', nextMission: 'weak_type', flash: false,
   },
   {
-    grade: 'soso', minRate: 50, label: '조금 더',
-    title: '조금 더 봐야겠습니다', message: '절반은 넘겼지만 기준에는 못 미쳤습니다. 틀린 부분을 다시 풀어 보세요.',
-    tone: 'nudge', sound: 'soso', icon: '📗',
+    grade: 'concept', minRate: 50, headline: 'TRAINING', label: '유형별 학습',
+    message: '개념과 유형을 함께 봐야 합니다. 유형별 학습미션을 받았습니다.',
+    tone: 'nudge', sound: 'soso', icon: '📗', nextMission: 'type_study', flash: false,
   },
   {
-    grade: 'poor', minRate: 0, label: '분발',
-    title: '개념부터 다시 봅시다', message: '많이 틀렸습니다. 선생님과 함께 개념을 다시 확인하세요.',
-    tone: 'warn', sound: 'poor', icon: '📕',
+    grade: 'restart', minRate: 0, headline: 'RESTART', label: '개념부터 다시',
+    message: '개념부터 다시 봅시다. 선생님과 함께 확인하세요.',
+    tone: 'warn', sound: 'poor', icon: '🔄', nextMission: 'restart', flash: true,
   },
 ]
 
@@ -82,6 +108,9 @@ export function gradeOf(correctRate: number): FeedbackGradeInfo {
     FEEDBACK_GRADE_TABLE[FEEDBACK_GRADE_TABLE.length - 1]
   )
 }
+
+/** 번쩍임을 몇 초 동안 이어갈지 */
+export const FLASH_SECONDS = 15
 
 // ── 2. 성적 변화 ────────────────────────────────────────────────────────────
 
@@ -143,6 +172,8 @@ export function levelChangeOf(
 }
 
 export type LevelChangeInfo = {
+  /** 크게 뜨는 영어 문구 */
+  headline: string
   title: string
   message: string
   tone: FeedbackTone
@@ -155,18 +186,21 @@ export function levelChangeInfo(change: LevelChange, level: number): LevelChange
   switch (change) {
     case 'up':
       return {
+        headline: `LEVEL UP  Lv.${level}`,
         title: `Lv.${level}로 레벨업!`,
         message: '축하합니다. 다음 단계가 열렸습니다.',
         tone: 'celebrate', sound: 'levelup', accent: 'gold',
       }
     case 'near_down':
       return {
+        headline: 'DANGER',
         title: '레벨 다운 근접',
         message: `조금만 더 떨어지면 Lv.${level - 1}로 내려갑니다. 틀린 문제를 다시 풀어 만회하세요.`,
         tone: 'nudge', sound: 'warn', accent: 'orange',
       }
     case 'down':
       return {
+        headline: 'LEVEL DOWN',
         title: '레벨 다운! 레벨 다운!',
         message: `Lv.${level}로 내려갔습니다. 최근 성적이 많이 떨어졌습니다. 선생님과 확인하세요.`,
         tone: 'warn', sound: 'leveldown', accent: 'red',
@@ -201,11 +235,18 @@ export type GradingFeedback = {
 
   grade: FeedbackGrade
   gradeLabel: string
-  title: string
+  /** 화면 한가운데 크게 뜨는 영어 문구 — PERFECT · MISSION CLEAR · RESTART … */
+  headline: string
   message: string
   tone: FeedbackTone
   icon: string
   sound: SoundCue
+
+  /** 이 점수로 다음에 받을 미션 */
+  nextMission: NextMission
+  nextMissionLabel: string
+  /** 화면을 번쩍이며 강조할 것인가 (축하 또는 경고) */
+  flash: boolean
 
   /** 지난번 같은 종류 채점과 견준 결과 */
   trend: ScoreTrend
@@ -259,12 +300,17 @@ export function buildGradingFeedback(input: {
 
     grade: g.grade,
     gradeLabel: g.label,
-    title: g.title,
+    headline: changeInfo?.headline ?? g.headline,
     message: g.message,
     tone: g.tone,
     icon: g.icon,
     // 레벨이 움직였으면 그 소리가 우선이다 — 축하와 경고는 등급보다 크게 들려야 한다
     sound: changeInfo?.sound ?? g.sound,
+
+    nextMission: g.nextMission,
+    nextMissionLabel: NEXT_MISSION_LABEL[g.nextMission],
+    // 레벨이 움직였으면 등급과 무관하게 번쩍인다 — 축하도 경고도 크게 알려야 한다
+    flash: g.flash || change === 'up' || change === 'down' || change === 'near_down',
 
     trend,
     trendText: TREND_TEXT[trend],

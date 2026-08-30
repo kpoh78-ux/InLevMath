@@ -22,7 +22,9 @@ import {
   StyleSheet, useWindowDimensions,
 } from 'react-native'
 import { Colors } from '../constants/colors'
-import { useEntrance, usePulse, Sweep, Flare, Motes } from './fx'
+import { useEntrance, usePulse, useFlash, useDoubleTap, Sweep, Flare, Motes } from './fx'
+import { NeonText } from './NeonText'
+import { FLASH_SECONDS } from '@inlevmath/shared'
 
 type Props = {
   visible: boolean
@@ -40,6 +42,13 @@ type Props = {
   showClose?: boolean
   /** 축하하는 자리(레벨업 등)에 배경 입자를 띄운다 */
   celebrate?: boolean
+  /**
+   * 화면 전체를 accent 색으로 번쩍인다 (축하·경고).
+   * 15초 뒤 저절로 멈추고, 화면을 두 번 두드리면 바로 멈춘다.
+   */
+  flash?: boolean
+  /** 제목을 네온 글씨로 크게 그린다 */
+  neonTitle?: boolean
   onClose: () => void
 }
 
@@ -75,6 +84,8 @@ export function SystemModal({
   dismissOnBackdrop = true,
   showClose = true,
   celebrate = false,
+  flash = false,
+  neonTitle = false,
   onClose,
 }: Props) {
   const { width } = useWindowDimensions()
@@ -86,6 +97,9 @@ export function SystemModal({
   const [mounted, setMounted] = useState(visible)
   const fx = useEntrance(mounted && visible)
   const glow = usePulse(mounted)
+  // 번쩍임 — 15초 뒤 저절로 멈춘다. 두 번 두드리면 바로 멈춘다.
+  const blink = useFlash(flash && mounted && visible, FLASH_SECONDS)
+  const stopFlash = useDoubleTap(blink.stop)
 
   useEffect(() => {
     if (visible) setMounted(true)
@@ -114,10 +128,20 @@ export function SystemModal({
   return (
     <Modal visible transparent animationType="none" onRequestClose={close} statusBarTranslucent>
       <Animated.View style={[styles.backdropFill, fx.backdropStyle]} />
+      {/* 번쩍임 — 화면 전체를 accent 색으로 물들였다 뺐다 한다 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.flashFill, { backgroundColor: accent, opacity: blink.opacity }]}
+      />
       <TouchableOpacity
         style={styles.backdrop}
         activeOpacity={1}
-        onPress={dismissOnBackdrop ? close : undefined}
+        onPress={() => {
+          // 번쩍이는 동안에는 두 번 두드려 멈추는 것이 먼저다.
+          // 한 번 눌러 닫히면 멈출 기회가 없다.
+          if (blink.running) { stopFlash(); return }
+          if (dismissOnBackdrop) close()
+        }}
       >
         {/* 창 자체를 누르면 닫히지 않게 이벤트를 막는다 */}
         <TouchableOpacity activeOpacity={1} onPress={() => {}}>
@@ -164,7 +188,12 @@ export function SystemModal({
                     {eyebrow ? (
                       <Text style={[styles.eyebrow, { color: accent }]}>{eyebrow}</Text>
                     ) : null}
-                    <Text style={styles.title}>{title}</Text>
+                    {neonTitle
+                      ? <NeonText color={accent} size={title.length > 12 ? 24 : 32}>{title}</NeonText>
+                      : <Text style={styles.title}>{title}</Text>}
+                    {blink.running && (
+                      <Text style={styles.flashHint}>화면을 두 번 두드리면 멈춥니다</Text>
+                    )}
                   </View>
 
                   {/* 구분선 — 가운데 빛점 */}
@@ -263,6 +292,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,8,20,0.86)',
   },
   backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  flashFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  flashHint: { color: 'rgba(255,255,255,0.55)', fontSize: 10, marginTop: 6 },
 
   glowOuter: {
     position: 'absolute', top: -7, right: -7, bottom: -7, left: -7,

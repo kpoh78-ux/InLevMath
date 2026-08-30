@@ -19,7 +19,7 @@
 //
 //   <Sweep play={visible} accent="#00CEC9" />    // 한 번 스쳐 지나가는 빛줄기
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Animated, Easing, AccessibilityInfo, StyleSheet, View,
   type ViewStyle, type StyleProp,
@@ -193,6 +193,82 @@ export function Sweep({ play, accent, width = 420, delay = 120 }: {
       ]}
     />
   )
+}
+
+
+// ── 번쩍임 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 축하·경고를 알리는 화면 번쩍임.
+ *
+ * ⚠️ **깜빡임 속도를 3Hz 아래로 유지한다.** 빠른 명멸은 광과민성 발작을
+ * 일으킬 수 있다. 여기서는 한 번 밝아졌다 어두워지는 데 1.4초를 써
+ * 0.7Hz 정도로 돌린다. 이 값을 함부로 낮추지 말 것.
+ * '애니메이션 줄이기'를 켠 기기에서는 아예 번쩍이지 않고 은은한 색만 깐다.
+ *
+ * seconds 가 지나면 저절로 멈춘다. stop() 으로 일찍 멈출 수도 있다
+ * (화면을 두 번 두드리면 멈추게 하려고 둔 손잡이다).
+ */
+export function useFlash(active: boolean, seconds = 15) {
+  const reduce = useReduceMotion()
+  const v = useRef(new Animated.Value(0)).current
+  const [running, setRunning] = useState(false)
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const stop = useCallback(() => {
+    loopRef.current?.stop()
+    loopRef.current = null
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    Animated.timing(v, { toValue: 0, duration: 260, useNativeDriver: true }).start()
+    setRunning(false)
+  }, [v])
+
+  useEffect(() => {
+    if (!active) { stop(); return }
+
+    if (reduce) {
+      // 번쩍이지 않고 은은하게 깔아만 둔다
+      v.setValue(0.18)
+      setRunning(false)
+      return
+    }
+
+    setRunning(true)
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 0.42, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.05, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    )
+    loopRef.current = loop
+    loop.start()
+
+    timerRef.current = setTimeout(stop, seconds * 1000)
+    return () => {
+      loop.stop()
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [active, reduce, seconds, v, stop])
+
+  return { opacity: v, running, stop }
+}
+
+/**
+ * 두 번 두드림을 잡는다. 번쩍임을 멈추는 데 쓴다.
+ * 한 번 두드림에는 반응하지 않아, 실수로 눌러 꺼지는 일이 없다.
+ */
+export function useDoubleTap(onDoubleTap: () => void, windowMs = 320) {
+  const last = useRef(0)
+  return useCallback(() => {
+    const now = Date.now()
+    if (now - last.current < windowMs) {
+      last.current = 0
+      onDoubleTap()
+    } else {
+      last.current = now
+    }
+  }, [onDoubleTap, windowMs])
 }
 
 // ── 등장할 때 한 번 번쩍이는 강조 ───────────────────────────────────────────

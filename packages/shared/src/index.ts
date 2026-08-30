@@ -72,25 +72,10 @@ export const MISSION_LEVEL: Record<MissionType, number> = {
 //   30% — 끝낸 교재 + 90일이 지난 학습지
 // 교재를 끝내면 그 교재는 '지난 과정'으로 넘어가 30% 쪽으로 옮겨간다.
 
-export type LevelTier = {
-  level: number      // Lv.1 ~ Lv.9
-  grade: number      // 9등급 ~ 1등급 (레벨이 높을수록 등급 숫자는 작다)
-  title: string
-  minRate: number    // 이 정답률(%) 이상
-}
-
-/** 레벨이 높은 것부터 — 정답률로 찾을 때 위에서부터 보면 된다 */
-export const LEVEL_TIERS: LevelTier[] = [
-  { level: 9, grade: 1, title: '프라임 마스터', minRate: 96 },
-  { level: 8, grade: 2, title: '그랜드 마스터', minRate: 92 },
-  { level: 7, grade: 3, title: '마스터',       minRate: 88 },
-  { level: 6, grade: 4, title: '엘리트',       minRate: 82 },
-  { level: 5, grade: 5, title: '어드밴스',     minRate: 76 },
-  { level: 4, grade: 6, title: '스텐다드',     minRate: 70 },
-  { level: 3, grade: 7, title: '트레이니',     minRate: 60 },
-  { level: 2, grade: 8, title: '루키',         minRate: 40 },
-  { level: 1, grade: 9, title: '비기너',       minRate: 0 },
-]
+// 레벨 등급표는 levels.ts 에 있다 (feedback.ts 와 순환 참조를 피하려고 분리).
+// export * 는 재수출만 할 뿐 이 파일 안에서 쓸 이름을 만들지 않으므로 따로 들여온다.
+import { LEVEL_TIERS, type LevelTier } from './levels'
+export * from './levels'
 
 /** 채점 기록이 없는 학생도 Lv.1 비기너에서 시작한다 */
 export const START_LEVEL = 1

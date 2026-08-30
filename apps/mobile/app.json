@@ -33,7 +33,8 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-audio"
+      "expo-audio",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

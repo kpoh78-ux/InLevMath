@@ -151,6 +151,8 @@ model Student {
   worksheetGenRequests WorksheetGenRequest[]
   /// 축별 취약 집계 (취약유형 학습지의 근거)
   weaknesses           StudentWeakness[]
+  /// 교재 페이지별 채점 상태
+  textbookPageProgress TextbookPageProgress[]
 }
 
 // ── 교재 ────────────────────────────────────────────────────────────────────
@@ -171,6 +173,8 @@ model Textbook {
   answerImages AnswerImage[]
 
   @@index([teacherId])
+  /// 학생별 페이지 채점 상태
+  pageProgress TextbookPageProgress[]
 }
 
 model TextbookProblem {
@@ -212,6 +216,40 @@ model TextbookProblem {
   @@index([subUnitId, difficulty])
   @@index([patternTypeId, difficulty])
   @@index([conceptNodeId])
+}
+
+
+/// 학생 × 교재 × **페이지** 채점 상태.
+///
+/// TextbookResult 는 교재 한 권을 한 행으로 들고 있어 "이 페이지를 다 봤나"를
+/// 알 수 없다. 교재는 한 번에 다 풀지 않고 페이지를 나눠 나가므로,
+/// 선생님이 오늘 어디까지 채점했는지 페이지 단위로 남아야 한다.
+///
+/// 정답(TextbookProblem.answer)도 페이지 단위로 입력하고, 채점도 페이지 단위로
+/// 한다. 둘의 이동 단위를 맞춰야 화면이 따로 놀지 않는다.
+model TextbookPageProgress {
+  id         String   @id @default(cuid())
+  textbookId String
+  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  /// 교재 쪽번호. TextbookProblem.bookPage 와 같은 값
+  bookPage   Int
+
+  /// 'todo'(아직) | 'doing'(진도 체크 — 나가는 중) | 'done'(완료됨)
+  status      String   @default("todo")
+  /// 이 페이지에서 채점한 문항 수 / 틀린 수
+  gradedCount Int      @default(0)
+  wrongCount  Int      @default(0)
+
+  gradedAt   DateTime?
+  /// 누가 채점했나 — 'student'(앱 제출) | 선생님 이름
+  gradedBy   String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([textbookId, studentId, bookPage])
+  @@index([studentId, textbookId, bookPage])
+  @@index([textbookId, bookPage, status])
 }
 
 // 교재 배정 — 학습지의 WorksheetDistribution과 같은 역할.

@@ -7,9 +7,17 @@
 // 원래 apps/kiosk/ 라는 별도 폴더에 있었고, apps/web 에서 한 줄짜리 re-export 로
 // 폴더 밖(../../../../kiosk/...)을 끌어다 썼다. package.json 도 없는 워크스페이스라
 // 빌드·배포가 apps/web 밖 파일에 기대는 상태였다. 여기로 옮겨 그 연결을 끊었다.
+//
+// ── 로그인 ──────────────────────────────────────────────────────────────────
+// 키오스크 API 는 선생님 로그인을 요구한다. 태블릿에 한 번 로그인해 두면
+// 토큰이 30일 유지되므로 아침마다 다시 할 필요는 없다.
+// 로그아웃돼 있으면 키패드 대신 안내를 띄운다 — 눌러도 안 되는 화면을
+// 그대로 보여 주면 기기 고장으로 오해한다.
 
 import React, { useState, useEffect } from 'react';
-import { Delete, CheckCircle2, LogOut, Bell, UserCheck, RefreshCw, Clock, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { Delete, CheckCircle2, LogOut, Bell, UserCheck, RefreshCw, Clock, Sparkles, Lock } from 'lucide-react';
+import { getToken } from '@/lib/api';
 
 interface AttendanceResponse {
   studentId?: string;
@@ -29,6 +37,30 @@ export const AttendanceKiosk: React.FC = () => {
   const [result, setResult] = useState<AttendanceResponse | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  // null = 아직 확인 전. 서버가 401 을 주면 false 로 내려간다
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setSignedIn(Boolean(getToken()));
+  }, []);
+
+  /** 키오스크 API 호출 — 저장된 선생님 토큰을 함께 보낸다 */
+  const kioskFetch = async (path: string, body: unknown) => {
+    const token = getToken();
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    // 토큰이 없거나 만료됐다 — 키패드 대신 안내를 띄운다.
+    // apiFetch 처럼 곧바로 다른 화면으로 보내지 않는 이유: 태블릿이 입구에
+    // 놓여 있어 화면이 바뀌면 아무도 되돌리지 못한다.
+    if (res.status === 401) setSignedIn(false);
+    return res;
+  };
 
   // 실시간 시계
   useEffect(() => {
@@ -81,11 +113,7 @@ export const AttendanceKiosk: React.FC = () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch('/api/attendance/kiosk-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: inputPin }),
-      });
+      const res = await kioskFetch('/api/attendance/kiosk-check', { pin: inputPin });
       const data: AttendanceResponse = await res.json();
 
       if (!res.ok || data.type === 'ERROR') {
@@ -122,10 +150,8 @@ export const AttendanceKiosk: React.FC = () => {
     if (!result) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/attendance/confirm-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, studentId: result.studentId }),
+      const res = await kioskFetch('/api/attendance/confirm-checkout', {
+        pin, studentId: result.studentId,
       });
       const data: AttendanceResponse = await res.json();
       setResult(data);
@@ -139,6 +165,38 @@ export const AttendanceKiosk: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // 로그아웃 상태 — 키패드를 아예 띄우지 않는다.
+  // 눌러도 안 되는 화면을 보여 주면 학생이 기기 고장으로 오해한다.
+  if (signedIn === false) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center gap-6 p-8 text-center font-sans">
+        <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center">
+          <Lock className="w-7 h-7 text-slate-400" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold">출결 키오스크가 잠겨 있습니다</h1>
+          <p className="text-sm text-slate-400 leading-relaxed max-w-xs">
+            이 태블릿에 선생님 계정으로 한 번 로그인하면 다시 쓸 수 있습니다.<br />
+            로그인은 30일 동안 유지됩니다.
+          </p>
+        </div>
+        <Link
+          href="/"
+          className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-8 py-4 rounded-2xl
+                     text-base transition-colors min-h-[56px] flex items-center"
+        >
+          로그인하러 가기
+        </Link>
+        <button
+          onClick={() => setSignedIn(Boolean(getToken()))}
+          className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-4"
+        >
+          로그인을 마쳤다면 여기를 눌러 다시 확인
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-between p-6 select-none font-sans">

@@ -412,8 +412,11 @@ export async function confirmCheckOut(
   if (typeof pinOrPayload === 'string') {
     student = await findStudentByPin(pinOrPayload, teacherId);
   } else if (pinOrPayload.studentId) {
-    student = await prisma.student.findUnique({
-      where: { id: pinOrPayload.studentId },
+    // teacherId 가 주어지면 그 학원 학생인지까지 확인한다.
+    // findUnique 로 id 만 보면 남의 학원 학생도 하원 처리되고 학부모에게
+    // 알림톡이 나간다 — 학생 id 는 다른 API 응답에 실려 나가므로 알아내기 쉽다.
+    student = await prisma.student.findFirst({
+      where: { id: pinOrPayload.studentId, ...(teacherId ? { teacherId } : {}) },
       include: { user: true, teacher: true },
     });
   } else if (pinOrPayload.pin) {

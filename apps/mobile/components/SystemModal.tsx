@@ -122,15 +122,18 @@ export function SystemModal({
         {/* 창 자체를 누르면 닫히지 않게 이벤트를 막는다 */}
         <TouchableOpacity activeOpacity={1} onPress={() => {}}>
           <Animated.View style={fx.panelStyle}>
-            {/* 바깥 발광 — 반투명 테두리를 겹치고 opacity 를 맥박시킨다 */}
-            <Animated.View
-              style={[
-                styles.glowOuter,
-                { width: panelWidth + 12, borderColor: accent + '33', opacity: glow },
-              ]}
-            >
-              <View style={[styles.glowInner, { borderColor: accent + '55' }]}>
-                <View style={[styles.panel, { borderColor: accent }]}>
+            <View style={{ width: panelWidth }}>
+              {/* 발광은 패널 **뒤에 깔리는 별도 층**이다.
+                  패널을 감싸면 맥박이 내용물까지 흐리게 만든다 (뒤 화면이 비쳤다). */}
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.glowOuter, { borderColor: accent + '33', opacity: glow }]}
+              />
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.glowInner, { borderColor: accent + '55', opacity: glow }]}
+              />
+              <View style={[styles.panel, { borderColor: accent }]}>
                   {/* 빛줄기·입자가 창 밖으로 새지 않게 잘라 내는 층 */}
                   <View pointerEvents="none" style={styles.fxClip}>
                     <Sweep play={visible} accent={accent} width={panelWidth} />
@@ -197,10 +200,9 @@ export function SystemModal({
                     <View style={styles.buttonBevel}>
                       <Text style={styles.buttonText}>{confirmLabel}</Text>
                     </View>
-                  </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
               </View>
-            </Animated.View>
+            </View>
           </Animated.View>
         </TouchableOpacity>
       </TouchableOpacity>
@@ -259,8 +261,14 @@ const styles = StyleSheet.create({
   },
   backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
 
-  glowOuter: { borderWidth: 3, borderRadius: 10, padding: 3 },
-  glowInner: { borderWidth: 1, borderRadius: 7, padding: 2 },
+  glowOuter: {
+    position: 'absolute', top: -7, right: -7, bottom: -7, left: -7,
+    borderWidth: 3, borderRadius: 11,
+  },
+  glowInner: {
+    position: 'absolute', top: -3, right: -3, bottom: -3, left: -3,
+    borderWidth: 1, borderRadius: 7,
+  },
   panel: {
     borderWidth: 2,
     borderRadius: 5,

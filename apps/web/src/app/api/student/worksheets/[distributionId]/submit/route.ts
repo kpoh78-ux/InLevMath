@@ -16,6 +16,7 @@ import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import {
   autoGrade, STEP_ABILITY_WEIGHT, STEP_CLEAR_THRESHOLD, WorksheetStep,
+  buildGradingFeedback,
 } from '@inlevmath/shared'
 import { tryApplyAutoReward } from '@/lib/autoReward'
 import { tryRecalcStudentLevel } from '@/lib/studentLevel'
@@ -141,6 +142,39 @@ export async function POST(
 
   const level = await tryRecalcStudentLevel(student.id)
 
+  // ── 학생에게 돌려줄 피드백 ────────────────────────────────────────────────
+  // 지난번 성적과 견주려면 **이번 것을 뺀** 직전 채점을 찾아야 한다.
+  // 방금 저장한 결과가 섞이면 자기 자신과 비교하게 된다.
+  const prev = await prisma.worksheetResult.findFirst({
+    where: {
+      distribution: { studentId: student.id },
+      distributionId: { not: distributionId },
+      submittedCount: { gt: 0 },
+    },
+    orderBy: { submittedAt: 'desc' },
+    select: {
+      correctProblems: true, submittedCount: true,
+      distribution: { select: { worksheet: { select: { problemCount: true } } } },
+    },
+  })
+  const previousRate = prev && prev.submittedCount > 0
+    ? Math.round((prev.correctProblems / prev.submittedCount) * 100)
+    : null
+
+  const feedback = buildGradingFeedback({
+    correctProblems,
+    totalProblems: submittedCount,
+    previousRate,
+    levelBefore: level?.levelBefore ?? null,
+    levelAfter: level?.level ?? 1,
+    avgRate: level?.avgCorrectRate ?? null,
+    nextStep: complete
+      ? (graded.wrong.length > 0
+          ? `틀린 ${graded.wrong.length}문제를 다시 풀어 보세요.`
+          : '다음 학습지로 넘어가도 좋습니다.')
+      : `아직 ${total - submittedCount}문제가 남았습니다.`,
+  })
+
   // 자동 보상은 다 낸 뒤에 한 번만 준다.
   // 부분 제출 때 주면 몇 문제만 맞히고 보상을 받아 갈 수 있다
   const autoReward = complete
@@ -180,5 +214,7 @@ export async function POST(
     pendingProblems: graded.pending,
     level,
     autoReward,
+    // 학생 앱이 그대로 팝업에 쓰는 피드백 (등급·성적변화·레벨변화·소리)
+    feedback,
   })
 }

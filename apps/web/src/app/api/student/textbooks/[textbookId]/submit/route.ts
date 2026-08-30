@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
-import { answersMatch } from '@inlevmath/shared'
+import { answersMatch, buildGradingFeedback } from '@inlevmath/shared'
 import { tryApplyAutoReward } from '@/lib/autoReward'
 import { tryRecalcStudentLevel } from '@/lib/studentLevel'
 import { broadcastToTeacher } from '@/lib/sse'
@@ -141,6 +141,35 @@ export async function POST(
   const correctRate = Math.round(rate * 100)
   const level = await tryRecalcStudentLevel(student.id)
 
+  // ── 학생에게 돌려줄 피드백 ────────────────────────────────────────────────
+  // 교재는 한 학생당 한 행을 계속 갱신하므로, 이번 제출 **전** 상태(existing)가
+  // 곧 지난번 성적이다. 갱신 뒤에 읽으면 자기 자신과 비교하게 된다.
+  const prevWrong = (() => {
+    if (!existing) return null
+    try {
+      const w = JSON.parse(existing.wrongProblemsJson)
+      return Array.isArray(w) ? w.length : null
+    } catch { return null }
+  })()
+  const previousRate =
+    existing && existing.submittedCount > 0 && prevWrong != null
+      ? Math.round(((existing.submittedCount - prevWrong) / existing.submittedCount) * 100)
+      : null
+
+  const feedback = buildGradingFeedback({
+    correctProblems: correctCount,
+    totalProblems: submittedCount,
+    previousRate,
+    levelBefore: level?.levelBefore ?? null,
+    levelAfter: level?.level ?? 1,
+    avgRate: level?.avgCorrectRate ?? null,
+    nextStep: complete
+      ? (wrong.length > 0
+          ? `틀린 ${wrong.length}문제를 다시 풀어 보세요.`
+          : '교재를 끝냈습니다. 선생님께 알리세요.')
+      : `아직 ${Math.max(0, totalProblems - submittedCount)}문제가 남았습니다.`,
+  })
+
   // 자동 보상은 교재를 다 낸 뒤 한 번만
   const autoReward = complete
     ? await tryApplyAutoReward({
@@ -172,6 +201,7 @@ export async function POST(
     remaining: Math.max(0, totalProblems - submittedCount),
     complete,
     correctRate,
+    feedback,
     wrongProblems: wrong,
     pendingProblems: pending,
     level,

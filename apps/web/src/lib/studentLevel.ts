@@ -37,6 +37,15 @@ export type LevelSnapshot = {
   /** 지난 과정(30%) 평균 */
   pastRate: number | null
   totalProblems: number
+
+  /**
+   * 다시 계산하기 **전** 레벨. 레벨이 오르내렸는지는 이것과 견줘야 알 수 있다.
+   * 갱신된 값만 돌려주면 학생에게 "레벨업"도 "레벨 다운"도 알릴 수 없다.
+   * 저장된 값이 없던 학생이면 null.
+   */
+  levelBefore: number | null
+  /** 다시 계산하기 전 평균 정답률 */
+  avgRateBefore: number | null
 }
 
 /** 맞은 개수·전체 개수를 모으는 통 */
@@ -125,10 +134,12 @@ async function splitAverages(studentId: string) {
  * 저장 실패가 채점을 막지 않도록 호출부에서 감싸 쓴다(tryRecalcStudentLevel).
  */
 export async function recalcStudentLevel(studentId: string): Promise<LevelSnapshot | null> {
-  const exists = await prisma.student.findUnique({
-    where: { id: studentId }, select: { id: true },
+  // 갱신 전 값을 먼저 읽어 둔다 — 덮어쓰고 나면 알 수 없다
+  const before = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { currentLevel: true, avgCorrectRate: true },
   })
-  if (!exists) return null
+  if (!before) return null
 
   const { current, past } = await splitAverages(studentId)
   const avg = blendedRate(past.rate, current.rate)
@@ -155,6 +166,8 @@ export async function recalcStudentLevel(studentId: string): Promise<LevelSnapsh
     currentRate: r1(current.rate),
     pastRate: r1(past.rate),
     totalProblems,
+    levelBefore: before.currentLevel ?? null,
+    avgRateBefore: before.avgCorrectRate ?? null,
   }
 }
 

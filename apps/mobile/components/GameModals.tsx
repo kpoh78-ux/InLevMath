@@ -13,11 +13,12 @@ import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import {
   MISSION_LABELS, MISSION_CLEAR_THRESHOLD,
-  type MissionType, type AbilityScore,
+  type MissionType, type AbilityScore, type GradingFeedback,
 } from '@inlevmath/shared'
 import { Colors } from '../constants/colors'
 import { SystemModal, SystemLine } from './SystemModal'
 import { useCountUp } from './fx'
+import { SystemQuestRow } from './SystemModal'
 
 /** 능력치 이름 — 홈 화면의 AbilityBar 와 같은 말을 쓴다 */
 const ABILITY_LABELS: Record<keyof AbilityScore, string> = {
@@ -87,6 +88,107 @@ export function MissionModal({
         <Requirement color={color} text="이해력 · 추론력 · 계산력 상승" />
         <Requirement color={color} text="클리어하면 다음 미션 개방" />
       </View>
+    </SystemModal>
+  )
+}
+
+
+// ── 채점 결과 ───────────────────────────────────────────────────────────────
+
+/**
+ * 레벨 변화에 따라 창 색이 바뀐다.
+ *   금색   레벨업 (축하)
+ *   주황   레벨 다운 근접 (주의)
+ *   빨강   레벨 다운 (경고)
+ * 레벨이 그대로면 이번 채점 등급의 색을 쓴다.
+ */
+const TONE_COLOR: Record<GradingFeedback['tone'], string> = {
+  celebrate: Colors.gold,
+  praise: Colors.success,
+  neutral: Colors.secondary,
+  nudge: '#F0932B',
+  warn: '#E17055',
+}
+
+const LEVEL_ACCENT_COLOR: Record<GradingFeedback['levelAccent'], string | null> = {
+  gold: Colors.gold,
+  orange: '#F0932B',
+  red: '#FF4757',
+  none: null,
+}
+
+export function GradingResultModal({ visible, feedback, onClose }: {
+  visible: boolean
+  feedback: GradingFeedback | null
+  onClose: () => void
+}) {
+  // 훅은 조건 앞에서 부른다 — feedback 이 없을 때만 일찍 빠져나가면 호출 순서가 어긋난다
+  const rate = useCountUp(0, feedback?.correctRate ?? 0, visible && feedback != null)
+  if (!feedback) return null
+
+  // 레벨이 움직였으면 그 색이 창 전체를 물들인다. 축하든 경고든 그것이 주인공이다.
+  const accent = LEVEL_ACCENT_COLOR[feedback.levelAccent] ?? TONE_COLOR[feedback.tone]
+  const isAlarm = feedback.levelChange === 'down' || feedback.levelChange === 'near_down'
+  const trendColor =
+    feedback.trend === 'up' ? Colors.success
+    : feedback.trend === 'down' ? '#E17055'
+    : Colors.subtext
+
+  return (
+    <SystemModal
+      visible={visible}
+      onClose={onClose}
+      accent={accent}
+      eyebrow={feedback.levelTitle ? undefined : 'RESULT'}
+      title={feedback.levelTitle ?? feedback.title}
+      confirmLabel="확인"
+      celebrate={feedback.levelChange === 'up' || feedback.grade === 'perfect'}
+      // 경고는 배경을 눌러 흘려보내지 못하게 한다. 읽고 닫아야 한다.
+      dismissOnBackdrop={!isAlarm}
+    >
+      {/* 점수 */}
+      <View style={styles.scoreRow}>
+        <Text style={styles.scoreIcon}>{feedback.icon}</Text>
+        <Text style={[styles.scoreValue, { color: accent }]}>{rate}%</Text>
+        <Text style={styles.scoreCount}>
+          {feedback.correctProblems}/{feedback.totalProblems}문제
+        </Text>
+      </View>
+
+      {/* 레벨이 움직였으면 등급 문구를 아래로 내린다 */}
+      {feedback.levelMessage ? (
+        <SystemLine center color={accent} bold>{feedback.levelMessage}</SystemLine>
+      ) : null}
+      <SystemLine center>{feedback.levelTitle ? feedback.title : feedback.message}</SystemLine>
+
+      {/* 지난번과 견주기 */}
+      <View style={[styles.block, { borderColor: accent + '44' }]}>
+        <View style={styles.trendRow}>
+          <Text style={[styles.trendText, { color: trendColor }]}>
+            {feedback.trend === 'up' ? '▲' : feedback.trend === 'down' ? '▼' : '―'} {feedback.trendText}
+          </Text>
+          {feedback.previousRate != null && (
+            <Text style={styles.trendPrev}>지난번 {feedback.previousRate}%</Text>
+          )}
+        </View>
+
+        {/* 레벨을 지키는 선 — 경고일 때만 숫자를 보여 준다 */}
+        {isAlarm && feedback.avgRate != null && feedback.keepLevelRate != null && (
+          <Text style={styles.keepLine}>
+            누적 {feedback.avgRate}% · Lv.{feedback.levelAfter} 유지선 {feedback.keepLevelRate}%
+          </Text>
+        )}
+      </View>
+
+      {/* 다음에 할 일 */}
+      {feedback.nextStep ? (
+        <SystemQuestRow
+          icon={isAlarm ? '⚠️' : '➡️'}
+          label="다음에 할 일"
+          hint={feedback.nextStep}
+          color={accent}
+        />
+      ) : null}
     </SystemModal>
   )
 }
@@ -161,6 +263,20 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(253,203,110,0.8)', textShadowRadius: 12,
     textShadowOffset: { width: 0, height: 0 },
   },
+
+  scoreRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 10 },
+  scoreIcon: { fontSize: 22 },
+  scoreValue: {
+    fontSize: 38, fontWeight: '800',
+    textShadowColor: 'rgba(255,255,255,0.35)', textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  scoreCount: { color: Colors.subtext, fontSize: 13, fontWeight: '600' },
+
+  trendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trendText: { fontSize: 14, fontWeight: '800' },
+  trendPrev: { color: Colors.subtext, fontSize: 12 },
+  keepLine: { color: Colors.subtext, fontSize: 11, marginTop: 4 },
 
   abilityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   abilityName: { fontSize: 13, fontWeight: '700' },

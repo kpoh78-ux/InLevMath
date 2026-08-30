@@ -235,7 +235,8 @@ export function SystemLine({ children, color, bold, center }: {
 export function SystemQuestRow({ icon, label, count, color, hint }: {
   icon: string
   label: string
-  count: number
+  /** 개수 뱃지. 없으면 뱃지를 감춘다 ('0'이 붙으면 없는 것을 있다고 오해한다) */
+  count?: number
   color: string
   hint?: string
 }) {
@@ -246,9 +247,11 @@ export function SystemQuestRow({ icon, label, count, color, hint }: {
         <Text style={[styles.questLabel, { color }]}>{label}</Text>
         {hint ? <Text style={styles.questHint}>{hint}</Text> : null}
       </View>
-      <View style={[styles.questCount, { backgroundColor: color }]}>
-        <Text style={styles.questCountText}>{count}</Text>
-      </View>
+      {count != null && count > 0 && (
+        <View style={[styles.questCount, { backgroundColor: color }]}>
+          <Text style={styles.questCountText}>{count}</Text>
+        </View>
+      )}
     </View>
   )
 }

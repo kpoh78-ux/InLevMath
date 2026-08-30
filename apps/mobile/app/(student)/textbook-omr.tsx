@@ -6,6 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { apiFetch } from '../../store/api'
+import { useSfx } from '../../store/useSfx'
+import { GradingResultModal } from '../../components/GameModals'
+import type { GradingFeedback } from '@inlevmath/shared'
 import { OmrSheet, type OmrItem } from '../../components/OmrSheet'
 
 // 교재 답안 입력 (OMR) — 학습지와 같은 방식이다.
@@ -42,6 +45,8 @@ type Result = {
   correctRate: number
   wrongProblems: number[]
   pendingProblems: number[]
+  /** 서버가 만들어 준 피드백 — 등급·성적변화·레벨변화·소리 단서 */
+  feedback?: GradingFeedback
 }
 
 export default function TextbookOmrScreen() {
@@ -52,6 +57,8 @@ export default function TextbookOmrScreen() {
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const sfx = useSfx()
 
   const load = useCallback(async (from?: number) => {
     setLoading(true)
@@ -118,6 +125,10 @@ export default function TextbookOmrScreen() {
         const d = await res.json()
         if (!res.ok) throw new Error(d.error ?? '제출 실패')
         setResult(d as Result)
+        if (d.feedback) {
+          setFeedbackOpen(true)
+          sfx.play(d.feedback.sound)
+        }
       } catch (e) {
         Alert.alert('제출 실패', e instanceof Error ? e.message : '다시 시도해주세요.')
       } finally {
@@ -177,6 +188,13 @@ export default function TextbookOmrScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        {/* 채점 직후 뜨는 결과 창 */}
+        <GradingResultModal
+          visible={feedbackOpen}
+          feedback={result.feedback ?? null}
+          onClose={() => setFeedbackOpen(false)}
+        />
       </SafeAreaView>
     )
   }

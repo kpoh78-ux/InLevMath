@@ -37,7 +37,7 @@ type ScheduleEntry = {
   teacherId: string; teacherName: string; mine: boolean; canEdit: boolean
 }
 
-type TeacherRef = { id: string; name: string; isAdmin: boolean }
+type TeacherRef = { id: string; name: string; isAdmin: boolean; teachesClasses?: boolean }
 type Me = { teacherId: string; name: string; isAdmin: boolean }
 
 /** 학생 선택기에 쓰는 재원 학생 (GET /api/students?sidebar=1) */
@@ -195,11 +195,12 @@ export default function SchedulePage() {
       return ga !== gb ? ga - gb : a.user.name.localeCompare(b.user.name, 'ko')
     })
 
-  // 수업을 하나라도 가진 다른 선생님만 칩으로 만든다
-  const otherTeachersWithClasses = teachers
-    .filter(t => t.id !== me?.teacherId)
+  // 수업을 맡는 다른 선생님을 모두 칩으로 만든다.
+  // 수업 개수가 0이어도 남긴다 — 새로 온 선생님이 여기서 자기 시간표를 시작한다.
+  // 관리 전용 계정(교육실장 등, teachesClasses=false)만 빠진다.
+  const otherTeachers = teachers
+    .filter(t => t.id !== me?.teacherId && t.teachesClasses !== false)
     .map(t => ({ teacher: t, count: schedules.filter(v => v.teacherId === t.id).length }))
-    .filter(x => x.count > 0)
 
   return (
     <div className="space-y-5">
@@ -216,9 +217,9 @@ export default function SchedulePage() {
       </div>
 
       {/* 누구 시간표를 볼지 — 시간표는 선생님마다 다르다.
-          순서: 내 시간표 → 수업이 있는 다른 선생님 → 학원 전체(맨 끝).
-          수업이 없는 선생님(예: 학원 전체를 관리하는 교육실장)은 칩을 만들지 않는다.
-          눌러도 빈 목록만 나와 고장으로 보인다. 수업이 생기면 저절로 나타난다. */}
+          순서: 내 시간표 → 다른 선생님 → 학원 전체(맨 끝).
+          선생님을 새로 등록하면 칩이 저절로 생겨 거기서 시간표를 시작할 수 있다.
+          수업을 맡지 않는 관리 전용 계정(교육실장 등)만 빠진다 — 선생님 관리에서 정한다. */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => setOwnerFilter('mine')}
           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
@@ -226,7 +227,7 @@ export default function SchedulePage() {
           내 시간표
         </button>
 
-        {otherTeachersWithClasses.map(({ teacher: t, count }) => (
+        {otherTeachers.map(({ teacher: t, count }) => (
           <button key={t.id} onClick={() => setOwnerFilter(t.id)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
               ${ownerFilter === t.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
@@ -267,7 +268,11 @@ export default function SchedulePage() {
             <p className="text-sm text-gray-400 text-center py-10">불러오는 중...</p>
           ) : dayEntries.length === 0 && !showForm ? (
             <div className="text-center py-10">
-              <p className="text-sm text-gray-400 mb-2">{DAYS[activeDay]}요일에 등록된 수업이 없습니다.</p>
+              <p className="text-sm text-gray-400 mb-2">
+                {ownerFilter !== 'mine' && ownerFilter !== 'all'
+                  ? `${teachers.find(t => t.id === ownerFilter)?.name ?? ''} 선생님의 ${DAYS[activeDay]}요일 수업이 없습니다.`
+                  : `${DAYS[activeDay]}요일에 등록된 수업이 없습니다.`}
+              </p>
               <button onClick={openAdd} className="text-xs text-indigo-500 hover:underline">
                 {DAYS[activeDay]}요일 수업 추가하기 →
               </button>

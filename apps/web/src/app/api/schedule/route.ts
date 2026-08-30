@@ -24,14 +24,18 @@ export async function GET(req: NextRequest) {
       include: WITH_SCHEDULE_RELATIONS,
     }),
     prisma.teacher.findMany({
-      select: { id: true, isAdmin: true, user: { select: { name: true } } },
+      select: { id: true, isAdmin: true, teachesClasses: true, user: { select: { name: true } } },
       orderBy: { user: { createdAt: 'asc' } },
     }),
   ])
 
   return NextResponse.json({
     me: { teacherId: me.teacherId, name: me.name, isAdmin: me.isAdmin },
-    teachers: teachers.map(t => ({ id: t.id, name: t.user.name, isAdmin: t.isAdmin })),
+    teachers: teachers.map(t => ({
+      id: t.id, name: t.user.name, isAdmin: t.isAdmin,
+      // 수업을 맡지 않는 관리 전용 계정은 시간표 화면에서 감춘다
+      teachesClasses: t.teachesClasses,
+    })),
     schedules: schedules.map(s => toEntry(s as RawSchedule, me)),
   })
 }

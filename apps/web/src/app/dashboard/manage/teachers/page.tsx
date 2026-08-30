@@ -6,7 +6,7 @@ import { useMe } from '@/lib/useMe'
 
 type TeacherRow = {
   id: string; userId: string; name: string; phone: string
-  isAdmin: boolean; createdAt: string
+  isAdmin: boolean; teachesClasses: boolean; createdAt: string
   worksheetCount: number; textbookCount: number
   isMe: boolean
 }
@@ -96,6 +96,30 @@ export default function ManageTeachersPage() {
       if (!res.ok) { alert(d.error ?? '초기화에 실패했습니다.'); return }
       setCreated(null)
       setReset({ name: t.name, password: d.initialPassword ?? 'math1234' })
+    } finally { setBusyId(null) }
+  }
+
+  /** 수업 담당 / 관리 전용 전환 — 시간표 화면의 선생님 목록에 나올지를 정한다 */
+  const toggleTeaches = async (t: TeacherRow) => {
+    const next = !t.teachesClasses
+    if (!confirm(
+      next
+        ? `${t.name} 선생님을 수업 담당으로 바꿀까요?
+수업 시간표 화면에 이름이 나타나 시간표를 넣을 수 있게 됩니다.`
+        : `${t.name} 선생님을 관리 전용으로 바꿀까요?
+수업 시간표 화면의 선생님 목록에서 빠집니다. 이미 등록된 수업은 그대로 남습니다.`
+    )) return
+    setBusyId(t.id)
+    try {
+      const res = await apiFetch('/api/admin/teachers', {
+        method: 'PATCH',
+        body: JSON.stringify({ teacherId: t.id, teachesClasses: next }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string }
+        alert(d.error ?? '변경에 실패했습니다.'); return
+      }
+      await fetchTeachers()
     } finally { setBusyId(null) }
   }
 
@@ -225,11 +249,18 @@ export default function ManageTeachersPage() {
                   {t.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3')}
                 </td>
                 <td className="px-4 py-3.5 text-center">
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
-                    t.isAdmin ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {t.isAdmin ? '관리자' : '선생님'}
-                  </span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap ${
+                      t.isAdmin ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {t.isAdmin ? '관리자' : '선생님'}
+                    </span>
+                    {!t.teachesClasses && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded whitespace-nowrap bg-amber-50 text-amber-700">
+                        관리 전용
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                   {new Date(t.createdAt).toLocaleDateString('ko-KR')}
@@ -239,6 +270,11 @@ export default function ManageTeachersPage() {
                     <button onClick={() => openEdit(t)} disabled={busyId === t.id}
                       className="text-xs text-gray-600 hover:text-gray-900 border border-gray-200 hover:border-gray-400 px-2 py-1 rounded transition-colors disabled:opacity-40 whitespace-nowrap">
                       정보 수정
+                    </button>
+                    <button onClick={() => toggleTeaches(t)} disabled={busyId === t.id}
+                      title="수업 시간표 화면의 선생님 목록에 나올지 정합니다"
+                      className="text-xs text-gray-600 hover:text-gray-900 border border-gray-200 hover:border-gray-400 px-2 py-1 rounded transition-colors disabled:opacity-40 whitespace-nowrap">
+                      {t.teachesClasses ? '관리 전용으로' : '수업 담당으로'}
                     </button>
                     <button onClick={() => resetPassword(t)} disabled={busyId === t.id}
                       title="비밀번호를 math1234로 되돌립니다"
@@ -268,6 +304,8 @@ export default function ManageTeachersPage() {
           <strong className="text-gray-700">권한 안내</strong><br />
           · <strong>선생님</strong> — 학생 등록·수정, 비밀번호 초기화, 시간표, 학습지, 교재 등 모든 기능<br />
           · <strong>관리자</strong> — 위 전부 + 선생님 계정 등록·삭제 + 학생 퇴원(복귀) 처리<br />
+          · <strong>관리 전용</strong> — 자기 수업 없이 학원 전체를 관리하는 계정(예: 교육실장).
+          수업 시간표 화면의 선생님 목록에서 빠집니다<br />
           · 학생·학습지·교재는 담당제로 나누지 않고 학원 전체가 공유합니다.
           모든 선생님이 전체 학생의 배포·채점·출결을 함께 처리합니다.<br />
           <br />

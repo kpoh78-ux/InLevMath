@@ -219,6 +219,10 @@ GET  /api/events                  — SSE 실시간 알림
   `academyTeacher()` 로 대표 계정에 몰지 않는다 (`src/lib/academy.ts` 참고).
   목록 조회는 학원 전체를 주되, 수정·삭제는 본인 수업만 (관리자는 전부).
 - 수업에 붙는 학생은 `ClassScheduleStudent` 관계다. 이름 문자열은 동명이인을 가릴 수 없다.
+- 시간표 화면의 선생님 목록은 `Teacher.teachesClasses` 로 정한다. 자기 수업 없이
+  학원 전체를 관리만 하는 계정(교육실장 등)은 `false` 로 두면 빠진다.
+  **이름으로 거르지 않는다** — 사람이 바뀔 때마다 코드를 고쳐야 한다.
+  수업이 0개여도 목록에는 남긴다. 새로 온 선생님이 거기서 시간표를 시작한다.
 - **한 학생이 같은 날 여러 선생님 수업을 들을 수 있다.** 그날 수업을 모을 때는 반드시
   `src/lib/dailyClasses.ts` 의 `getStudentDayClasses()` 를 거친다. ClassSchedule 을
   직접 조회하면 다른 선생님 수업이 빠져 지각 판정과 리포트가 어긋난다.

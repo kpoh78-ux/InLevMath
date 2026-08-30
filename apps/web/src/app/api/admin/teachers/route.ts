@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
         name: t.user.name,
         phone: t.user.phone,
         isAdmin: t.isAdmin,
+        teachesClasses: t.teachesClasses,
         createdAt: t.user.createdAt,
         worksheetCount: t._count.worksheets,
         textbookCount: t._count.textbooks,
@@ -160,8 +161,8 @@ export async function PATCH(req: NextRequest) {
   const guard = await requireAdmin(req)
   if ('response' in guard) return guard.response
 
-  const { teacherId, isAdmin, name, phone } = await req.json().catch(() => ({})) as {
-    teacherId?: string; isAdmin?: boolean; name?: string; phone?: string
+  const { teacherId, isAdmin, name, phone, teachesClasses } = await req.json().catch(() => ({})) as {
+    teacherId?: string; isAdmin?: boolean; name?: string; phone?: string; teachesClasses?: boolean
   }
   if (!teacherId) {
     return NextResponse.json({ error: '선생님을 선택하세요.' }, { status: 400 })
@@ -212,8 +213,14 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  if (typeof isAdmin === 'boolean') {
-    await prisma.teacher.update({ where: { id: teacherId }, data: { isAdmin } })
+  if (typeof isAdmin === 'boolean' || typeof teachesClasses === 'boolean') {
+    await prisma.teacher.update({
+      where: { id: teacherId },
+      data: {
+        ...(typeof isAdmin === 'boolean' ? { isAdmin } : {}),
+        ...(typeof teachesClasses === 'boolean' ? { teachesClasses } : {}),
+      },
+    })
   }
   let authReady = true
   if (nextName !== undefined || nextPhone !== undefined) {

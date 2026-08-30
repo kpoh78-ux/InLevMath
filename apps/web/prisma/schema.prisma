@@ -29,6 +29,10 @@ model Teacher {
 
   // 관리자 권한 — 선생님 계정 등록·삭제와 학생 퇴원 처리는 관리자만 할 수 있다
   isAdmin Boolean @default(false)
+  /// 수업을 맡는 선생님인가. false 면 학원 전체를 관리만 하는 계정(예: 교육실장)이라
+  /// 시간표 화면의 선생님 목록에 나오지 않는다. 이름으로 거르면 사람이 바뀔 때마다
+  /// 코드를 고쳐야 해서 계정에 표시를 둔다.
+  teachesClasses Boolean @default(true)
 
   // 문제집 문제유형(구역) 목록 — 선생님이 직접 추가·삭제한다.
   // null이면 TEXTBOOK_SECTION_PRESETS 기본값을 쓴다. JSON: ["A단계","필수유형",...]

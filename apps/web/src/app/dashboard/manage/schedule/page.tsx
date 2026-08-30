@@ -201,23 +201,16 @@ export default function SchedulePage() {
     .map(t => ({ teacher: t, count: schedules.filter(v => v.teacherId === t.id).length }))
     .filter(x => x.count > 0)
 
-  const totalClasses = visible.length
-
   return (
     <div className="space-y-5">
       {/* 헤더 */}
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">수업 시간표</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {ownerFilter === 'mine' ? '내 수업' : ownerFilter === 'all' ? '학원 전체' : `${teachers.find(t => t.id === ownerFilter)?.name ?? ''} 선생님`}
-            {' '}{totalClasses}개 · <strong>시간표는 선생님별로 따로 관리됩니다.</strong>
-            {' '}새 수업은 {me?.isAdmin ? '기본적으로 ' : ''}내 시간표로 저장되고, 내 수업만 학원 현황에 표시됩니다.
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-gray-900">수업 시간표</h1>
+        {/* 글자가 접히지 않게 잡아 둔다 — 좁은 화면에서 "+ 수업 추" / "가" 로 잘렸다 */}
         <button
           onClick={openAdd}
-          className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+          className="shrink-0 whitespace-nowrap bg-indigo-600 text-white text-sm font-semibold
+                     px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
           + 수업 추가
         </button>
       </div>

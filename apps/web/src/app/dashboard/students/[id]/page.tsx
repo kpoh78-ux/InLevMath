@@ -37,10 +37,6 @@ type WsResult = {
   step: string; unit: string; grade: string
   total: number; correct: number; rate: number; cleared: boolean
 }
-type TbResult = {
-  id: string; date: string; title: string
-  grade: string; total: number; correct: number; rate: number
-}
 type StepStat = {
   step: string; rate: number; count: number; threshold: number
 }
@@ -51,7 +47,6 @@ type HistoryData = {
     comprehension: number; reasoning: number; calculation: number
   }
   worksheetResults: WsResult[]
-  textbookResults: TbResult[]
   stepStats: StepStat[]
   recentActivity: { lastDate: string | null; totalSessions: number; clearedCount: number }
 }
@@ -113,15 +108,11 @@ export default function StudentDetailPage() {
     </div>
   )
 
-  const { student, worksheetResults, textbookResults, stepStats, recentActivity } = data
+  const { student, worksheetResults, stepStats, recentActivity } = data
 
   const totalMissionProblems = worksheetResults.reduce((a, r) => a + r.total, 0)
   const avgMissionRate = worksheetResults.length > 0
     ? Math.round(worksheetResults.reduce((a, r) => a + r.rate, 0) / worksheetResults.length)
-    : 0
-  const totalGradingProblems = textbookResults.reduce((a, r) => a + r.total, 0)
-  const avgGradingRate = textbookResults.length > 0
-    ? Math.round(textbookResults.reduce((a, r) => a + r.rate, 0) / textbookResults.length)
     : 0
 
   const missionLabel = MISSION_LABELS[student.currentMission as MissionType] ?? student.currentMission
@@ -130,15 +121,12 @@ export default function StudentDetailPage() {
   const formatPhone = (p: string) =>
     p.length === 11 ? p.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') : p
 
-  // 학습지 + 교재 결과 합쳐서 날짜 내림차순
-  type Row =
-    | { kind: 'worksheet'; data: WsResult }
-    | { kind: 'textbook'; data: TbResult }
+  // 학습지 결과 날짜 내림차순
+  type Row = { kind: 'worksheet'; data: WsResult }
 
-  const combinedRows: Row[] = [
-    ...worksheetResults.map(r => ({ kind: 'worksheet' as const, data: r })),
-    ...textbookResults.map(r => ({ kind: 'textbook' as const, data: r })),
-  ].sort((a, b) => b.data.date.localeCompare(a.data.date))
+  const combinedRows: Row[] = worksheetResults
+    .map(r => ({ kind: 'worksheet' as const, data: r }))
+    .sort((a, b) => b.data.date.localeCompare(a.data.date))
 
   return (
     <div className="space-y-4">
@@ -217,29 +205,6 @@ export default function StudentDetailPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex-1 bg-teal-50 border border-teal-200 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-teal-600 mb-3">교재 채점</p>
-                  {textbookResults.length === 0 ? (
-                    <p className="text-xs text-teal-300 text-center py-2">기록 없음</p>
-                  ) : (
-                    <div className="flex justify-around">
-                      <div className="text-center">
-                        <p className="text-xs text-gray-400 mb-0.5">총 문제 수</p>
-                        <p className="text-xl font-black text-gray-800">{totalGradingProblems}개</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-400 mb-0.5">평균 정답률</p>
-                        <p className={`text-xl font-black ${avgGradingRate >= 75 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                          {avgGradingRate}%
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-400 mb-0.5">채점 횟수</p>
-                        <p className="text-xl font-black text-teal-600">{textbookResults.length}회</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -259,7 +224,6 @@ export default function StudentDetailPage() {
                   <p className="text-sm">학습 기록이 없습니다.</p>
                 </div>
               ) : combinedRows.map(row => {
-                if (row.kind === 'worksheet') {
                   const r = row.data
                   return (
                     <div key={`ws-${r.id}`}
@@ -286,25 +250,6 @@ export default function StudentDetailPage() {
                       </span>
                     </div>
                   )
-                } else {
-                  const g = row.data
-                  return (
-                    <div key={`tb-${g.id}`}
-                      className="px-5 py-3.5 border-b border-gray-50 grid grid-cols-12 items-center hover:bg-gray-50 transition-colors">
-                      <span className="col-span-1">
-                        <span className="text-xs font-medium text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">교재</span>
-                      </span>
-                      <div className="col-span-5">
-                        <span className="text-[10px] text-gray-400">{g.grade}</span>
-                        <p className="text-sm font-medium text-gray-800 truncate">{g.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{g.date}</p>
-                      </div>
-                      <span className="col-span-2 text-center text-sm text-gray-600">{g.total}문제</span>
-                      <span className={`col-span-2 text-center text-sm font-bold ${rateColor(g.rate)}`}>{g.rate}%</span>
-                      <span className="col-span-2 text-center text-xs text-gray-400">-</span>
-                    </div>
-                  )
-                }
               })}
             </div>
           </div>
@@ -494,44 +439,6 @@ export default function StudentDetailPage() {
                         {r.cleared
                           ? <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">클리어</span>
                           : <span className="text-xs text-gray-400">-</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* 교재 채점 */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-teal-50 border-b border-teal-100">
-              <h3 className="text-sm font-semibold text-teal-700">교재 채점 이력</h3>
-            </div>
-            {textbookResults.length === 0 ? (
-              <div className="px-5 py-10 text-center text-gray-400 text-sm">교재 채점 기록이 없습니다.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
-                    <th className="px-5 py-3 text-left font-medium">날짜</th>
-                    <th className="px-5 py-3 text-left font-medium">교재명</th>
-                    <th className="px-5 py-3 text-center font-medium">문제 수</th>
-                    <th className="px-5 py-3 text-center font-medium">정답</th>
-                    <th className="px-5 py-3 text-center font-medium">정답률</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {textbookResults.map(g => (
-                    <tr key={g.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-3.5 text-gray-400 text-xs">{g.date}</td>
-                      <td className="px-5 py-3.5">
-                        <p className="font-medium text-gray-800 truncate max-w-64">{g.title}</p>
-                        <p className="text-xs text-gray-400">{g.grade}</p>
-                      </td>
-                      <td className="px-5 py-3.5 text-center text-gray-600">{g.total}문제</td>
-                      <td className="px-5 py-3.5 text-center text-gray-600">{g.correct}개</td>
-                      <td className="px-5 py-3.5 text-center">
-                        <span className={`font-bold text-sm ${rateColor(g.rate)}`}>{g.rate}%</span>
                       </td>
                     </tr>
                   ))}

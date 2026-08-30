@@ -88,43 +88,7 @@ async function main() {
     console.log(`  📄 ${ws.title} — ${ws.problems}문제 ${ws.rate}% (오답 ${wrong.length}개)`)
   }
 
-  // ── 4. 교재 + 문제 + 채점 결과 생성 ─────────────────────
-  const textbookProblemCount = 374
-  const textbookRate = 82
-  const tbWrong = wrongOf(textbookProblemCount, textbookRate)
-  const tbCorrect = textbookProblemCount - tbWrong.length
-
-  const textbook = await prisma.textbook.create({
-    data: {
-      title: '[1회차] 디딤돌 기본+응용 - 초등수학2-1',
-      grade: student.grade || '초2',
-      publisher: '좋은책신사고',
-      teacherId: teacher.id,
-      createdAt: daysAgo(30),
-      problems: {
-        create: Array.from({ length: textbookProblemCount }, (_, i) => ({
-          number: i + 1,
-          unit: i < 120 ? '덧셈과 뺄셈' : i < 250 ? '길이 재기' : '시각과 시간',
-          type: 'multiple',
-          answer: String((i % 5) + 1),
-        })),
-      },
-    },
-  })
-
-  await prisma.textbookResult.create({
-    data: {
-      textbookId: textbook.id,
-      studentId: student.id,
-      wrongProblemsJson: JSON.stringify(tbWrong),
-      gradedBy: 'teacher',
-      submittedAt: daysAgo(15),
-    },
-  })
-
-  console.log(`  📚 [1회차] 디딤돌 기본+응용 - 초등수학2-1 — ${textbookProblemCount}문제 ${textbookRate}% (오답 ${tbWrong.length}개)`)
-
-  // ── 5. 학생 능력치 업데이트 ──────────────────────────────
+  // ── 4. 학생 능력치 업데이트 ──────────────────────────────
   await prisma.student.update({
     where: { id: student.id },
     data: { comprehension: 52.4, reasoning: 38.7, calculation: 61.2 },
@@ -132,7 +96,6 @@ async function main() {
 
   console.log('\n🎉 시드 데이터 삽입 완료!')
   console.log(`   학습지: ${worksheetData.length}개 채점`)
-  console.log(`   교재  : 1개 채점 (${textbookProblemCount}문제)`)
 }
 
 main()

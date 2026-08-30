@@ -173,7 +173,7 @@ GET  /api/events                  — SSE 연결 엔드포인트
 **학생 전용 앱이다.** 선생님용 화면은 웹으로 옮겼으므로 여기에 다시 만들지 않는다.
 선생님 계정으로 로그인을 시도하면 로그인 화면에서 막고 웹으로 안내한다.
 
-**학생이 직접 넣는 것은 학습지·교재 답안뿐이다.** 그것은 저장된 정답으로 자동
+**학생이 직접 넣는 것은 학습지 답안뿐이다.** 그것은 저장된 정답으로 자동
 채점된다. 미션 결과(문제 수·맞은 개수)는 학생이 스스로 적으면 확인할 방법이 없어
 선생님 웹(수업준비 → 학습 관찰 입력)으로 옮겼다.
 
@@ -182,7 +182,6 @@ app/(auth)/login.tsx              — 핸드폰번호 로그인 (학생 계정�
 app/(student)/index.tsx           — 학생 대시보드 (레벨/능력치/미션 로드맵)
 app/(student)/history.tsx         — 학습 이력
 app/(student)/worksheet-omr.tsx   — 배포받은 학습지 OMR 답안 제출
-app/(student)/textbook-omr.tsx    — 배정받은 교재 OMR 답안 제출
 app/(student)/inventory.tsx       — 보상 보관창고
 app/(student)/change-password.tsx — 비밀번호 변경
 ```
@@ -193,9 +192,7 @@ POST /api/auth/login              — 로그인
 POST /api/auth/change-password    — 비밀번호 변경
 GET  /api/student/progress        — 레벨·능력치·미션 진행 (홈 화면)
 GET  /api/student/worksheets      — 배포받은 학습지 목록
-GET  /api/student/textbooks       — 배정받은 교재 목록
 POST /api/student/worksheets/[distributionId]/submit — 답안 제출 (1차 자동 채점)
-POST /api/student/textbooks/[textbookId]/submit      — 교재 답안 제출
 GET  /api/missions/results        — 학습 이력 조회
 GET  /api/student/inventory       — 보관창고
 GET  /api/events                  — SSE 실시간 알림
@@ -215,7 +212,7 @@ GET  /api/events                  — SSE 실시간 알림
 
 ### 시간표는 선생님별, 학생의 하루는 하나
 
-- **ClassSchedule 의 소유자는 수업을 맡은 선생님 본인**이다. 학생·학습지·교재와 달리
+- **ClassSchedule 의 소유자는 수업을 맡은 선생님 본인**이다. 학생·학습지와 달리
   `academyTeacher()` 로 대표 계정에 몰지 않는다 (`src/lib/academy.ts` 참고).
   목록 조회는 학원 전체를 주되, 수정·삭제는 본인 수업만 (관리자는 전부).
 - 수업에 붙는 학생은 `ClassScheduleStudent` 관계다. 이름 문자열은 동명이인을 가릴 수 없다.
@@ -248,7 +245,6 @@ GET  /api/events                  — SSE 실시간 알림
   학부모가 매일 같은 껍데기를 받는다.
 - 하원 자동 발송(`autoSendOnCheckOut`)의 **기본값은 꺼짐**이다. 켜지 않은 학원에서
   하원 버튼 한 번에 학부모 전원에게 문자가 나가면 안 된다. 같은 날 두 번 보내지도 않는다.
-- 연산교재/진도교재는 `Textbook.kind` ('진도' | '연산') 로 가른다. 교재 목록에서 눌러 바꾼다.
 - 수업 태도·선생님 코멘트는 데이터로 뽑을 수 없어 오버라이드에 선생님이 직접 적는다.
 
 ### 구현 지침
@@ -263,11 +259,19 @@ GET  /api/events                  — SSE 실시간 알림
 
 | 트리 | 규모 | 무엇에 쓰나 |
 |---|---|---|
-| 4계층 (`MathMajorUnit`→`MathMiddleUnit`→`MathSubUnit`→`MathPatternType`) | 92 / 216 / 581 / 1,305 | "어디서 배우는 문제인가" — 교재·학습지 편성 |
+| 4계층 (`MathMajorUnit`→`MathMiddleUnit`→`MathSubUnit`→`MathPatternType`) | 92 / 216 / 581 / 1,305 | "어디서 배우는 문제인가" — 학습지 편성 |
 | 지식그래프 (`ConceptNode` + `ConceptDependency`) | 1,474 노드 / 1,503 간선 | "무슨 개념인가" — 선수 결손 역추적 |
 
-`Question` 과 `TextbookProblem` 은 **셋 다 붙인다** (`subUnitId`·`patternTypeId`·`conceptNodeId`).
+`Question` 은 **셋 다 붙인다** (`subUnitId`·`patternTypeId`·`conceptNodeId`).
 전부 Nullable — 분류는 한 번에 끝나지 않고 계속 붙여 나간다.
+
+> **2026-08-31 결정 — 채점·문제은행·학습지 생성은 LevMathPro로 옮긴다.**
+> InLevMath는 학원 수업관리·시험대비, 상담 및 학생관리, 알림톡을 주기능으로 한다.
+> 교재(Textbook) 기능은 스키마째 삭제했다(마이그레이션 `20260831000000_remove_textbook`).
+> 아래 `Question`·교육과정 트리·반입 계약은 이미 시딩된 데이터라 지우지 않고 남겨 뒀지만,
+> **실제로 채우고 쓰는 일(문제은행 적재, 교재유사문제·교재오답·학습지오답·단원평가·
+> 모의고사 학습지 생성)은 LevMathPro 쪽에서 한다.** 학습지 배포·채점(OMR)과 그로 인한
+> 레벨업만 InLevMath에 남는다.
 
 ### 난이도는 1~5 하나뿐
 
@@ -334,16 +338,13 @@ GET  /api/events                  — SSE 실시간 알림
 
 ## 정답 데이터 확장성 원칙
 
-학습지·교재 정답과 서술형 스냅샷 이미지는 계속 쌓이면 DB가 수십~수백 GB로 커진다.
+학습지 정답과 서술형 스냅샷 이미지는 계속 쌓이면 DB가 수십~수백 GB로 커진다.
 정답 관련 기능을 추가·수정할 때는 아래를 반드시 지킨다.
 
 ### 1. 큰 값은 목록/집계 쿼리에서 읽지 않는다
-- 정답 이미지는 `AnswerImage` 테이블에 분리 저장하고, `Worksheet.answersJson` /
-  `TextbookProblem.answer`에는 마커 `__img__`(`IMAGE_ANSWER_MARKER`)만 넣는다
-- 교재 개요 API(`GET /api/textbooks/[id]`)는 문제 목록을 내려주지 않는다.
-  단원/단계 트리와 집계만 주고, 문제는 `GET /api/textbooks/[id]/problems`에서 구간별로 가져간다
-- 학생별 오답 번호 배열도 개요에 넣지 않는다 (개수만) — 상세는
-  `GET /api/textbooks/[id]/results/[studentId]`로 학생 1명 단위 조회
+- 정답 이미지는 `AnswerImage` 테이블에 분리 저장하고, `Worksheet.answersJson`에는
+  마커 `__img__`(`IMAGE_ANSWER_MARKER`)만 넣는다
+- 학생별 오답 번호 배열도 목록·집계 API에는 넣지 않는다 (개수만)
 
 ### 2. 이미지는 오브젝트 스토리지로 뺄 수 있게 둔다
 - `src/lib/answerImageStore.ts`가 저장 위치를 추상화한다. 정답 이미지를 직접
@@ -352,45 +353,13 @@ GET  /api/events                  — SSE 실시간 알림
   DB에는 `objectKey`만 남긴다. 조회 시 서명 URL을 돌려주므로 이미지 트래픽이 앱 서버를 거치지 않는다
 - 전환 절차: Supabase → Storage → 비공개 버킷 `answer-images` 생성 → `.env`에
   `ANSWER_IMAGE_STORAGE=supabase` 설정. 기존 `db` 저장분은 그대로 계속 보인다 (혼재 가능)
-- 학습지/교재 삭제 시 `purgeAnswerImages()`를 호출해 버킷 파일까지 정리한다
+- 학습지 삭제 시 `purgeAnswerImages()`를 호출해 버킷 파일까지 정리한다
 - 현재 용량은 학원관리 → 백업·용량(`/dashboard/manage/backup`, 관리자 전용) 또는
   `GET /api/admin/storage`에서 확인
 
 ### 3. 대량 저장은 전체 교체가 아니라 증분으로
-- 교재 정답 저장(`PUT /api/textbooks/[id]/problems`)은 화면에서 바뀐 문제만 upsert한다.
-  전체 삭제 후 재생성하면 3000문제에서 요청·트랜잭션이 감당되지 않는다
-- 문제 수 상한: 교재 1권 `MAX_TEXTBOOK_PROBLEMS`(5000), 한 번에 저장 `PROBLEM_PAGE_SIZE_MAX`(500)
 - 이미지 1장 `MAX_ANSWER_IMAGE_BYTES`(500KB), 요청당 합계 `MAX_ANSWER_IMAGE_TOTAL_BYTES`(8MB)
 - 이미지는 클라이언트(`src/lib/imageCompress.ts`)에서 webp로 리사이즈·압축한 뒤 전송한다
-
-### 4. 문제집 정답 입력 구조 — 페이지 → 구역
-- `TextbookProblem`은 아래 값을 자유 입력 문자열/정수로 갖는다
-  - `bookPage` — 교재 쪽번호 (0 = 미지정). **정답 입력 화면의 기본 이동 단위**
-  - `majorUnit`(대단원) / `middleUnit`(중단원) / `minorUnit`(소단원)
-  - `section` — 문제유형/단계. 프리셋은 `TEXTBOOK_SECTION_PRESETS`
-    (A~C단계, 개념익히기, 대표문제, 필수유형, 확인 체크, 한번 더 풀기, 표현 더하기,
-    이런 문제가 시험에 나온다, 중단원/대단원 마무리, 서술형 …). 목록에 없으면 직접 입력
-- **구역(Block)** = 한 페이지 안에서 `(minorUnit, section)`이 같은 문제 묶음.
-  화면에서는 구역별 카드로 나뉘어 머리말(페이지·소단원·유형)을 통째로 바꿀 수 있다
-- 왼쪽 사이드바에서 페이지를 고르면 정답 화면도 그 페이지로 따라간다.
-  `이전/다음 페이지` 버튼도 같은 동작. 소단원이 바뀌는 지점에는 구분 머리말이 들어간다
-### 교재 채점은 페이지 단위다
-
-정답 입력도 채점도 **페이지가 이동 단위**다. 둘을 맞춰야 화면이 따로 놀지 않는다.
-
-- `TextbookPageProgress` — 학생 × 교재 × 페이지 상태 (`todo` | `doing` | `done`) 와 채점 수.
-  `TextbookResult` 는 교재 한 권을 한 행으로 들고 있어 "이 페이지를 다 봤나"를 알 수 없다.
-  교재는 한 번에 다 풀지 않고 페이지를 나눠 나간다
-- `PUT /api/textbooks/[id]/grade` — 한 페이지를 채점한다.
-  `marks` 는 **그 페이지 문항만** 담고, 보내지 않은 문항은 건드리지 않는다.
-  교재 전체 누적(`TextbookResult`)을 갱신할 때도 **그 페이지 문항만 빼고 다시 넣는다** —
-  통째로 덮어쓰면 다른 페이지 채점이 사라진다
-- 화면 흐름: 학생 선택 → 교재 → 교재 선택 → 왼쪽 페이지 목록 / 오른쪽 정답·채점
-- 채점이 바뀌면 레벨을 다시 계산한다 (레벨은 평균 정답률에서 나온다)
-
-- 조회 인덱스: 페이지별은 `TextbookProblem_page_idx`, 단원/유형별은 `TextbookProblem_unit_idx`.
-  필터 컬럼을 부분만 넘기면 인덱스를 제대로 못 타므로 조합을 지켜서 넘긴다
-- 저장하지 않고 페이지를 옮기면 편집분이 사라지므로 이동 시 `confirmDiscard()`로 확인받는다
 
 ## Key Constraints
 

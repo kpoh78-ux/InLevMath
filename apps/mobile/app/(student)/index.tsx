@@ -17,12 +17,6 @@ import { MissionModal, LevelUpModal } from '../../components/GameModals'
 import { Colors } from '../../constants/colors'
 import { MISSION_ORDER, MISSION_LABELS, MissionType, AbilityScore, stepDisplayLabel } from '@inlevmath/shared'
 
-type TextbookItem = {
-  textbookId: string; title: string; grade: string; publisher: string
-  totalProblems: number; submittedCount: number
-  correctRate: number | null; completed: boolean
-}
-
 type DistributedWS = {
   distributionId: string
   worksheetId: string
@@ -88,7 +82,6 @@ export default function StudentDashboard() {
   // 지금 레벨을 ref 로도 들고 있는다 — SSE 콜백이 useCallback 이라
   // progress 를 직접 읽으면 이벤트 구독이 매번 다시 걸린다
   const levelNow = useRef(0)
-  const [textbooks, setTextbooks] = useState<TextbookItem[]>([])
   const [loadingWS, setLoadingWS] = useState(true)
   const { currentLevel, currentMission, abilityScore, clearedMissions } = progress
 
@@ -105,14 +98,6 @@ export default function StudentDashboard() {
         clearedMissions: data.clearedMissions ?? [],
       })
     } catch { /* 무시 — 다음 진입에서 다시 읽는다 */ }
-  }, [])
-
-  // 배정된 교재 fetch
-  const fetchTextbooks = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/student/textbooks')
-      if (res.ok) setTextbooks(await res.json())
-    } catch { /* 무시 */ }
   }, [])
 
   // 배포된 학습지 fetch
@@ -153,8 +138,8 @@ export default function StudentDashboard() {
   const questCount = homework.length + weakSpot.length + wrongNote.length
 
   useEffect(() => {
-    fetchProgress(); fetchWorksheets(); fetchTextbooks()
-  }, [fetchProgress, fetchWorksheets, fetchTextbooks])
+    fetchProgress(); fetchWorksheets()
+  }, [fetchProgress, fetchWorksheets])
 
   // 레벨이 올랐으면 축하 창을 띄운다.
   // LEVEL_UP 이벤트가 잡아 둔 '올라가기 전 레벨'과 새 값을 견준다.
@@ -349,39 +334,6 @@ export default function StudentDashboard() {
               </Text>
             </View>
           ) : normal.map(ws => renderWsCard(ws))}
-        </View>
-
-        {/* 배정된 교재 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>나의 교재</Text>
-          {textbooks.length === 0 ? (
-            <View style={styles.card}>
-              <Text style={{ color: Colors.subtext, fontSize: 13, textAlign: 'center' }}>배정된 교재가 없습니다</Text>
-            </View>
-          ) : textbooks.map(tb => (
-            <TouchableOpacity
-              key={tb.textbookId}
-              style={styles.wsCard}
-              onPress={() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ;(router.push as any)({
-                  pathname: '/(student)/textbook-omr',
-                  params: { textbookId: tb.textbookId },
-                })
-              }}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.wsTitle} numberOfLines={1}>{tb.title}</Text>
-              <View style={styles.wsBottom}>
-                <Text style={styles.wsInfo}>
-                  {tb.publisher} · {tb.totalProblems}문제 중 {tb.submittedCount}개 제출
-                </Text>
-                {tb.correctRate !== null && (
-                  <Text style={[styles.wsScore, { color: Colors.secondary }]}>{tb.correctRate}%</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))}
         </View>
 
         <View style={{ height: 32 }} />

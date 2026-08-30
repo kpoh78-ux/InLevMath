@@ -34,13 +34,8 @@ model Teacher {
   /// 코드를 고쳐야 해서 계정에 표시를 둔다.
   teachesClasses Boolean @default(true)
 
-  // 문제집 문제유형(구역) 목록 — 선생님이 직접 추가·삭제한다.
-  // null이면 TEXTBOOK_SECTION_PRESETS 기본값을 쓴다. JSON: ["A단계","필수유형",...]
-  sectionPresetsJson String?
-
   students    Student[]
   worksheets  Worksheet[]
-  textbooks   Textbook[]
   schedules   ClassSchedule[]
   rewardItems RewardItem[]
   rewardRules RewardRule[]
@@ -119,7 +114,7 @@ model Student {
   currentMission MissionType @default(concept_learning)
 
   // 평균 정답률(%) — 채점 기록이 없으면 null (칭호 '수학 입문자').
-  // 진행 중 교재·최근 90일 학습지 70% + 끝낸 교재·오래된 학습지 30%
+  // 최근 90일 학습지 70% + 오래된 학습지 30%
   avgCorrectRate Float?
 
   comprehension Float @default(0)
@@ -130,8 +125,6 @@ model Student {
 
   results              MissionResult[]
   distributions        WorksheetDistribution[]
-  textbookAssignments  TextbookAssignment[]
-  textbookResults      TextbookResult[]
   rewards              StudentReward[]
   pointHistory         PointTransaction[]
   autoRewardLogs       AutoRewardLog[]
@@ -151,145 +144,6 @@ model Student {
   worksheetGenRequests WorksheetGenRequest[]
   /// 축별 취약 집계 (취약유형 학습지의 근거)
   weaknesses           StudentWeakness[]
-  /// 교재 페이지별 채점 상태
-  textbookPageProgress TextbookPageProgress[]
-}
-
-// ── 교재 ────────────────────────────────────────────────────────────────────
-model Textbook {
-  id        String   @id @default(cuid())
-  title     String
-  grade     String
-  publisher String   @default("직접 출제")
-  // 하원 리포트가 연산교재와 진도교재를 따로 보고한다 ('진도' | '연산')
-  kind      String   @default("진도")
-  teacherId String
-  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  problems     TextbookProblem[]
-  results      TextbookResult[]
-  assignments  TextbookAssignment[]
-  answerImages AnswerImage[]
-
-  @@index([teacherId])
-  /// 학생별 페이지 채점 상태
-  pageProgress TextbookPageProgress[]
-}
-
-model TextbookProblem {
-  id         String   @id @default(cuid())
-  textbookId String
-  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  number     Int
-  bookPage   Int      @default(0) // 교재 쪽번호 (0 = 미지정)
-  majorUnit  String   @default("") // 대단원
-  middleUnit String   @default("") // 중단원
-  minorUnit  String   @default("") // 소단원
-  section    String   @default("") // 문제유형/단계: '필수유형'|'확인 체크'|'대표문제'|'서술형' 등 자유 입력
-  subSection String   @default("") // 문제유형의 하위 단계: '유형 1'|'심화'|'(1)' 등 교재별 자유 입력
-  type       String   @default("multiple") // "multiple" | "short" | "image"
-  answer     String   @default("") // type='image'이면 IMAGE_ANSWER_MARKER
-
-  // ── 교육과정 좌표 ─────────────────────────────────────────────────────────
-  // 위의 majorUnit/middleUnit/minorUnit/section 은 "그 교재가 쓰는 말"이라 교재마다
-  // 다르다. 문제은행으로 모으려면 전 교재 공통 좌표가 따로 있어야 한다.
-  //   subUnitId·patternTypeId — 소단원(581) / 유형(1,305). "어디서 배우는 문제인가"
-  //   conceptNodeId           — 개념노드(1,474). "무슨 개념인가". 선수관계 역추적의 출발점
-  // 셋 다 Nullable — 분류는 한 번에 끝나지 않고 계속 붙여 나간다.
-  subUnitId     String?
-  subUnit       MathSubUnit?     @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
-  patternTypeId String?
-  patternType   MathPatternType? @relation(fields: [patternTypeId], references: [id], onDelete: SetNull)
-  conceptNodeId String?
-  conceptNode   ConceptNode?     @relation(fields: [conceptNodeId], references: [id], onDelete: SetNull)
-
-  // 공식 난이도 1~5 (packages/shared 의 Difficulty). null = 아직 안 매김
-  difficulty    Int?
-
-  @@unique([textbookId, number])
-  @@index([textbookId, number])
-  // 교재 페이지별 조회 — 정답 입력 화면의 기본 이동 단위
-  @@index([textbookId, bookPage, number], map: "TextbookProblem_page_idx")
-  // 단원/유형별 조회 — 문제 수가 수천 개여도 필요한 구간만 읽기 위한 인덱스
-  @@index([textbookId, majorUnit, middleUnit, minorUnit, section, subSection], map: "TextbookProblem_unit_idx")
-  @@index([subUnitId, difficulty])
-  @@index([patternTypeId, difficulty])
-  @@index([conceptNodeId])
-}
-
-
-/// 학생 × 교재 × **페이지** 채점 상태.
-///
-/// TextbookResult 는 교재 한 권을 한 행으로 들고 있어 "이 페이지를 다 봤나"를
-/// 알 수 없다. 교재는 한 번에 다 풀지 않고 페이지를 나눠 나가므로,
-/// 선생님이 오늘 어디까지 채점했는지 페이지 단위로 남아야 한다.
-///
-/// 정답(TextbookProblem.answer)도 페이지 단위로 입력하고, 채점도 페이지 단위로
-/// 한다. 둘의 이동 단위를 맞춰야 화면이 따로 놀지 않는다.
-model TextbookPageProgress {
-  id         String   @id @default(cuid())
-  textbookId String
-  textbook   Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  studentId  String
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  /// 교재 쪽번호. TextbookProblem.bookPage 와 같은 값
-  bookPage   Int
-
-  /// 'todo'(아직) | 'doing'(진도 체크 — 나가는 중) | 'done'(완료됨)
-  status      String   @default("todo")
-  /// 이 페이지에서 채점한 문항 수 / 틀린 수
-  gradedCount Int      @default(0)
-  wrongCount  Int      @default(0)
-
-  gradedAt   DateTime?
-  /// 누가 채점했나 — 'student'(앱 제출) | 선생님 이름
-  gradedBy   String?
-  updatedAt  DateTime @updatedAt
-
-  @@unique([textbookId, studentId, bookPage])
-  @@index([studentId, textbookId, bookPage])
-  @@index([textbookId, bookPage, status])
-}
-
-// 교재 배정 — 학습지의 WorksheetDistribution과 같은 역할.
-// 어떤 학생이 어떤 교재를 진행 중인지 저장한다. 채점 결과는 TextbookResult에 따로 쌓인다.
-model TextbookAssignment {
-  id          String    @id @default(cuid())
-  textbookId  String
-  textbook    Textbook  @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  studentId   String
-  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  assignedAt  DateTime  @default(now())
-  // 교재를 끝낸 시점. null이면 아직 진도를 나가는 중이다.
-  // 진행 중 교재는 등급 계산에 70%, 끝낸 교재는 30% 반영된다 (lib/studentLevel.ts)
-  completedAt DateTime?
-
-  @@unique([textbookId, studentId])
-  @@index([studentId])
-  @@index([textbookId])
-}
-
-model TextbookResult {
-  id                String   @id @default(cuid())
-  textbookId        String
-  textbook          Textbook @relation(fields: [textbookId], references: [id], onDelete: Cascade)
-  studentId         String
-  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  wrongProblemsJson String   @default("[]")
-  gradedBy          String   @default("teacher")
-  submittedAt       DateTime @default(now())
-
-  // 학생이 낸 답. 교재는 문제 번호가 1부터 이어지지 않을 수 있어
-  // 배열이 아니라 { "12": "3", "13": "x=5" } 형태의 맵으로 담는다
-  studentAnswersJson  String @default("{}")
-  // 자동 채점이 판정하지 못한 문제 번호 (이미지 정답 등)
-  pendingProblemsJson String @default("[]")
-  // 학생이 지금까지 답을 낸 문항 수. 정답률의 분모로 쓴다
-  submittedCount      Int    @default(0)
-
-  @@unique([textbookId, studentId])
-  @@index([studentId])
 }
 
 
@@ -415,8 +269,6 @@ model AnswerImage {
   id          String     @id @default(cuid())
   worksheetId String?
   worksheet   Worksheet? @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
-  textbookId  String?
-  textbook    Textbook?  @relation(fields: [textbookId], references: [id], onDelete: Cascade)
   problemNo   Int // 1-based 문제 번호
   mimeType    String     @default("image/webp")
   storage     String     @default("db") // 'db' | 'object'
@@ -426,9 +278,7 @@ model AnswerImage {
   updatedAt   DateTime   @updatedAt
 
   @@unique([worksheetId, problemNo])
-  @@unique([textbookId, problemNo])
   @@index([worksheetId])
-  @@index([textbookId])
 }
 
 model WorksheetDistribution {
@@ -560,7 +410,7 @@ model PointTransaction {
 }
 
 // ── 자동 보상 ────────────────────────────────────────────────────────────────
-// 학습지·교재 채점이 들어오면 정답률에 따라 자동으로 포인트/아이템을 준다.
+// 학습지 채점이 들어오면 정답률에 따라 자동으로 포인트/아이템을 준다.
 // 여러 규칙이 걸리면 기준 정답률이 가장 높은 것 하나만 적용한다(등급제).
 
 model RewardRule {
@@ -569,7 +419,7 @@ model RewardRule {
   teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   enabled   Boolean     @default(true)
-  source    String      @default("any") // "worksheet" | "textbook" | "any"
+  source    String      @default("any") // "worksheet" | "any"
   minRate   Int         @default(80) // 이 정답률(%) 이상일 때 지급
   points    Int         @default(0) // 지급 포인트
   itemId    String? // 함께 줄 아이템 (없으면 포인트만)
@@ -586,8 +436,8 @@ model AutoRewardLog {
   id         String   @id @default(cuid())
   studentId  String
   student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  sourceType String // "worksheet" | "textbook"
-  sourceId   String // 배포 id 또는 교재 id
+  sourceType String // "worksheet"
+  sourceId   String // 배포 id
   ruleId     String
   points     Int      @default(0)
   itemId     String?
@@ -639,9 +489,8 @@ model ConceptNode {
   // 교육과정 성취기준 코드 JSON 배열. 예: ["9수02-08","9수02-09"]
   achievementStandards String   @default("[]")
 
-  // 이 개념에 걸린 문항들 (문제은행 · 교재)
+  // 이 개념에 걸린 문항들
   questions        Question[]
-  textbookProblems TextbookProblem[]
   // 복합 유형이 이 개념을 함께 쓰는 경우
   questionConcepts QuestionConcept[]
 
@@ -728,7 +577,6 @@ model MathSubUnit {
   name             String               // 예: "(1) 다항식의 덧셈과 뺄셈"
   patternTypes     MathPatternType[]    // 향후 점진적 확장
   questions        Question[]
-  textbookProblems TextbookProblem[]
   stats            StudentSubUnitStat[]
   prescriptiveMissions PrescriptiveMission[]
 
@@ -744,21 +592,18 @@ model MathPatternType {
   typeName         String               // 예: "[유형03] 식의 값 구하기 - 곱셈공식 변형"
   difficulty       Int                  @default(3)
   questions        Question[]
-  textbookProblems TextbookProblem[]
   stats            StudentPatternStat[]
 
   @@index([subUnitId])
 }
 
 // 6. 문항 모델 (소단원 / 문제유형 연결 - 점진적 확장)
-// 문항 마스터 — 교재·학습지에서 독립한 문제은행의 한 문제.
-//
-// 교재 문제(TextbookProblem)와 같은 교육과정 좌표를 쓴다. 교재에 실린 문제를
-// 문제은행으로 올릴 때 좌표를 그대로 옮길 수 있어야 하기 때문이다.
+// 문항 마스터 — 학습지에서 독립한 문제은행의 한 문제.
+// 문제은행 채우기·조회 화면은 LevMathPro 쪽 몫이다.
 model Question {
   id            String           @id @default(cuid())
 
-  // 교육과정 좌표 — TextbookProblem 과 같은 세 축
+  // 교육과정 좌표 — 소단원 / 유형 / 개념노드 세 축
   subUnitId     String?
   subUnit       MathSubUnit?     @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
   patternTypeId String?
@@ -938,8 +783,6 @@ model AttendanceNotificationConfig {
 
   includeAttendance   Boolean @default(true)  // 지각 유무
   includeHomework     Boolean @default(true)  // 숙제 완성도·점수
-  includeCalcBook     Boolean @default(true)  // 연산교재
-  includeProgressBook Boolean @default(true)  // 진도교재 채점
   includeWorksheet    Boolean @default(true)  // 오답 클리닉 학습지
   includeUnitExam     Boolean @default(true)  // 단원평가·모의고사
   includeGoalRate     Boolean @default(false) // 일일 목표 완성률
@@ -965,8 +808,6 @@ model DailyStudentReportOverride {
 
   includeAttendance   Boolean @default(true)
   includeHomework     Boolean @default(true)
-  includeCalcBook     Boolean @default(true)
-  includeProgressBook Boolean @default(true)
   includeWorksheet    Boolean @default(true)
   includeUnitExam     Boolean @default(true)
   includeGoalRate     Boolean @default(false)

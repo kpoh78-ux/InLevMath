@@ -47,7 +47,7 @@ type Stats = {
   }
   summary: {
     totalProblems: number; correctProblems: number
-    avgCorrectRate: number; worksheetCount: number; textbookCount: number
+    avgCorrectRate: number; worksheetCount: number
   }
   weeklyTrend: { label: string; problems: number; correctRate: number | null }[]
   byStep: { step: string; total: number; correct: number; rate: number }[]
@@ -400,7 +400,7 @@ export default function StudentDetailPage() {
               { label: '총 문제',    value: summary.totalProblems,    unit: '문제', color: 'text-gray-800' },
               { label: '정답',       value: summary.correctProblems,  unit: '문제', color: 'text-emerald-600' },
               { label: '평균 정답률', value: summary.avgCorrectRate,   unit: '%',   color: summary.avgCorrectRate >= 80 ? 'text-emerald-600' : summary.avgCorrectRate >= 60 ? 'text-amber-500' : 'text-rose-500' },
-              { label: '채점 횟수',  value: summary.worksheetCount + summary.textbookCount, unit: '회', color: 'text-indigo-600' },
+              { label: '채점 횟수',  value: summary.worksheetCount, unit: '회', color: 'text-indigo-600' },
             ].map(c => (
               <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">{c.label}</p>
@@ -464,7 +464,7 @@ export default function StudentDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center text-gray-400">
           <p className="text-3xl mb-3">📚</p>
           <p className="text-sm">최근 30일간 채점된 학습 기록이 없습니다.</p>
-          <p className="text-xs text-gray-300 mt-1">학습지 또는 교재를 채점하면 통계가 표시됩니다.</p>
+          <p className="text-xs text-gray-300 mt-1">학습지를 채점하면 통계가 표시됩니다.</p>
         </div>
       )}
 

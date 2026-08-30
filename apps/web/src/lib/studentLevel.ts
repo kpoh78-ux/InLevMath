@@ -3,10 +3,9 @@
 // 레벨은 평균 정답률 하나로 정해진다. 등급표와 칭호는 packages/shared 에 있다.
 //
 // 최근 학습에 무게를 둔다.
-//   현재 과정 (70%) — 지금 진도를 나가는 교재 + 최근 90일 안에 푼 학습지
-//   지난 과정 (30%) — 끝낸 교재 + 90일이 지난 학습지
+//   현재 과정 (70%) — 최근 90일 안에 푼 학습지
+//   지난 과정 (30%) — 90일이 지난 학습지
 //
-// 교재를 끝내면(TextbookAssignment.completedAt) 그 교재 성적은 30% 쪽으로 옮겨간다.
 // 학습지는 채점일이 90일을 넘기면 자동으로 30% 쪽으로 넘어간다.
 // 한쪽 기록이 없으면 있는 쪽만 그대로 쓴다.
 //
@@ -84,46 +83,6 @@ async function splitAverages(studentId: string) {
     // 선생님이 채점한 건은 submittedCount 가 0이라 전체 문항 수를 쓴다
     const denom = d.result.submittedCount > 0 ? d.result.submittedCount : d.worksheet.problemCount
     bucket.add(d.result.correctProblems, denom)
-  }
-
-  // ── 교재 — 끝냈으면 지난 과정, 진도 중이면 현재 과정 ──
-  const tResults = await prisma.textbookResult.findMany({
-    where: { studentId },
-    select: { textbookId: true, wrongProblemsJson: true },
-  })
-
-  if (tResults.length > 0) {
-    const ids = [...new Set(tResults.map(r => r.textbookId))]
-
-    // 문제 수는 개수만 센다 (3000문제 교재를 통째로 읽지 않는다)
-    const groups = await prisma.textbookProblem.groupBy({
-      by: ['textbookId'],
-      where: { textbookId: { in: ids } },
-      _count: { _all: true },
-    })
-    const countOf = new Map(groups.map(g => [g.textbookId, g._count._all]))
-
-    const assignments = await prisma.textbookAssignment.findMany({
-      where: { studentId, textbookId: { in: ids } },
-      select: { textbookId: true, completedAt: true },
-    })
-    const completed = new Set(
-      assignments.filter(a => a.completedAt !== null).map(a => a.textbookId)
-    )
-
-    for (const r of tResults) {
-      const n = countOf.get(r.textbookId) ?? 0
-      if (n === 0) continue
-      let wrong = 0
-      try {
-        const arr = JSON.parse(r.wrongProblemsJson) as number[]
-        wrong = Array.isArray(arr) ? arr.filter(v => v >= 1 && v <= n).length : 0
-      } catch { /* 손상된 값은 틀린 문제 0개로 본다 */ }
-
-      // 배정 기록이 없는 교재는 아직 진도 중인 것으로 본다
-      const bucket = completed.has(r.textbookId) ? past : current
-      bucket.add(n - wrong, n)
-    }
   }
 
   return { current, past }

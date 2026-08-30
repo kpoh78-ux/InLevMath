@@ -94,31 +94,3 @@ export const MATH_SYMBOL_GROUPS: { label: string; symbols: string[] }[] = [
 
 /** 이전 코드 호환용 — 전체 기호를 한 줄로 펼친 목록 */
 export const MATH_SYMBOLS = MATH_SYMBOL_GROUPS.flatMap(g => g.symbols)
-
-/**
- * 문제집 문제유형(구역) 기본 목록 — 어디까지나 처음 시작할 때의 예시다.
- * 선생님이 화면에서 직접 추가·삭제하면 Teacher.sectionPresetsJson에 저장되고,
- * 그 뒤로는 저장된 목록을 쓴다. (GET/PUT /api/teacher/section-presets)
- */
-export const TEXTBOOK_SECTION_PRESETS = [
-  'A단계', 'B단계', 'C단계',
-  '개념익히기', '대표문제', '필수유형', '확인 체크', '한번 더 풀기', '표현 더하기',
-  '이런 문제가 시험에 나온다', '중단원 마무리', '대단원 마무리', '서술형',
-]
-
-/** 문제유형 목록 상한 */
-export const MAX_SECTION_PRESETS = 60
-export const MAX_SECTION_NAME_LENGTH = 30
-
-/** 교재 페이지 상한 (쪽번호 입력 검증용) */
-export const MAX_BOOK_PAGE = 2000
-
-/** 문제집 문제 유형 */
-export type TextbookProblemType = 'multiple' | 'short' | 'image'
-
-/** 한 번에 조회할 문제 수 상한 — 3000문제 교재에서 전체 로딩을 막는다 */
-export const PROBLEM_PAGE_SIZE = 100
-export const PROBLEM_PAGE_SIZE_MAX = 500
-
-/** 교재 1권당 문제 수 상한 */
-export const MAX_TEXTBOOK_PROBLEMS = 5000

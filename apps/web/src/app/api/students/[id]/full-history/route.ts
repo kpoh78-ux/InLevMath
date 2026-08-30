@@ -29,28 +29,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
   if (!student) return NextResponse.json({ error: '학생 없음' }, { status: 404 })
 
-  const [wsResults, tbResults] = await Promise.all([
-    prisma.worksheetResult.findMany({
-      where: { distribution: { studentId: id } },
-      include: {
-        distribution: {
-          include: {
-            worksheet: { select: { title: true, step: true, unit: true, grade: true, problemCount: true } },
-          },
+  const wsResults = await prisma.worksheetResult.findMany({
+    where: { distribution: { studentId: id } },
+    include: {
+      distribution: {
+        include: {
+          worksheet: { select: { title: true, step: true, unit: true, grade: true, problemCount: true } },
         },
       },
-      orderBy: { submittedAt: 'desc' },
-      take: 50,
-    }),
-    prisma.textbookResult.findMany({
-      where: { studentId: id },
-      include: {
-        textbook: { select: { title: true, grade: true, _count: { select: { problems: true } } } },
-      },
-      orderBy: { submittedAt: 'desc' },
-      take: 50,
-    }),
-  ])
+    },
+    orderBy: { submittedAt: 'desc' },
+    take: 50,
+  })
 
   const worksheetResults = wsResults.map(r => {
     const total = r.distribution.worksheet.problemCount
@@ -67,20 +57,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       grade: r.distribution.worksheet.grade,
       total, correct, rate,
       cleared: rate >= threshold,
-    }
-  })
-
-  const textbookResults = tbResults.map(r => {
-    const total = r.textbook._count.problems
-    const wrong = parseWrong(r.wrongProblemsJson).length
-    const correct = total - wrong
-    const rate = total > 0 ? Math.round((correct / total) * 100) : 0
-    return {
-      id: r.id,
-      date: r.submittedAt.toISOString().slice(0, 10),
-      title: r.textbook.title,
-      grade: r.textbook.grade,
-      total, correct, rate,
     }
   })
 
@@ -106,7 +82,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // 최근 활동 요약
   const lastWsDate = wsResults[0]?.submittedAt.toISOString().slice(0, 10) ?? null
-  const lastTbDate = tbResults[0]?.submittedAt.toISOString().slice(0, 10) ?? null
   const clearedCount = worksheetResults.filter(r => r.cleared).length
 
   return NextResponse.json({
@@ -123,11 +98,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       calculation: student.calculation,
     },
     worksheetResults,
-    textbookResults,
     stepStats,
     recentActivity: {
-      lastDate: lastWsDate ?? lastTbDate,
-      totalSessions: wsResults.length + tbResults.length,
+      lastDate: lastWsDate,
+      totalSessions: wsResults.length,
       clearedCount,
     },
   })

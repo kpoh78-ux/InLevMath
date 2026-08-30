@@ -47,17 +47,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { submittedAt: 'desc' },
   })
 
-  // 최근 3개월 교재 채점 결과 전체
-  const tbResults = await prisma.textbookResult.findMany({
-    where: { studentId: id, submittedAt: { gte: threeMonthsAgo } },
-    include: {
-      textbook: {
-        select: { title: true, grade: true, publisher: true, _count: { select: { problems: true } } },
-      },
-    },
-    orderBy: { submittedAt: 'desc' },
-  })
-
   // ── 사전 파싱 (루프 바깥에서 1회만) ───────────────────────────────────────
   // 3개월 월별 루프에서마다 JSON.parse와 new Date를 반복하지 않도록 미리 계산
   const wsComputed = wsResults.map(r => ({
@@ -67,50 +56,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     wrongArr: parseWrong(r.wrongProblemsJson),
     get wrongCount() { return this.wrongArr.length },
   }))
-  const tbComputed = tbResults.map(r => ({
-    r,
-    date: new Date(r.submittedAt),
-    total: r.textbook._count.problems,
-    wrongArr: parseWrong(r.wrongProblemsJson),
-    get wrongCount() { return this.wrongArr.length },
-  }))
 
   // ── 최근 3회 수업 기록 ─────────────────────────────────────────────
   type Session = {
-    type: 'worksheet' | 'textbook'
+    type: 'worksheet'
     title: string; grade: string; step?: string; unit?: string
     totalProblems: number; correctProblems: number; correctRate: number
     gradedAt: string
   }
 
-  const allSessions: Session[] = [
-    ...wsComputed.map(({ r, total, wrongCount }) => {
-      const correct = total - wrongCount
-      return {
-        type: 'worksheet' as const,
-        title: r.distribution.worksheet.title,
-        grade: r.distribution.worksheet.grade,
-        step:  r.distribution.worksheet.step,
-        unit:  r.distribution.worksheet.unit,
-        totalProblems: total,
-        correctProblems: correct,
-        correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
-        gradedAt: r.submittedAt.toISOString(),
-      }
-    }),
-    ...tbComputed.map(({ r, total, wrongCount }) => {
-      const correct = total - wrongCount
-      return {
-        type: 'textbook' as const,
-        title: r.textbook.title,
-        grade: r.textbook.grade,
-        totalProblems: total,
-        correctProblems: correct,
-        correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
-        gradedAt: r.submittedAt.toISOString(),
-      }
-    }),
-  ]
+  const allSessions: Session[] = wsComputed.map(({ r, total, wrongCount }) => {
+    const correct = total - wrongCount
+    return {
+      type: 'worksheet' as const,
+      title: r.distribution.worksheet.title,
+      grade: r.distribution.worksheet.grade,
+      step:  r.distribution.worksheet.step,
+      unit:  r.distribution.worksheet.unit,
+      totalProblems: total,
+      correctProblems: correct,
+      correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
+      gradedAt: r.submittedAt.toISOString(),
+    }
+  })
   // 날짜 내림차순 정렬, 최근 3개만
   allSessions.sort((a, b) => new Date(b.gradedAt).getTime() - new Date(a.gradedAt).getTime())
   const recentSessions = allSessions.slice(0, 3)
@@ -127,11 +95,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 사전 파싱된 값 재활용 — JSON.parse와 Date 생성 추가 없음
     for (const { date, total: t, wrongCount } of wsComputed) {
-      if (date >= monthStart && date < monthEnd) {
-        total += t; correct += t - wrongCount
-      }
-    }
-    for (const { date, total: t, wrongCount } of tbComputed) {
       if (date >= monthStart && date < monthEnd) {
         total += t; correct += t - wrongCount
       }
@@ -154,44 +117,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       result: { select: { correctProblems: true, submittedAt: true, gradedBy: true } },
     },
   })
-
-  // ── 교재별 채점 범위 ─────────────────────────────────────────────────────────
-  // TextbookResult는 오답 번호만 갖고 있으므로, 그 번호들이 속한
-  // 교재 페이지 구간을 함께 계산해 "어디까지 풀었는지"를 보여준다.
-  // wrongArr는 사전 파싱 시 이미 계산해 둔 값을 재활용 — JSON.parse 추가 없음
-  const textbookRanges = await Promise.all(
-    tbComputed.slice(0, 5).map(async ({ r, total, wrongArr }) => {
-      const correct = Math.max(total - wrongArr.length, 0)
-
-      // 오답이 속한 페이지 구간 (오답이 없으면 생략)
-      let pageFrom: number | null = null
-      let pageTo: number | null = null
-      if (wrongArr.length > 0) {
-        const agg = await prisma.textbookProblem.aggregate({
-          where: { textbookId: r.textbookId, number: { in: wrongArr }, bookPage: { gt: 0 } },
-          _min: { bookPage: true },
-          _max: { bookPage: true },
-        })
-        pageFrom = agg._min.bookPage ?? null
-        pageTo = agg._max.bookPage ?? null
-      }
-
-      return {
-        textbookId: r.textbookId,
-        title: r.textbook.title,
-        publisher: r.textbook.publisher,
-        totalProblems: total,
-        correctProblems: correct,
-        correctRate: total > 0 ? Math.round((correct / total) * 100) : 0,
-        wrongCount: wrongArr.length,
-        wrongFrom: wrongArr.length > 0 ? Math.min(...wrongArr) : null,
-        wrongTo: wrongArr.length > 0 ? Math.max(...wrongArr) : null,
-        pageFrom,
-        pageTo,
-        submittedAt: r.submittedAt,
-      }
-    })
-  )
 
   return NextResponse.json({
     student: {
@@ -222,6 +147,5 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       gradedBy: d.result?.gradedBy ?? null,
       submittedAt: d.result?.submittedAt ?? null,
     })),
-    textbookRanges,
   })
 }

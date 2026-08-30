@@ -11,7 +11,6 @@ const NAV: { href: string; label: string; brand?: true; badge?: string }[] = [
   { href: '/dashboard',              label: 'InLevMath', brand: true },
   { href: '/dashboard/lesson-prep',  label: '수업준비' },
   { href: '/dashboard/worksheets',   label: '학습지' },
-  { href: '/dashboard/textbooks',    label: '교재' },
   { href: '/dashboard/alimtalk',     label: '알림톡', badge: 'NEW' },
   { href: '/dashboard/manage',       label: '학원관리' },
   { href: '/dashboard/rewards',      label: '보상관리' },
@@ -25,7 +24,7 @@ type AttendedStudent = {
 
 export type RealtimeNotification = {
   id: string
-  type: 'WORKSHEET_SUBMIT' | 'TEXTBOOK_SUBMIT' | 'MISSION_RESULT' | 'LEVEL_UP' | 'ATTENDANCE_UPDATE' | 'CONNECTED'
+  type: 'WORKSHEET_SUBMIT' | 'MISSION_RESULT' | 'LEVEL_UP' | 'ATTENDANCE_UPDATE' | 'CONNECTED'
   title: string
   message: string
   studentName?: string
@@ -197,19 +196,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           totalProblems: event.totalProblems,
           timestamp: Date.now(),
         }
-      } else if (event.type === 'TEXTBOOK_SUBMIT') {
-        notif = {
-          id,
-          type: 'TEXTBOOK_SUBMIT',
-          title: `📖 [교재 제출] ${event.studentName} 학생`,
-          message: `「${event.textbookTitle}」 ${event.submittedCount}문항 제출 (정답률 ${event.correctRate}%)`,
-          studentName: event.studentName,
-          studentId: event.studentId,
-          correctRate: event.correctRate,
-          submittedCount: event.submittedCount,
-          totalProblems: event.totalProblems,
-          timestamp: Date.now(),
-        }
       } else if (event.type === 'MISSION_RESULT') {
         notif = {
           id,
@@ -306,7 +292,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             }}
           >
             <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg shrink-0">
-              {n.type === 'WORKSHEET_SUBMIT' ? '📝' : n.type === 'TEXTBOOK_SUBMIT' ? '📖' : n.type === 'LEVEL_UP' ? '🏆' : '🎯'}
+              {n.type === 'WORKSHEET_SUBMIT' ? '📝' : n.type === 'LEVEL_UP' ? '🏆' : '🎯'}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-1">

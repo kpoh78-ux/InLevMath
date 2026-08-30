@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { academyTeacher } from '@/lib/academy'
 
-const SOURCES = ['worksheet', 'textbook', 'any'] as const
+const SOURCES = ['worksheet', 'any'] as const
 
 /** 규칙은 한 학원에 이 개수까지. 등급 몇 단계면 충분하다 */
 const MAX_RULES = 20

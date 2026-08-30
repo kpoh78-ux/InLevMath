@@ -62,17 +62,6 @@ export async function GET(req: NextRequest) {
           })
           pushChunk(JSON.stringify(worksheets) + ',\n')
 
-          // 4. 교재 및 문항 데이터 청크 스트림
-          pushChunk('"textbooks": ')
-          const textbooks = await prisma.textbook.findMany({
-            include: { teacher: { select: { id: true, userId: true } } },
-          })
-          pushChunk(JSON.stringify(textbooks) + ',\n')
-
-          pushChunk('"textbookProblems": ')
-          const textbookProblems = await prisma.textbookProblem.findMany()
-          pushChunk(JSON.stringify(textbookProblems) + ',\n')
-
           // 5. 배포 및 채점 결과 청크 스트림
           pushChunk('"worksheetDistributions": ')
           const worksheetDistributions = await prisma.worksheetDistribution.findMany({

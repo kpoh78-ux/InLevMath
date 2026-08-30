@@ -14,7 +14,7 @@
 import { prisma } from './db'
 import { parseImageDataUrl, toDataUrl } from './answers'
 
-export type AnswerOwner = { worksheetId: string } | { textbookId: string }
+export type AnswerOwner = { worksheetId: string }
 
 type Driver = 'db' | 'supabase'
 
@@ -25,13 +25,9 @@ const bucket = () => process.env.ANSWER_IMAGE_BUCKET || 'answer-images'
 
 const SIGNED_URL_TTL_SEC = 60 * 60
 
-const ownerWhere = (owner: AnswerOwner) =>
-  'worksheetId' in owner
-    ? { worksheetId: owner.worksheetId }
-    : { textbookId: owner.textbookId }
+const ownerWhere = (owner: AnswerOwner) => ({ worksheetId: owner.worksheetId })
 
-const objectPrefix = (owner: AnswerOwner) =>
-  'worksheetId' in owner ? `worksheet/${owner.worksheetId}` : `textbook/${owner.textbookId}`
+const objectPrefix = (owner: AnswerOwner) => `worksheet/${owner.worksheetId}`
 
 const extOf = (mimeType: string) => (mimeType.split('/')[1] || 'webp').replace('jpeg', 'jpg')
 
@@ -144,9 +140,7 @@ export async function syncAnswerImages(owner: AnswerOwner, ops: ImageOp[]): Prom
     }
 
     await prisma.answerImage.upsert({
-      where: 'worksheetId' in owner
-        ? { worksheetId_problemNo: { worksheetId: owner.worksheetId, problemNo: op.problemNo } }
-        : { textbookId_problemNo: { textbookId: owner.textbookId, problemNo: op.problemNo } },
+      where: { worksheetId_problemNo: { worksheetId: owner.worksheetId, problemNo: op.problemNo } },
       create: { ...where, problemNo: op.problemNo, ...row },
       update: row,
     })
@@ -156,7 +150,7 @@ export async function syncAnswerImages(owner: AnswerOwner, ops: ImageOp[]): Prom
   return keepNos
 }
 
-/** 학습지/교재 삭제 시 버킷에 남는 파일까지 정리 (DB 행은 FK cascade로 지워짐) */
+/** 학습지 삭제 시 버킷에 남는 파일까지 정리 (DB 행은 FK cascade로 지워짐) */
 export async function purgeAnswerImages(owner: AnswerOwner) {
   const rows = await prisma.answerImage.findMany({
     where: ownerWhere(owner),

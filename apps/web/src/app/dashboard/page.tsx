@@ -139,14 +139,14 @@ const STEP_COLORS: Record<string, string> = {
   '기초': 'bg-sky-400', '기본': 'bg-emerald-400', '발전': 'bg-amber-400',
   '최상위': 'bg-rose-400', '취약유형': 'bg-fuchsia-400', '오답유형': 'bg-red-400', '단원평가': 'bg-indigo-400',
   '최다빈출': 'bg-violet-400', '최다오답': 'bg-orange-400',
-  '서술형': 'bg-pink-400', '모의고사': 'bg-teal-400', '기출문제': 'bg-cyan-400', '교재': 'bg-indigo-400',
+  '서술형': 'bg-pink-400', '모의고사': 'bg-teal-400', '기출문제': 'bg-cyan-400',
 }
 
 // ── 학생 통계 뷰 ──────────────────────────────────────────────────────────────
 
 type Stats = {
   student: { id:string; name:string; grade:string; currentLevel:number; currentMission:string; comprehension:number; reasoning:number; calculation:number }
-  summary: { totalProblems:number; correctProblems:number; avgCorrectRate:number; worksheetCount:number; textbookCount:number }
+  summary: { totalProblems:number; correctProblems:number; avgCorrectRate:number; worksheetCount:number }
   homework: { id:string; title:string; step:string; unit:string; problemCount:number; status:string; distributedAt:string }[]
   weeklyTrend: { label:string; problems:number; correctRate:number|null }[]
   byStep: { step:string; total:number; correct:number; rate:number }[]
@@ -198,7 +198,7 @@ function StudentStatsView({ studentId }: { studentId: string }) {
         <div className="ml-auto text-right">
           <p className="text-xs text-gray-400">최근 30일 학습현황</p>
           <p className="text-xs text-indigo-500 mt-0.5">
-            학습지 {summary.worksheetCount}회 · 교재 {summary.textbookCount}회 채점
+            학습지 {summary.worksheetCount}회 채점
           </p>
         </div>
       </div>
@@ -248,7 +248,7 @@ function StudentStatsView({ studentId }: { studentId: string }) {
         <div className="bg-white rounded-xl border border-gray-200 px-6 py-16 text-center text-gray-400">
           <p className="text-2xl mb-2">📚</p>
           <p className="text-sm">최근 30일간 채점된 학습 기록이 없습니다.</p>
-          <p className="text-xs text-gray-300 mt-1">학습지 또는 교재를 채점하면 통계가 표시됩니다.</p>
+          <p className="text-xs text-gray-300 mt-1">학습지를 채점하면 통계가 표시됩니다.</p>
         </div>
       ) : (
         <>
@@ -293,7 +293,6 @@ function StudentStatsView({ studentId }: { studentId: string }) {
                   { label: '정답 문제',   value: `${summary.correctProblems}문제`, color: 'text-emerald-600' },
                   { label: '오답 문제',   value: `${summary.totalProblems - summary.correctProblems}문제`, color: 'text-rose-500' },
                   { label: '학습지 채점', value: `${summary.worksheetCount}회`, color: 'text-indigo-600' },
-                  { label: '교재 채점',   value: `${summary.textbookCount}회`, color: 'text-teal-600' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex justify-between text-xs">
                     <span className="text-gray-400">{label}</span>
@@ -591,7 +590,6 @@ function NormalDashboard() {
             {[
               { href:'/dashboard/worksheets/distribute', label:'학습지 배포', desc:'학생에게 학습지 배포',  color:'text-indigo-600', bg:'bg-indigo-50 hover:bg-indigo-100 border-indigo-100' },
               { href:'/dashboard/worksheets',             label:'학습지 관리', desc:'등록·정답 설정',       color:'text-teal-600',   bg:'bg-teal-50 hover:bg-teal-100 border-teal-100' },
-              { href:'/dashboard/textbooks',              label:'교재',        desc:'교재 목록 관리',       color:'text-amber-600',  bg:'bg-amber-50 hover:bg-amber-100 border-amber-100' },
               { href:'/dashboard/manage/students',        label:'학생 관리',   desc:'학생 등록·학습 내역',  color:'text-gray-700',   bg:'bg-gray-50 hover:bg-gray-100 border-gray-200' },
             ].map(m => (
               <Link key={m.href} href={m.href}

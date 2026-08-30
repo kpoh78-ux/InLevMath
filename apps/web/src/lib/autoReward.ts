@@ -1,7 +1,7 @@
 // 채점 결과에 따른 자동 보상
 //
 // 선생님이 보상관리에서 "정답률 N% 이상이면 X 지급" 규칙을 만들어 두면
-// 학습지·교재 채점이 들어올 때 여기서 자동으로 포인트/아이템을 준다.
+// 학습지 채점이 들어올 때 여기서 자동으로 포인트/아이템을 준다.
 //
 // 두 가지를 지킨다.
 //   1) 여러 규칙이 걸려도 기준 정답률이 가장 높은 것 하나만 준다 (등급제).
@@ -11,7 +11,7 @@
 
 import { prisma } from '@/lib/db'
 
-export type RewardSource = 'worksheet' | 'textbook'
+export type RewardSource = 'worksheet'
 
 export type AutoRewardResult = {
   ruleId: string
@@ -65,8 +65,7 @@ export async function applyAutoReward(opts: {
   }
 
   const label = rule.label.trim() || `정답률 ${rule.minRate}% 이상`
-  const sourceLabel = sourceType === 'worksheet' ? '학습지' : '교재'
-  const reason = `${sourceLabel} 자동 보상: ${label}`
+  const reason = `학습지 자동 보상: ${label}`
 
   // 3) 아이템 지급 (있으면). 수동 지급과 같은 규칙으로 수량을 올린다
   if (rule.item) {

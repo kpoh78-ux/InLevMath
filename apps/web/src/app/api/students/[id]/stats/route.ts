@@ -30,32 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
-  // 1. 배정된 교재 목록 및 문제 수 초고속 집계 (DB 엔진 COUNT(*))
-  const studentTextbooks = await prisma.textbookAssignment.findMany({
-    where: { studentId: id },
-    select: {
-      id: true,
-      completedAt: true,
-      textbook: {
-        select: {
-          id: true,
-          title: true,
-          grade: true,
-          _count: {
-            select: { problems: true }
-          }
-        }
-      }
-    }
-  })
-
-  // 총 배정 문제 수 초고속 연산 (메모리 사용량 최소화)
-  const totalAssignedProblemCount = studentTextbooks.reduce(
-    (acc, item) => acc + (item.textbook._count.problems || 0),
-    0
-  )
-
-  // 2. 최근 30일 학습지 채점 결과
+  // 1. 최근 30일 학습지 채점 결과
   const worksheetResults = await prisma.worksheetResult.findMany({
     where: {
       distribution: { studentId: id },
@@ -89,29 +64,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     take: 20,
   })
 
-  // 3. 최근 30일 교재 채점 결과 (COUNT 집계로 메모리/트래픽 절감)
-  const textbookResults = await prisma.textbookResult.findMany({
-    where: {
-      studentId: id,
-      submittedAt: { gte: thirtyDaysAgo },
-    },
-    include: {
-      textbook: { select: { _count: { select: { problems: true } } } },
-    },
-    orderBy: { submittedAt: 'asc' },
-  })
-
   // ── 사전 파싱 (루프 밖에서 1회만 실행) ────────────────────────
   const wsComputed = worksheetResults.map(r => ({
     r,
     date: new Date(r.submittedAt),
     total: r.distribution.worksheet.problemCount,
-    wrongCount: parseWrong(r.wrongProblemsJson).length,
-  }))
-  const tbComputed = textbookResults.map(r => ({
-    r,
-    date: new Date(r.submittedAt),
-    total: r.textbook._count.problems,
     wrongCount: parseWrong(r.wrongProblemsJson).length,
   }))
 
@@ -120,10 +77,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let correctProblems = 0
 
   for (const { total, wrongCount } of wsComputed) {
-    totalProblems += total
-    correctProblems += total - wrongCount
-  }
-  for (const { total, wrongCount } of tbComputed) {
     totalProblems += total
     correctProblems += total - wrongCount
   }
@@ -138,11 +91,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     let wTotal = 0; let wCorrect = 0
 
     for (const { date, total, wrongCount } of wsComputed) {
-      if (date >= weekStart && date < weekEnd) {
-        wTotal += total; wCorrect += total - wrongCount
-      }
-    }
-    for (const { date, total, wrongCount } of tbComputed) {
       if (date >= weekStart && date < weekEnd) {
         wTotal += total; wCorrect += total - wrongCount
       }
@@ -163,15 +111,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     stepMap[step].total += total
     stepMap[step].correct += total - wrongCount
   }
-  if (tbComputed.length > 0) {
-    let tbTotal = 0; let tbCorrect = 0
-    for (const { total, wrongCount } of tbComputed) {
-      tbTotal += total; tbCorrect += total - wrongCount
-    }
-    stepMap['교재'] = { total: tbTotal, correct: tbCorrect }
-  }
-
-  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '취약유형', '오답유형', '단원평가', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제', '교재']
+  const STEP_ORDER = ['기초', '기본', '발전', '최상위', '취약유형', '오답유형', '단원평가', '최다빈출', '최다오답', '서술형', '모의고사', '기출문제']
   const byStep = STEP_ORDER
     .filter(s => stepMap[s])
     .map(s => ({
@@ -198,19 +138,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       correctProblems,
       avgCorrectRate: totalProblems > 0 ? Math.round((correctProblems / totalProblems) * 100) : 0,
       worksheetCount: worksheetResults.length,
-      textbookCount: textbookResults.length,
-      assignedTextbookCount: studentTextbooks.length,
-      totalAssignedProblemCount,
-      totalProblemCount: totalAssignedProblemCount,
     },
-    assignedTextbooks: studentTextbooks.map(item => ({
-      assignmentId: item.id,
-      textbookId: item.textbook.id,
-      title: item.textbook.title,
-      grade: item.textbook.grade,
-      problemCount: item.textbook._count.problems,
-      isCompleted: Boolean(item.completedAt),
-    })),
     homework: homeworkDistributions.map(d => ({
       id: d.id,
       title: d.worksheet.title,

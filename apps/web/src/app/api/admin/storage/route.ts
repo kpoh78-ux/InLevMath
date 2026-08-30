@@ -14,15 +14,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
   }
 
-  const [usage, worksheets, textbooks, problems] = await Promise.all([
+  const [usage, worksheets] = await Promise.all([
     answerImageUsage(),
     prisma.worksheet.count(),
-    prisma.textbook.count(),
-    prisma.textbookProblem.count(),
   ])
 
   return NextResponse.json({
     ...usage,
-    counts: { worksheets, textbooks, textbookProblems: problems },
+    counts: { worksheets },
   })
 }

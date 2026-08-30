@@ -26,8 +26,6 @@ interface Props {
 const ITEM_LABEL: Record<string, string> = {
   includeAttendance: '출결·지각',
   includeHomework: '숙제',
-  includeCalcBook: '연산교재',
-  includeProgressBook: '진도교재',
   includeWorksheet: '오답 클리닉',
   includeUnitExam: '단원평가',
   includeGoalRate: '목표 완성률',

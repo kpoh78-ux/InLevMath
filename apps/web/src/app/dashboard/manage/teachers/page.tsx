@@ -7,7 +7,7 @@ import { useMe } from '@/lib/useMe'
 type TeacherRow = {
   id: string; userId: string; name: string; phone: string
   isAdmin: boolean; teachesClasses: boolean; createdAt: string
-  worksheetCount: number; textbookCount: number
+  worksheetCount: number
   isMe: boolean
 }
 
@@ -152,8 +152,8 @@ export default function ManageTeachersPage() {
   const removeTeacher = async (t: TeacherRow) => {
     if (!confirm(
       `${t.name} 선생님 계정을 삭제할까요?\n` +
-      (t.worksheetCount + t.textbookCount > 0
-        ? `이 계정에 연결된 학습지 ${t.worksheetCount}개, 교재 ${t.textbookCount}권도 함께 삭제됩니다.`
+      (t.worksheetCount > 0
+        ? `이 계정에 연결된 학습지 ${t.worksheetCount}개도 함께 삭제됩니다.`
         : '계정만 삭제되며 학원 자료는 그대로 유지됩니다.')
     )) return
     setBusyId(t.id)
@@ -302,11 +302,11 @@ export default function ManageTeachersPage() {
       <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
         <p className="text-xs text-gray-500 leading-relaxed">
           <strong className="text-gray-700">권한 안내</strong><br />
-          · <strong>선생님</strong> — 학생 등록·수정, 비밀번호 초기화, 시간표, 학습지, 교재 등 모든 기능<br />
+          · <strong>선생님</strong> — 학생 등록·수정, 비밀번호 초기화, 시간표, 학습지 등 모든 기능<br />
           · <strong>관리자</strong> — 위 전부 + 선생님 계정 등록·삭제 + 학생 퇴원(복귀) 처리<br />
           · <strong>관리 전용</strong> — 자기 수업 없이 학원 전체를 관리하는 계정(예: 교육실장).
           수업 시간표 화면의 선생님 목록에서 빠집니다<br />
-          · 학생·학습지·교재는 담당제로 나누지 않고 학원 전체가 공유합니다.
+          · 학생·학습지는 담당제로 나누지 않고 학원 전체가 공유합니다.
           모든 선생님이 전체 학생의 배포·채점·출결을 함께 처리합니다.<br />
           <br />
           <strong className="text-gray-700">비밀번호</strong><br />

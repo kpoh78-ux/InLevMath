@@ -15,8 +15,6 @@ import { prisma } from './db'
 export const REPORT_ITEM_KEYS = [
   'includeAttendance',
   'includeHomework',
-  'includeCalcBook',
-  'includeProgressBook',
   'includeWorksheet',
   'includeUnitExam',
   'includeGoalRate',
@@ -32,8 +30,6 @@ export type ReportItems = Record<ReportItemKey, boolean>
 export const REPORT_ITEM_META: Record<ReportItemKey, { label: string; hint: string }> = {
   includeAttendance:   { label: '출결·지각',        hint: '등·하원 시각과 지각 여부. 수업 시작 시각과 맞대어 자동 판정' },
   includeHomework:     { label: '숙제',             hint: '완성도(얼마나 풀었나)와 정답률(푼 것 중 맞은 비율)' },
-  includeCalcBook:     { label: '연산교재',         hint: '연산으로 분류한 교재의 그날 채점 결과' },
-  includeProgressBook: { label: '진도교재',         hint: '진도로 분류한 교재의 그날 채점 결과' },
   includeWorksheet:    { label: '오답 클리닉',      hint: '최다오답·오답유형·취약유형 학습지' },
   includeUnitExam:     { label: '단원평가·모의고사', hint: '단원평가·모의고사·기출문제 학습지' },
   includeGoalRate:     { label: '목표 완성률',      hint: '그날 낸 문항 ÷ 그날 배정된 문항' },
@@ -45,8 +41,6 @@ export const REPORT_ITEM_META: Record<ReportItemKey, { label: string; hint: stri
 export const DEFAULT_ITEMS: ReportItems = {
   includeAttendance: true,
   includeHomework: true,
-  includeCalcBook: true,
-  includeProgressBook: true,
   includeWorksheet: true,
   includeUnitExam: true,
   includeGoalRate: false,

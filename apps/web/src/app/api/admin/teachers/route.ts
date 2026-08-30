@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const teachers = await prisma.teacher.findMany({
     include: {
       user: { select: { id: true, name: true, phone: true, createdAt: true } },
-      _count: { select: { worksheets: true, textbooks: true } },
+      _count: { select: { worksheets: true } },
     },
   })
 
@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
         teachesClasses: t.teachesClasses,
         createdAt: t.user.createdAt,
         worksheetCount: t._count.worksheets,
-        textbookCount: t._count.textbooks,
         isMe: t.id === guard.auth.teacherId,
       }))
       .sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin)

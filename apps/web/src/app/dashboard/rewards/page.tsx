@@ -30,7 +30,7 @@ const ITEM_FORM_INIT = { name: '', description: '', emoji: '🎁', type: 'virtua
 
 /** 자동 보상 규칙 — 채점 정답률이 minRate 이상이면 지급 */
 type RewardRule = {
-  id: string; enabled: boolean; source: 'worksheet' | 'textbook' | 'any'
+  id: string; enabled: boolean; source: 'worksheet' | 'any'
   minRate: number; points: number; label: string; itemId: string | null
   item: { id: string; name: string; emoji: string; pointValue: number } | null
 }
@@ -38,7 +38,7 @@ type RewardRule = {
 const RULE_FORM_INIT = { source: 'any' as RewardRule['source'], minRate: '90', points: '10', label: '', itemId: '' }
 
 const SOURCE_LABEL: Record<RewardRule['source'], string> = {
-  any: '학습지 + 교재', worksheet: '학습지만', textbook: '교재만',
+  any: '학습지', worksheet: '학습지만',
 }
 
 /** /api/students 응답에서 필요한 부분만 */
@@ -507,7 +507,7 @@ function RewardsPageInner() {
       {tab === 'rules' && (
         <div className="space-y-4">
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-xs text-indigo-800 leading-relaxed">
-            학습지·교재 채점이 들어오면 <strong>정답률에 따라 자동으로 보상</strong>이 나갑니다.
+            학습지 채점이 들어오면 <strong>정답률에 따라 자동으로 보상</strong>이 나갑니다.
             선생님이 채점한 경우와 학생이 직접 채점한 경우 모두 적용됩니다.
             <div className="mt-1.5 text-indigo-700/80">
               · 여러 규칙이 걸리면 <strong>기준 정답률이 가장 높은 규칙 하나만</strong> 지급합니다 (등급제).<br />
@@ -525,7 +525,7 @@ function RewardsPageInner() {
                 <select value={ruleForm.source}
                   onChange={e => setRuleForm(f => ({ ...f, source: e.target.value as RewardRule['source'] }))}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  {(['any','worksheet','textbook'] as const).map(v => (
+                  {(['any','worksheet'] as const).map(v => (
                     <option key={v} value={v}>{SOURCE_LABEL[v]}</option>
                   ))}
                 </select>

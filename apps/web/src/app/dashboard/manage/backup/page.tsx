@@ -15,7 +15,7 @@ type StorageUsage = {
   totalCount: number
   totalBytes: number
   byStorage: { storage: string; count: number; bytes: number }[]
-  counts: { worksheets: number; textbooks: number; textbookProblems: number }
+  counts: { worksheets: number }
 }
 
 const formatBytes = (n: number) => {
@@ -160,7 +160,7 @@ export default function BackupPage() {
               {busy === 'core' ? '내보내는 중...' : '주요 데이터(JSON) 다운로드'}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              학생·학습지·교재 등 핵심만 JSON으로. 내용 확인은 쉽지만
+              학생·학습지 등 핵심만 JSON으로. 내용 확인은 쉽지만
               <b> 정답 이미지는 빠집니다.</b> 보관용으로는 왼쪽을 쓰세요.
             </p>
           </button>
@@ -200,7 +200,6 @@ export default function BackupPage() {
                 { label: '정답 이미지', value: `${usage.totalCount.toLocaleString()}장`, color: 'text-indigo-600' },
                 { label: '합계 용량', value: formatBytes(usage.totalBytes), color: 'text-teal-600' },
                 { label: '학습지', value: `${usage.counts.worksheets.toLocaleString()}개`, color: 'text-gray-700' },
-                { label: '교재', value: `${usage.counts.textbooks.toLocaleString()}권`, color: 'text-gray-700' },
               ].map(item => (
                 <div key={item.label} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-center">
                   <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
@@ -222,9 +221,6 @@ export default function BackupPage() {
                   : {b.count.toLocaleString()}장 / {formatBytes(b.bytes)}
                 </p>
               ))}
-              <p className="text-gray-500">
-                교재 문제 {usage.counts.textbookProblems.toLocaleString()}개
-              </p>
             </div>
 
             {usage.driver === 'db' && (

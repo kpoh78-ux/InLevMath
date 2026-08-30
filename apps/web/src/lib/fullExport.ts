@@ -19,10 +19,9 @@ export const EXPORT_MODELS = [
   // 사람·학원 운영
   'user', 'teacher', 'student', 'attendanceLog', 'classSchedule',
   // 학습 자료
-  'worksheet', 'answerImage', 'textbook', 'textbookProblem',
+  'worksheet', 'answerImage',
   // 배포·채점
-  'worksheetDistribution', 'worksheetResult',
-  'textbookAssignment', 'textbookResult', 'missionResult',
+  'worksheetDistribution', 'worksheetResult', 'missionResult',
   // 보상
   'rewardItem', 'rewardRule', 'studentReward', 'pointTransaction', 'autoRewardLog',
   // 분석·리포트
@@ -39,7 +38,6 @@ export const EXPORT_MODELS = [
 const PAGE_SIZE: Record<string, number> = {
   answerImage: 25,
   worksheet: 200,
-  textbookProblem: 500,
 }
 const DEFAULT_PAGE = 1000
 

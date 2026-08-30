@@ -11,13 +11,12 @@ const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','�
 
 type Student   = { id: string; name: string; grade: string }
 type Worksheet = { id: string; title: string; grade: string; unit: string; step: string; problemCount: number }
-type Textbook  = { id: string; title: string; grade: string; publisher: string; problemCount: number }
 
 // 제출 완료라 삭제하지 못한 배포 건
 type BlockedEntry = { distributionId: string; studentId: string; studentName: string; hidden: boolean }
 
 type SessionItem = {
-  key: string; type: 'worksheet' | 'textbook'; id: string
+  key: string; type: 'worksheet'; id: string
   title: string; grade: string; unit?: string; step?: string; problemCount: number
   assignedIds: string[]; distributing: boolean; distributed: boolean
   removing: boolean; blocked: BlockedEntry[]
@@ -29,7 +28,7 @@ type SessionItem = {
 type DistRow = { studentId: string; result: { id: string } | null }
 
 type RecentSession = {
-  type: 'worksheet' | 'textbook'
+  type: 'worksheet'
   title: string; grade: string; step?: string; unit?: string
   totalProblems: number; correctProblems: number; correctRate: number
   gradedAt: string
@@ -45,14 +44,6 @@ type DistributionRow = {
   homeworkAt: string | null
 }
 
-type TextbookRange = {
-  textbookId: string; title: string; publisher: string
-  totalProblems: number; correctProblems: number; correctRate: number
-  wrongCount: number; wrongFrom: number | null; wrongTo: number | null
-  pageFrom: number | null; pageTo: number | null
-  submittedAt: string
-}
-
 type LessonHistory = {
   student: {
     id: string; name: string; grade: string; currentLevel: number
@@ -61,7 +52,6 @@ type LessonHistory = {
   recentSessions: RecentSession[]
   monthlyTrend: MonthlyPoint[]
   distributions: DistributionRow[]
-  textbookRanges: TextbookRange[]
 }
 
 const STEP_BADGE: Record<string, string> = {
@@ -198,16 +188,14 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
                 {data.recentSessions.map((s, i) => (
                   <div key={i} className="flex items-start gap-3 bg-gray-50 rounded-xl px-3.5 py-3 border border-gray-100">
                     <div className="shrink-0">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black
-                        ${s.type === 'worksheet' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black bg-teal-100 text-teal-700">
                         {i + 1}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0
-                          ${s.type === 'worksheet' ? 'bg-teal-50 text-teal-600 border-teal-200' : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}>
-                          {s.type === 'worksheet' ? '학습지' : '교재'}
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 bg-teal-50 text-teal-600 border-teal-200">
+                          학습지
                         </span>
                         {s.step && (
                           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${STEP_BADGE[s.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
@@ -261,7 +249,7 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
           </div>
         </div>
 
-        {/* 학습 관찰 입력 — 학습지·교재로 자동 채점되지 않는 학습을 선생님이 적는다.
+        {/* 학습 관찰 입력 — 학습지로 자동 채점되지 않는 학습을 선생님이 적는다.
             예전에는 학생 앱에서 스스로 넣었는데 확인할 방법이 없었다. */}
         <ObservationInput
           studentId={studentId}
@@ -271,46 +259,9 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
         </>
       )}
 
-      {/* 이전 시간 교재 채점 범위 + 학습지 배포·채점 현황 */}
+      {/* 학습지 배포·채점 현황 */}
       {data && (
-        <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
-          {/* 교재 채점 범위 */}
-          <div className="px-5 py-4">
-            <p className="text-xs font-bold text-gray-500 mb-3">이전 교재 채점 범위</p>
-            {data.textbookRanges.length === 0 ? (
-              <p className="text-xs text-gray-300 py-6 text-center">채점된 교재가 없습니다</p>
-            ) : (
-              <div className="space-y-2">
-                {data.textbookRanges.map(t => (
-                  <Link key={t.textbookId}
-                    href={`/dashboard/textbooks/${t.textbookId}?student=${studentId}`}
-                    className="block bg-gray-50 hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 rounded-xl px-3.5 py-2.5 transition-colors">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">{t.title}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {t.pageFrom !== null && t.pageTo !== null
-                            ? `오답 구간 ${t.pageFrom}P~${t.pageTo}P`
-                            : '페이지 정보 없음'}
-                          {t.wrongFrom !== null && (
-                            <span className="ml-1.5 text-gray-300">
-                              ({t.wrongFrom}~{t.wrongTo}번 중 오답 {t.wrongCount}개)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className={`text-sm font-black ${rateColor(t.correctRate)}`}>{t.correctRate}%</p>
-                        <p className="text-[10px] text-gray-300">{formatDate(t.submittedAt)}</p>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 학습지 배포·채점 */}
+        <div className="border-t border-gray-100">
           <div className="px-5 py-4">
             <p className="text-xs font-bold text-gray-500 mb-3">학습지 배포 · 채점</p>
             {data.distributions.length === 0 ? (
@@ -426,67 +377,6 @@ function WorksheetPicker({
   )
 }
 
-// ── 교재 선택 모달 ────────────────────────────────────────────────
-function TextbookPicker({
-  textbooks, existing, onPick, onClose,
-}: {
-  textbooks: Textbook[]; existing: Set<string>
-  onPick: (t: Textbook) => void; onClose: () => void
-}) {
-  const [search, setSearch] = useState('')
-  const [gradeFilter, setGradeFilter] = useState('')
-
-  const filtered = textbooks.filter(t =>
-    (gradeFilter === '' || t.grade === gradeFilter) &&
-    (t.title.includes(search) || t.publisher.includes(search))
-  )
-  const grades = [...new Set(textbooks.map(t => t.grade))].sort(
-    (a, b) => GRADE_ORDER.indexOf(a) - GRADE_ORDER.indexOf(b)
-  )
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl flex flex-col" style={{ maxHeight: '85vh' }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900">교재 선택</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-        </div>
-        <div className="px-6 py-3 border-b border-gray-100 space-y-2">
-          <input type="text" placeholder="교재명, 출판사 검색" value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
-          <div className="flex gap-1.5 flex-wrap">
-            {['', ...grades].map(g => (
-              <button key={g} onClick={() => setGradeFilter(g)}
-                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${gradeFilter === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-500 hover:border-indigo-300'}`}>
-                {g || '전체'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1.5">
-          {filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-10">검색 결과가 없습니다.</p>
-          ) : filtered.map(t => {
-            const added = existing.has(t.id)
-            return (
-              <button key={t.id} onClick={() => !added && onPick(t)} disabled={added}
-                className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl border transition-all
-                  ${added ? 'bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40'}`}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.grade} · {t.publisher} · {t.problemCount}문제</p>
-                </div>
-                {added && <span className="text-[11px] text-gray-400 shrink-0">추가됨</span>}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── 메인 페이지 ──────────────────────────────────────────────────
 function LessonPrepPageInner() {
   const router = useRouter()
@@ -497,10 +387,8 @@ function LessonPrepPageInner() {
 
   const [students, setStudents]     = useState<Student[]>([])
   const [worksheets, setWorksheets] = useState<Worksheet[]>([])
-  const [textbooks, setTextbooks]   = useState<Textbook[]>([])
   const [items, setItems]           = useState<SessionItem[]>([])
   const [showWSPicker, setShowWSPicker] = useState(false)
-  const [showTBPicker, setShowTBPicker] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
 
@@ -510,10 +398,9 @@ function LessonPrepPageInner() {
   }
 
   const fetchAll = useCallback(async () => {
-    const [sRes, wRes, tRes] = await Promise.all([
+    const [sRes, wRes] = await Promise.all([
       apiFetch('/api/students'),
       apiFetch('/api/worksheets'),
-      apiFetch('/api/textbooks'),
     ])
     if (sRes.ok) {
       const data = await sRes.json() as { id: string; grade: string; user: { name: string } }[]
@@ -521,7 +408,6 @@ function LessonPrepPageInner() {
       setStudents(sorted.map(s => ({ id: s.id, name: s.user.name, grade: s.grade })))
     }
     if (wRes.ok) setWorksheets(await wRes.json())
-    if (tRes.ok) setTextbooks(await tRes.json())
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -559,16 +445,6 @@ function LessonPrepPageInner() {
     } : i))
   }
 
-  const addTextbook = (t: Textbook) => {
-    setItems(prev => [...prev, {
-      key: `tb-${t.id}-${Date.now()}`, type: 'textbook',
-      id: t.id, title: t.title, grade: t.grade,
-      problemCount: t.problemCount, assignedIds: [], distributing: false, distributed: false,
-      removing: false, blocked: [], originalIds: [], submittedIds: [],
-    }])
-    setShowTBPicker(false)
-  }
-
   const toggleStudent = (key: string, studentId: string) => {
     setItems(prev => prev.map(item => {
       if (item.key !== key) return item
@@ -592,31 +468,6 @@ function LessonPrepPageInner() {
   const distribute = async (key: string) => {
     const item = items.find(i => i.key === key)
     if (!item) return
-
-    if (item.type !== 'worksheet') {
-      if (item.assignedIds.length === 0) {
-        showToast('배정할 학생을 먼저 선택하세요.', false)
-        return
-      }
-      setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: true } : i))
-      try {
-        const res = await apiFetch('/api/textbooks/assign', {
-          method: 'POST',
-          body: JSON.stringify({ textbookId: item.id, studentIds: item.assignedIds }),
-        })
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({})) as { error?: string }
-          showToast(d.error || '교재 배정 실패', false)
-          return
-        }
-        showToast(`"${item.title}" — ${item.assignedIds.length}명에게 배정 완료!`)
-        setItems(prev => prev.map(i =>
-          i.key === key ? { ...i, distributed: true, originalIds: [...i.assignedIds] } : i))
-      } finally {
-        setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: false } : i))
-      }
-      return
-    }
 
     const toAdd    = item.assignedIds.filter(id => !item.originalIds.includes(id))
     const toRemove = item.originalIds.filter(id => !item.assignedIds.includes(id))
@@ -688,13 +539,6 @@ function LessonPrepPageInner() {
     const item = items.find(i => i.key === key)
     if (!item) return
 
-    if (item.type !== 'worksheet') {
-      setItems(prev => prev.map(i => i.key === key
-        ? { ...i, distributed: false, assignedIds: [], originalIds: [], submittedIds: [], blocked: [] }
-        : i))
-      return
-    }
-
     setItems(prev => prev.map(i => i.key === key ? { ...i, distributing: true } : i))
     try {
       const dist = await loadDistribution(item.id)
@@ -723,7 +567,7 @@ function LessonPrepPageInner() {
     const item = items.find(i => i.key === key)
     if (!item) return
 
-    if (!item.distributed || item.type !== 'worksheet') {
+    if (!item.distributed) {
       setItems(prev => prev.filter(i => i.key !== key))
       return
     }
@@ -813,12 +657,11 @@ function LessonPrepPageInner() {
   }
 
   const existingWSIds = new Set(items.filter(i => i.type === 'worksheet').map(i => i.id))
-  const existingTBIds = new Set(items.filter(i => i.type === 'textbook').map(i => i.id))
 
   return (
     <div className="space-y-5">
 
-      {/* 헤더 — 학습지·교재 추가는 각 메뉴에서 학생을 고른 뒤 한다.
+      {/* 헤더 — 학습지 추가는 학습지 메뉴에서 학생을 고른 뒤 한다.
           여기서 추가하면 어느 학생에게 줄 것인지가 빠져 두 번 일하게 된다. */}
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -845,7 +688,7 @@ function LessonPrepPageInner() {
           <p className="text-sm font-semibold text-gray-700 mb-1">먼저 학생을 고르세요</p>
           <p className="text-xs text-gray-400 mb-5 leading-relaxed">
             학원 현황의 <strong>오늘의 내 수업</strong>에서 학생 이름을 누르거나,<br />
-            아래 메뉴에서 학생을 고른 뒤 학습지·교재를 배포합니다.
+            아래 메뉴에서 학생을 고른 뒤 학습지를 배포합니다.
           </p>
           <div className="flex justify-center gap-2 flex-wrap">
             <Link href="/dashboard"
@@ -855,10 +698,6 @@ function LessonPrepPageInner() {
             <Link href="/dashboard/worksheets"
               className="text-xs font-semibold text-teal-700 border border-teal-200 hover:bg-teal-50 px-4 py-2.5 rounded-lg transition-colors">
               학습지 메뉴 →
-            </Link>
-            <Link href="/dashboard/textbooks"
-              className="text-xs font-semibold text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-4 py-2.5 rounded-lg transition-colors">
-              교재 메뉴 →
             </Link>
           </div>
         </div>
@@ -877,7 +716,7 @@ function LessonPrepPageInner() {
       {items.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl py-20 text-center">
           <p className="text-4xl mb-3">📋</p>
-          <p className="text-gray-400 text-sm font-medium">오늘 준비된 학습지·교재가 없습니다.</p>
+          <p className="text-gray-400 text-sm font-medium">오늘 준비된 학습지가 없습니다.</p>
           <p className="text-xs text-gray-300 mt-1">상단 버튼으로 추가하세요.</p>
         </div>
       ) : (
@@ -885,10 +724,8 @@ function LessonPrepPageInner() {
           {items.map(item => (
             <div key={item.key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="flex items-center px-5 py-3.5 border-b border-gray-100">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded mr-3 shrink-0 ${
-                  item.type === 'worksheet' ? 'bg-teal-50 text-teal-600' : 'bg-indigo-50 text-indigo-600'
-                }`}>
-                  {item.type === 'worksheet' ? '학습지' : '교재'}
+                <span className="text-xs font-semibold px-2 py-0.5 rounded mr-3 shrink-0 bg-teal-50 text-teal-600">
+                  학습지
                 </span>
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-semibold text-gray-800">{item.title}</span>
@@ -937,7 +774,7 @@ function LessonPrepPageInner() {
                   })()}
                   <button onClick={() => removeItem(item.key)}
                     disabled={item.removing}
-                    title={item.distributed && item.type === 'worksheet' ? '배포 취소 (미제출 건만 삭제)' : '목록에서 제거'}
+                    title={item.distributed ? '배포 취소 (미제출 건만 삭제)' : '목록에서 제거'}
                     className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors">
                     {item.removing ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1051,9 +888,6 @@ function LessonPrepPageInner() {
 
       {showWSPicker && (
         <WorksheetPicker worksheets={worksheets} existing={existingWSIds} onPick={addWorksheet} onClose={() => setShowWSPicker(false)}/>
-      )}
-      {showTBPicker && (
-        <TextbookPicker textbooks={textbooks} existing={existingTBIds} onPick={addTextbook} onClose={() => setShowTBPicker(false)}/>
       )}
     </div>
   )

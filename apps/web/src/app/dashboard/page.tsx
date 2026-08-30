@@ -22,7 +22,12 @@ const MISSION_COLOR: Record<string,string> = {
 }
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
-type ScheduleEntry = { id:string; dayOfWeek:number; startTime:string; endTime:string; subject:string; grade:string; studentNames:string[] }
+type ScheduleEntry = {
+  id:string; dayOfWeek:number; startTime:string; endTime:string; subject:string; grade:string
+  studentNames:string[]
+  /** 이름만으로는 학생을 열 수 없어 id 를 함께 받는다 */
+  students?: { id:string; name:string }[]
+}
 type Student       = { id:string; name:string; school:string; grade:string; currentLevel:number; currentMission:MissionType; comprehension:number; reasoning:number; calculation:number; lastActivity:string|null }
 type Distribution  = { id:string; studentName:string; studentGrade:string; worksheetTitle:string; step:string; examSubType:string|null; problemCount:number; status:'distributed'|'submitted'|'graded'; correctProblems:number|null; distributedAt:string }
 type Summary = { studentCount:number; worksheetCount:number; worksheetsWithAnswers:number; distTotal:number; distGraded:number; distPending:number; todaySchedule:ScheduleEntry[]; students:Student[]; recentDistributions:Distribution[] }
@@ -364,6 +369,8 @@ export default function DashboardPage() {
 
 function NormalDashboard() {
   const [summary, setSummary]       = useState<Summary|null>(null)
+  // 오늘 수업에서 이름을 누른 학생. 한 번 더 누르면 닫힌다
+  const [pickedStudentId, setPickedStudentId] = useState<string|null>(null)
   const [loading, setLoading]       = useState(true)
   const [showStudents, setShowStudents] = useState(false)
 
@@ -390,15 +397,12 @@ function NormalDashboard() {
     return <div className="flex items-center justify-center h-48 text-gray-400 text-sm">학원 현황을 불러오는 중...</div>
   }
 
-  const { studentCount, worksheetCount, worksheetsWithAnswers, distTotal, distGraded, distPending,
+  const { studentCount, worksheetCount, worksheetsWithAnswers,
           todaySchedule, students, recentDistributions } = summary
 
-  const statsCards = [
-    { label:'등록 학생',  value:studentCount,         unit:'명', sub:`/ 최대 300명`,                              color:'text-indigo-600', bg:'border-indigo-100', dot:'bg-indigo-500', href:'/dashboard/manage/students' },
-    { label:'등록 학습지', value:worksheetCount,       unit:'개', sub:`정답 완료 ${worksheetsWithAnswers}개`,       color:'text-teal-600',   bg:'border-teal-100',   dot:'bg-teal-500',   href:'/dashboard/worksheets' },
-    { label:'학습지 배포', value:distTotal,            unit:'건', sub:`미채점 ${distPending}건`,                    color:'text-amber-600',  bg:'border-amber-100',  dot:'bg-amber-500',  href:'/dashboard/worksheets/distribute' },
-    { label:'채점 완료',   value:distGraded,           unit:'건', sub:`전체의 ${distTotal>0?Math.round(distGraded/distTotal*100):0}%`, color:'text-emerald-600', bg:'border-emerald-100', dot:'bg-emerald-500', href:'/dashboard/worksheets/distribute' },
-  ]
+  // 오늘 수업에서 고른 학생. 요약에 이미 담겨 있어 따로 부르지 않는다
+  const picked = pickedStudentId ? students.find(v => v.id === pickedStudentId) ?? null : null
+
 
   const stepLabel = (d:Distribution) => stepDisplayLabel(d.step, d.examSubType)
   const correctRate = (d:Distribution) => d.correctProblems!=null ? Math.round(d.correctProblems/d.problemCount*100) : null
@@ -464,33 +468,60 @@ function NormalDashboard() {
                 <span className="shrink-0 text-[11px] text-gray-400">{s.grade}</span>
                 <span className="shrink-0 text-sm font-semibold text-gray-800">{s.subject}</span>
                 <span className="shrink-0 text-gray-200 text-xs">|</span>
-                {s.studentNames.length === 0
+                {(s.students?.length ?? s.studentNames.length) === 0
                   ? <span className="text-xs text-gray-300 italic">학생 미등록</span>
-                  : s.studentNames.map((n,i) => (
-                      <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full font-medium shadow-sm">{n}</span>
-                    ))
+                  : (s.students ?? s.studentNames.map((n, i) => ({ id: `n${i}`, name: n }))).map(st => {
+                      const on = pickedStudentId === st.id
+                      return (
+                        <button
+                          key={st.id}
+                          onClick={() => setPickedStudentId(on ? null : st.id)}
+                          className={`text-xs px-2.5 py-0.5 rounded-full font-medium border shadow-sm transition-colors ${
+                            on
+                              ? 'bg-indigo-600 border-indigo-600 text-white'
+                              : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300 hover:text-indigo-700'
+                          }`}
+                        >
+                          {st.name}
+                        </button>
+                      )
+                    })
                 }
               </div>
             ))}
+
+            {/* 학생을 누르면 그 학생 카드가 아래에 열린다.
+                수업 목록 자체는 좁아 정보를 다 넣을 수 없어 아래로 뺐다. */}
+            {picked && (
+              <div className="px-5 py-4 bg-indigo-50/40 border-t border-indigo-100">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {picked.name}
+                      <span className="ml-1.5 text-xs font-medium text-gray-500">{picked.grade}</span>
+                      {picked.school && <span className="ml-1.5 text-xs text-gray-400">{picked.school}</span>}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Lv.{picked.currentLevel} · {MISSION_LABELS[picked.currentMission] ?? picked.currentMission}
+                      {' · '}
+                      이해 {Math.round(picked.comprehension)} · 추론 {Math.round(picked.reasoning)} · 계산 {Math.round(picked.calculation)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link href={`/dashboard/manage/students/${picked.id}`}
+                      className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded-lg whitespace-nowrap transition-colors">
+                      상태창 보기 →
+                    </Link>
+                    <Link href={`/dashboard/lesson-prep?student=${picked.id}`}
+                      className="text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-white px-3 py-2 rounded-lg whitespace-nowrap transition-colors">
+                      수업 준비 →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
-      </div>
-
-      {/* ── 통계 카드 ── */}
-      <div className="grid grid-cols-4 gap-4">
-        {statsCards.map(s => (
-          <Link key={s.label} href={s.href}
-            className={`bg-white rounded-xl border ${s.bg} p-5 hover:shadow-md transition-all block`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className={`w-2 h-2 rounded-full ${s.dot}`} />
-              <p className="text-xs font-medium text-gray-500">{s.label}</p>
-            </div>
-            <p className={`text-3xl font-black ${s.color}`}>
-              {s.value}<span className="text-base font-bold ml-1 text-gray-400">{s.unit}</span>
-            </p>
-            <p className="text-xs text-gray-400 mt-1.5">{s.sub}</p>
-          </Link>
-        ))}
       </div>
 
       {/* ── 2단 레이아웃 ── */}

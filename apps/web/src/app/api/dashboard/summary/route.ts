@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
       where: { teacherId: myTeacherId, dayOfWeek: todayDow },
       orderBy: { startTime: 'asc' },
       include: {
-        students: { select: { student: { select: { user: { select: { name: true } } } } } },
+        students: { select: { student: { select: { id: true, user: { select: { name: true } } } } } },
       },
     }),
 
@@ -118,6 +118,8 @@ export async function GET(req: NextRequest) {
       subject:      s.subject,
       grade:        s.grade,
       studentNames: s.students.map(v => v.student.user.name),
+      // 이름만으로는 화면에서 학생을 열 수 없다 — id 를 함께 준다
+      students: s.students.map(v => ({ id: v.student.id, name: v.student.user.name })),
     })),
 
     recentDistributions: recentDistributions.map(d => ({

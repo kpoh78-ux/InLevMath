@@ -818,58 +818,51 @@ function LessonPrepPageInner() {
   return (
     <div className="space-y-5">
 
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
+      {/* 헤더 — 학습지·교재 추가는 각 메뉴에서 학생을 고른 뒤 한다.
+          여기서 추가하면 어느 학생에게 줄 것인지가 빠져 두 번 일하게 된다. */}
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">수업 준비</h1>
-          <p className="text-sm text-gray-500 mt-0.5">학습지·교재를 추가하고 학생에게 배포하세요</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {selectedStudent
+              ? `${selectedStudent.name} 학생의 지난 학습을 보고 오늘 수업을 준비합니다`
+              : '학생을 고르면 지난 학습 내역과 숙제를 보여 줍니다'}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowWSPicker(true)}
-            className="flex items-center gap-1.5 text-sm text-teal-600 border border-teal-200 hover:bg-teal-50 px-3 py-2 rounded-lg transition-colors font-medium">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-            </svg>
-            학습지 추가
+        {selectedStudent && (
+          <button onClick={closePanel}
+            className="shrink-0 whitespace-nowrap text-sm text-gray-500 border border-gray-200
+                       hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors">
+            학생 바꾸기
           </button>
-          <button onClick={() => setShowTBPicker(true)}
-            className="flex items-center gap-1.5 text-sm text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors font-medium">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-            </svg>
-            교재 추가
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* 등록 학생 현황 — 클릭 시 학습 내역 패널 표시 */}
-      <div className="bg-white border border-gray-200 rounded-xl px-5 py-3">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-semibold text-gray-700 shrink-0">등록 학생</span>
-          {students.length === 0 ? (
-            <span className="text-xs text-gray-300">학생을 불러오는 중...</span>
-          ) : (
-            <div className="flex gap-2 flex-wrap">
-              {students.map(s => {
-                const isSelected = selectedStudent?.id === s.id
-                return (
-                  <button key={s.id} onClick={() => handleStudentClick(s)}
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-all ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
-                        : 'text-indigo-700 bg-indigo-50 border-indigo-100 hover:border-indigo-400 hover:bg-indigo-100'
-                    }`}>
-                    {s.name} <span className={`font-normal ${isSelected ? 'text-indigo-200' : 'text-indigo-300'}`}>{s.grade}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          {selectedStudent && (
-            <span className="text-xs text-gray-400 ml-auto shrink-0">클릭하면 패널이 닫힙니다</span>
-          )}
+      {/* 학생을 아직 안 골랐을 때 — 어디서 고르는지 알려 준다 */}
+      {!selectedStudent && (
+        <div className="bg-white border border-gray-200 rounded-xl px-6 py-10 text-center">
+          <p className="text-3xl mb-3">👩‍🏫</p>
+          <p className="text-sm font-semibold text-gray-700 mb-1">먼저 학생을 고르세요</p>
+          <p className="text-xs text-gray-400 mb-5 leading-relaxed">
+            학원 현황의 <strong>오늘의 내 수업</strong>에서 학생 이름을 누르거나,<br />
+            아래 메뉴에서 학생을 고른 뒤 학습지·교재를 배포합니다.
+          </p>
+          <div className="flex justify-center gap-2 flex-wrap">
+            <Link href="/dashboard"
+              className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 rounded-lg transition-colors">
+              학원 현황으로 →
+            </Link>
+            <Link href="/dashboard/worksheets"
+              className="text-xs font-semibold text-teal-700 border border-teal-200 hover:bg-teal-50 px-4 py-2.5 rounded-lg transition-colors">
+              학습지 메뉴 →
+            </Link>
+            <Link href="/dashboard/textbooks"
+              className="text-xs font-semibold text-indigo-700 border border-indigo-200 hover:bg-indigo-50 px-4 py-2.5 rounded-lg transition-colors">
+              교재 메뉴 →
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 학생 학습 내역 패널 */}
       {selectedStudent && (

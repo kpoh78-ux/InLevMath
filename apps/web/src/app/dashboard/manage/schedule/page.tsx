@@ -195,6 +195,12 @@ export default function SchedulePage() {
       return ga !== gb ? ga - gb : a.user.name.localeCompare(b.user.name, 'ko')
     })
 
+  // 수업을 하나라도 가진 다른 선생님만 칩으로 만든다
+  const otherTeachersWithClasses = teachers
+    .filter(t => t.id !== me?.teacherId)
+    .map(t => ({ teacher: t, count: schedules.filter(v => v.teacherId === t.id).length }))
+    .filter(x => x.count > 0)
+
   const totalClasses = visible.length
 
   return (
@@ -216,29 +222,32 @@ export default function SchedulePage() {
         </button>
       </div>
 
-      {/* 누구 시간표를 볼지 — 시간표는 선생님마다 다르다 */}
+      {/* 누구 시간표를 볼지 — 시간표는 선생님마다 다르다.
+          순서: 내 시간표 → 수업이 있는 다른 선생님 → 학원 전체(맨 끝).
+          수업이 없는 선생님(예: 학원 전체를 관리하는 교육실장)은 칩을 만들지 않는다.
+          눌러도 빈 목록만 나와 고장으로 보인다. 수업이 생기면 저절로 나타난다. */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => setOwnerFilter('mine')}
           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
             ${ownerFilter === 'mine' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
           내 시간표
         </button>
+
+        {otherTeachersWithClasses.map(({ teacher: t, count }) => (
+          <button key={t.id} onClick={() => setOwnerFilter(t.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
+              ${ownerFilter === t.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+            {t.name}
+            <span className={`ml-1 ${ownerFilter === t.id ? 'text-indigo-200' : 'text-gray-400'}`}>{count}</span>
+          </button>
+        ))}
+
         <button onClick={() => setOwnerFilter('all')}
           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
             ${ownerFilter === 'all' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
           학원 전체
+          <span className={`ml-1 ${ownerFilter === 'all' ? 'text-indigo-200' : 'text-gray-400'}`}>{schedules.length}</span>
         </button>
-        {teachers.filter(t => t.id !== me?.teacherId).map(t => {
-          const n = schedules.filter(v => v.teacherId === t.id).length
-          return (
-            <button key={t.id} onClick={() => setOwnerFilter(t.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
-                ${ownerFilter === t.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-              {t.name}
-              {n > 0 && <span className={`ml-1 ${ownerFilter === t.id ? 'text-indigo-200' : 'text-gray-400'}`}>{n}</span>}
-            </button>
-          )
-        })}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">

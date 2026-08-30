@@ -657,3 +657,6 @@ export * from "./questionImport"
 
 // 채점 피드백 — 5단계 등급 · 성적 변화 · 레벨 변화 문구와 소리 단서
 export * from "./feedback"
+
+// 학습지 생성 — 유형별·일일테스트·단원평가·오답유형·취약유형의 조건과 선정 규칙
+export * from "./worksheetGen"

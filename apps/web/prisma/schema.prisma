@@ -47,6 +47,8 @@ model Teacher {
   reportConfig AttendanceNotificationConfig?
 
   @@index([userId])
+  /// 문제은행에서 학습지를 뽑은 기록
+  worksheetGenRequests WorksheetGenRequest[]
 }
 
 // ── 주간 수업 시간표 ──────────────────────────────────────────────────────────
@@ -145,6 +147,10 @@ model Student {
 
   @@index([teacherId])
   @@index([attendancePin])
+  /// 이 학생을 위해 뽑은 학습지 기록
+  worksheetGenRequests WorksheetGenRequest[]
+  /// 축별 취약 집계 (취약유형 학습지의 근거)
+  weaknesses           StudentWeakness[]
 }
 
 // ── 교재 ────────────────────────────────────────────────────────────────────
@@ -248,6 +254,93 @@ model TextbookResult {
   @@index([studentId])
 }
 
+
+// ── 학습지 생성 ─────────────────────────────────────────────────────────────
+//
+// 문제은행에서 문항을 골라 학습지를 만든다. 다섯 가지가 있고 고르는 방식만 다르다.
+//   TYPE      유형별   — 선생님이 소단원·유형·난이도를 직접 고른다
+//   DAILY     일일테스트 — 최근 배운 범위에서 짧게 (5~10문항)
+//   UNIT_EXAM 단원평가 — 한 단원을 난이도 골고루 (20~25문항)
+//   WRONG     오답유형 — 그 학생이 틀린 문항의 유사문제
+//   WEAK      취약유형 — 그 학생의 정답률이 낮은 유형에서
+//
+// **생성 조건을 남기는 이유** — 같은 학습지를 다시 뽑거나, 왜 이 문제가 나왔는지
+// 나중에 따져야 한다. 결과 문항만 저장하면 둘 다 못 한다.
+
+model WorksheetGenRequest {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  /// 특정 학생을 위해 만든 것이면 그 학생. 반 전체용이면 null
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  /// 'TYPE' | 'DAILY' | 'UNIT_EXAM' | 'WRONG' | 'WEAK'
+  kind      String
+  title     String
+  /// 뽑으려 한 문항 수. 모자라면 실제로는 더 적을 수 있다
+  wanted    Int
+  /// 실제로 뽑힌 문항 수
+  produced  Int      @default(0)
+
+  /// 고른 조건 그대로 (소단원·유형·개념·난이도 범위·기간 등). 형태는
+  /// packages/shared 의 WorksheetGenSpec 을 따른다
+  specJson  String   @db.Text
+  /// 왜 이 문항들이 나왔는지 — 후보 수, 제외된 이유, 부족했던 조건
+  traceJson String?  @db.Text
+
+  /// 만들어진 학습지. 생성만 하고 아직 확정하지 않았으면 null
+  worksheetId String?  @unique
+  worksheet   Worksheet? @relation(fields: [worksheetId], references: [id], onDelete: SetNull)
+
+  items     WorksheetGenItem[]
+  createdAt DateTime @default(now())
+
+  @@index([teacherId, createdAt])
+  @@index([studentId, kind])
+}
+
+/// 생성된 학습지의 문항 한 줄. 순서와 출처를 남긴다
+model WorksheetGenItem {
+  requestId  String
+  request    WorksheetGenRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question            @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /// 학습지에서 몇 번인가 (1부터)
+  number     Int
+  /// 왜 뽑혔나 — 'match'(조건 일치) | 'similar'(오답 유사문제) | 'weak'(취약유형) | 'fill'(수가 모자라 채움)
+  reason     String              @default("match")
+  /// 오답유형일 때 어떤 문항 때문에 뽑혔는지
+  sourceQuestionId String?
+
+  @@id([requestId, questionId])
+  @@index([questionId])
+}
+
+/// 학생 × 유형 정답률 — 취약유형을 뽑는 근거.
+/// StudentPatternStat 과 다른 점: 저것은 4계층 유형(MathPatternType)만 보고
+/// 이것은 개념노드까지 함께 본다. 취약유형 학습지는 둘 다 필요하다.
+model StudentWeakness {
+  id            String   @id @default(cuid())
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// 어느 축의 취약인가 — 'pattern'(유형) | 'concept'(개념) | 'subunit'(소단원)
+  axis          String
+  /// 그 축의 id
+  targetId      String
+  /// 최근 집계 기준 정답률 (0~100)
+  accuracy      Float
+  /// 분모 — 몇 문항을 풀어 나온 값인가. 적으면 신뢰할 수 없다
+  attempted     Int
+  wrongCount    Int
+  /// 마지막으로 계산한 시각
+  computedAt    DateTime @default(now())
+
+  @@unique([studentId, axis, targetId])
+  @@index([studentId, accuracy])
+}
+
 // ── 학습지 ──────────────────────────────────────────────────────────────────
 model Worksheet {
   id           String   @id @default(cuid())
@@ -267,6 +360,8 @@ model Worksheet {
 
   distributions WorksheetDistribution[]
   answerImages  AnswerImage[]
+  /// 이 학습지를 만들어 낸 생성 요청 (문제은행에서 뽑은 경우)
+  genRequest    WorksheetGenRequest?
 
   @@index([teacherId])
   @@index([category, step])
@@ -707,6 +802,8 @@ model Question {
   @@index([originId, variantKind])
   // 오류로 표시된 문제 모아 보기 / 출제 시 retired 제외
   @@index([status])
+  /// 이 문항이 들어간 생성 학습지
+  genItems      WorksheetGenItem[]
 }
 
 /// 문항 ↔ 개념 (다대다) — 복합 유형이 여러 단원 개념에 걸리는 것을 담는다.

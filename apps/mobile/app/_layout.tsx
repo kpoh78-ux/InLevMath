@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { AuthProvider, useAuth } from '../store/authStore'
+import { BgmProvider } from '../store/useBgm'
 
 function RootNavigator() {
   const { user, isLoading } = useAuth()
@@ -28,7 +29,10 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigator />
+      {/* 배경음악은 화면을 옮겨도 끊기지 않아야 해서 최상단에 둔다 */}
+      <BgmProvider>
+        <RootNavigator />
+      </BgmProvider>
     </AuthProvider>
   )
 }

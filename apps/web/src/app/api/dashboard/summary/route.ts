@@ -9,8 +9,18 @@ export async function GET(req: NextRequest) {
   const payload = await verifyToken(auth)
   if (!payload || payload.role !== 'teacher') return NextResponse.json({ error: '권한 없음' }, { status: 403 })
 
+  // 학생·학습지·배포는 학원 공용이라 대표 계정 기준으로 읽는다
   const teacher = await academyTeacher(payload.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보 없음' }, { status: 404 })
+
+  // 시간표만은 예외 — 수업은 맡은 선생님 본인 것이다.
+  // 여기까지 대표 계정으로 읽으면 다른 선생님이 자기 시간표를 넣어도
+  // 본인 학원현황의 "오늘의 수업"에 나오지 않는다.
+  const me = await prisma.teacher.findUnique({
+    where: { userId: payload.sub },
+    select: { id: true },
+  })
+  const myTeacherId = me?.id ?? teacher.id
 
   // JS getDay(): 0=일,1=월,...6=토 → 내부 0=월,1=화,...6=일 변환
   const jsDay = new Date().getDay()
@@ -46,9 +56,10 @@ export async function GET(req: NextRequest) {
       _count: { _all: true },
     }),
 
-    // 오늘 수업 시간표
+    // 오늘 수업 시간표 — 로그인한 선생님 본인 수업만.
+    // 학원 전체를 보려면 학원관리 → 수업 시간표의 "학원 전체" 탭을 쓴다.
     prisma.classSchedule.findMany({
-      where: { teacherId: teacher.id, dayOfWeek: todayDow },
+      where: { teacherId: myTeacherId, dayOfWeek: todayDow },
       orderBy: { startTime: 'asc' },
       include: {
         students: { select: { student: { select: { user: { select: { name: true } } } } } },

@@ -205,7 +205,8 @@ export default function SchedulePage() {
           <h1 className="text-xl font-bold text-gray-900">수업 시간표</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {ownerFilter === 'mine' ? '내 수업' : ownerFilter === 'all' ? '학원 전체' : `${teachers.find(t => t.id === ownerFilter)?.name ?? ''} 선생님`}
-            {' '}{totalClasses}개 · 여기에 등록한 수업이 학원 현황의 <strong>오늘의 수업</strong>에 표시됩니다.
+            {' '}{totalClasses}개 · <strong>시간표는 선생님별로 따로 관리됩니다.</strong>
+            {' '}새 수업은 {me?.isAdmin ? '기본적으로 ' : ''}내 시간표로 저장되고, 내 수업만 학원 현황에 표시됩니다.
           </p>
         </div>
         <button

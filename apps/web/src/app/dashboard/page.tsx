@@ -429,7 +429,7 @@ function NormalDashboard() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
           <div className="flex items-center gap-2">
             <span className="text-base">📚</span>
-            <h2 className="font-bold text-gray-900">오늘의 수업</h2>
+            <h2 className="font-bold text-gray-900">오늘의 내 수업</h2>
             <span className="text-xs text-gray-400">{DAYS[todayDow]}요일</span>
             {todaySchedule.length > 0 && (
               <span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
@@ -445,9 +445,14 @@ function NormalDashboard() {
 
         {todaySchedule.length === 0 ? (
           <div className="px-5 py-8 text-center">
-            <p className="text-gray-400 text-sm mb-2">오늘({DAYS[todayDow]}요일) 등록된 수업이 없습니다.</p>
+            <p className="text-gray-400 text-sm mb-1">
+              오늘({DAYS[todayDow]}요일) <strong className="text-gray-500">내가 맡은</strong> 수업이 없습니다.
+            </p>
+            <p className="text-[11px] text-gray-400 mb-2">
+              시간표는 선생님별로 따로 관리됩니다. 다른 선생님 수업은 시간표 화면의 &ldquo;학원 전체&rdquo;에서 볼 수 있습니다.
+            </p>
             <Link href="/dashboard/manage/schedule"
-              className="text-xs text-indigo-500 hover:underline">주간시간표에서 추가하기 →</Link>
+              className="text-xs text-indigo-500 hover:underline">내 시간표 만들기 →</Link>
           </div>
         ) : (
           <div className="divide-y divide-gray-50">

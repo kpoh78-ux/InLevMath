@@ -68,20 +68,20 @@ export function MissionModal({
       accent={color}
       eyebrow="MISSION"
       title={MISSION_LABELS[missionType]}
-      confirmLabel={isCleared ? '확인' : locked ? '확인' : '시작하기'}
+      confirmLabel="확인"
       onConfirm={isCleared || locked ? undefined : onStart}
       celebrate={isCleared}
     >
       <SystemLine center color={Colors.subtext}>
         {isCleared ? '이미 클리어한 미션입니다.'
           : locked ? '앞 미션을 먼저 클리어해야 열립니다.'
-          : '문제를 풀고 결과를 입력하면 능력치가 오릅니다.'}
+          : '수업에서 문제를 풀면 선생님이 결과를 넣어 줍니다.'}
       </SystemLine>
 
       <View style={[styles.block, { borderColor: color + '44' }]}>
         <Text style={[styles.blockTitle, { color }]}>클리어 조건</Text>
         <Requirement color={color} done={isCleared} text={`정답률 ${threshold}% 이상`} />
-        <Requirement color={color} done={isCleared} text="미션 결과를 앱에 입력" />
+        <Requirement color={color} done={isCleared} text="선생님이 결과를 확인해 입력" />
       </View>
 
       <View style={[styles.block, { borderColor: color + '44' }]}>

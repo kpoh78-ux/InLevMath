@@ -143,7 +143,7 @@ POST /api/students                — 선생님: 학생 등록 (초기PW math123
 POST /api/students/[id]/reset-password — 선생님: 학생 비밀번호 math1234로 초기화
 GET/POST/PATCH/DELETE /api/admin/teachers — 관리자: 선생님 목록·등록·정보수정/권한·삭제
 POST /api/admin/teachers/[teacherId]/reset-password — 관리자: 선생님 비밀번호 math1234로 초기화
-POST /api/missions/results        — 학생: 미션 결과 입력 + SSE 발송
+POST /api/missions/results        — 선생님: 학습 관찰 결과 입력 + SSE 발송
 GET  /api/missions/results        — 학생: 본인 학습 이력
 GET  /api/events                  — SSE 연결 엔드포인트
 ```
@@ -153,10 +153,13 @@ GET  /api/events                  — SSE 연결 엔드포인트
 **학생 전용 앱이다.** 선생님용 화면은 웹으로 옮겼으므로 여기에 다시 만들지 않는다.
 선생님 계정으로 로그인을 시도하면 로그인 화면에서 막고 웹으로 안내한다.
 
+**학생이 직접 넣는 것은 학습지·교재 답안뿐이다.** 그것은 저장된 정답으로 자동
+채점된다. 미션 결과(문제 수·맞은 개수)는 학생이 스스로 적으면 확인할 방법이 없어
+선생님 웹(수업준비 → 학습 관찰 입력)으로 옮겼다.
+
 ```
 app/(auth)/login.tsx              — 핸드폰번호 로그인 (학생 계정만 통과)
 app/(student)/index.tsx           — 학생 대시보드 (레벨/능력치/미션 로드맵)
-app/(student)/mission.tsx         — 미션 결과 입력
 app/(student)/history.tsx         — 학습 이력
 app/(student)/worksheet-omr.tsx   — 배포받은 학습지 OMR 답안 제출
 app/(student)/textbook-omr.tsx    — 배정받은 교재 OMR 답안 제출
@@ -173,7 +176,7 @@ GET  /api/student/worksheets      — 배포받은 학습지 목록
 GET  /api/student/textbooks       — 배정받은 교재 목록
 POST /api/student/worksheets/[distributionId]/submit — 답안 제출 (1차 자동 채점)
 POST /api/student/textbooks/[textbookId]/submit      — 교재 답안 제출
-GET/POST /api/missions/results    — 학습 이력 조회 / 미션 결과 입력
+GET  /api/missions/results        — 학습 이력 조회
 GET  /api/student/inventory       — 보관창고
 GET  /api/events                  — SSE 실시간 알림
 ```

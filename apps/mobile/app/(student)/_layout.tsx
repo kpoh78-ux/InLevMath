@@ -3,6 +3,9 @@ import { Colors } from '../../constants/colors'
 
 export default function StudentLayout() {
   return (
+    // 미션 결과 입력은 선생님 웹으로 옮겼다. 문제 수와 맞은 개수를 학생이 스스로
+    // 적으면 확인할 방법이 없어, 선생님이 옆에서 본 것을 적는 쪽이 맞다.
+    // 학생이 하는 채점은 학습지·교재뿐이고 그것은 저장된 정답으로 자동 채점된다.
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -12,7 +15,6 @@ export default function StudentLayout() {
       }}
     >
       <Tabs.Screen name="index"     options={{ title: '대시보드', tabBarIcon: () => null }} />
-      <Tabs.Screen name="mission"   options={{ title: '미션 입력', tabBarIcon: () => null }} />
       <Tabs.Screen name="inventory" options={{ title: '🎒 보관창고', tabBarIcon: () => null }} />
       <Tabs.Screen name="history"   options={{ title: '이력',      tabBarIcon: () => null }} />
 

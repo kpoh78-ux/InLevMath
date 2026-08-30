@@ -271,11 +271,12 @@ export default function StudentDashboard() {
             <Text style={[styles.missionName, { color: currentMissionColor }]}>
               {MISSION_LABELS[currentMission]}
             </Text>
+            {/* 결과 입력은 선생님이 한다. 학생에게는 미션 안내만 연다 */}
             <TouchableOpacity
               style={[styles.inputBtn, { backgroundColor: currentMissionColor }]}
-              onPress={() => router.push('/(student)/mission')}
+              onPress={() => setMissionOpen(currentMission)}
             >
-              <Text style={styles.inputBtnText}>결과 입력하기 →</Text>
+              <Text style={styles.inputBtnText}>미션 확인하기 →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -441,7 +442,7 @@ export default function StudentDashboard() {
         missionType={missionOpen}
         isActive={missionOpen === currentMission}
         isCleared={missionOpen != null && clearedMissions.includes(missionOpen)}
-        onStart={() => router.push('/(student)/mission')}
+        onStart={() => setMissionOpen(null)}
         onClose={() => setMissionOpen(null)}
       />
 

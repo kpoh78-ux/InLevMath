@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { ObservationInput } from '@/components/lesson/ObservationInput'
 import { compareWorksheets } from '@/lib/worksheetSort'
 
 const GRADE_ORDER = ['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3']
@@ -85,13 +86,16 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
   const [data, setData] = useState<LessonHistory | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  // 관찰 입력을 저장한 뒤에도 다시 부르므로 함수로 빼 둔다
+  const load = useCallback(() => {
     setLoading(true)
     apiFetch(`/api/students/${studentId}/lesson-history`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setData(d))
       .finally(() => setLoading(false))
   }, [studentId])
+
+  useEffect(() => { load() }, [load])
 
   const rateColor = (r: number) =>
     r >= 80 ? 'text-emerald-600' : r >= 60 ? 'text-amber-500' : 'text-rose-500'
@@ -256,6 +260,14 @@ function StudentHistoryPanel({ studentId, studentName, onClose }: {
             </div>
           </div>
         </div>
+
+        {/* 학습 관찰 입력 — 학습지·교재로 자동 채점되지 않는 학습을 선생님이 적는다.
+            예전에는 학생 앱에서 스스로 넣었는데 확인할 방법이 없었다. */}
+        <ObservationInput
+          studentId={studentId}
+          studentName={data.student.name}
+          onSaved={load}
+        />
         </>
       )}
 

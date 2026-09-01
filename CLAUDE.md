@@ -289,24 +289,43 @@ GET  /api/events                  — SSE 실시간 알림
 | 학교시험대비·단원평가 | 4 |
 | 서술형·심화 | 5 |
 
-### 문제 반입은 별도 앱이 하고, 이 DB 스키마에 직접 붙지 않는다
+### 문제 반입은 LevMathPro가 직접 한다 (2026-09-01 갱신 — 아래는 옛 계획)
 
-문제집 PDF 파싱·해설 추출·사람 검수는 별도 앱이 맡는다. **그 앱은 자기 DB 를 쓴다.**
-같은 PostgreSQL 에 두 앱이 각자 Prisma 스키마로 붙으면 한쪽 마이그레이션이 다른 쪽을
-리셋하려 든다 (이 DB 는 이미 드리프트가 있어 특히 위험하다).
+> **2026-09-01 결정 — "반입 전용 3번째 앱"은 안 만든다. LevMathPro가 PDF
+> 업로드 → Gemini OCR/AI 추출 → 교육과정 대조 → 검수까지 직접 맡는다.**
+> 아래 문단(별도 앱·`packages/shared/src/questionImport.ts` JSON 계약·
+> `GET /api/question-bank/import`)은 이 결정 이전의 계획이라 지금은 안 쓴다 —
+> 그 계약을 구현한 적이 없으므로 지울 코드도 없다. 남겨 둔 이유는 아래 세
+> 원칙(좌표·개념노드 ID를 직접 안 보낸다, 매칭 실패해도 버리지 않는다,
+> 사람이 손댄 분류는 재반입이 안 덮는다)이 여전히 옳고, LevMathPro의 반입
+> 파이프라인(`src/lib/questionBank/`)도 그대로 따르고 있어서다.
+>
+> 애초에 "같은 Postgres에 두 앱이 각자 Prisma로 붙으면 충돌한다"는 게
+> 별도 앱을 두려던 이유였는데, LevMathPro는 처음부터 별도 Supabase
+> 프로젝트를 쓰고 있어 그 위험이 없다 — 3번째 앱과 JSON 계약을 거칠
+> 이유 자체가 사라졌다. 이 DB(InLevMath 쪽)의 `Question`·교육과정 트리는
+> 여전히 시딩된 데이터로 남아 있지만, 새 문항 반입은 여기 붙지 않는다.
+> LevMathPro 쪽 실제 구현: `apps/web` 아님, `C:\My-Project\fourth_Project_LevMathPro`
+> (별도 저장소·별도 배포) — `src/lib/ai/gemini.ts`(추출), `src/lib/questionBank/
+> curriculumMatch.ts`(대조), `src/lib/questionBank/review.ts`(검수).
 
-두 앱이 공유하는 것은 `packages/shared/src/questionImport.ts` 의 JSON 형식 하나뿐이다.
+문제집 PDF 파싱·해설 추출·사람 검수를 별도 앱이 자기 DB로 맡는다는 게 원래
+계획이었다. 같은 PostgreSQL 에 두 앱이 각자 Prisma 스키마로 붙으면 한쪽
+마이그레이션이 다른 쪽을 리셋하려 든다 (이 DB 는 이미 드리프트가 있어 특히
+위험하다) — 그래서 별도 DB를 쓰는 별도 앱을 상정했었다.
 
-- 반입 앱은 **소단원 ID·유형 ID·개념노드 ID 를 보내지 않는다.** 트리를 복제하면 곧 어긋난다.
-  문제집에 적힌 문자열만 보내고, 매칭은 `src/lib/questionImport.ts` 가 한다
-- 매칭에 실패해도 문항은 저장한다. `raw*` 컬럼에 원본 표기가 남아 나중에 다시 붙일 수 있다.
+두 앱이 공유하기로 했던 것은 `packages/shared/src/questionImport.ts` 의 JSON
+형식 하나뿐이었다.
+
+- 반입 쪽은 **소단원 ID·유형 ID·개념노드 ID 를 보내지 않는다.** 트리를 복제하면 곧 어긋난다.
+  문제집에 적힌 문자열만 보내고, 매칭은 받는 쪽이 한다(LevMathPro는 `curriculumMatch.ts`)
+- 매칭에 실패해도 문항은 저장한다. 원본 표기가 남아 나중에 다시 붙일 수 있다.
   못 찾았다고 버리면 검수까지 끝낸 문항이 사라진다
 - **사람이 손댄 분류(`classifiedBy` ≠ 'auto')는 재반입이 덮어쓰지 않는다.** 좌표와 난이도
   모두 지킨다. 문항 내용(본문·답·풀이)만 최신으로 갱신한다
-- 계약 확인: `GET /api/question-bank/import` 가 형식·한도·난이도 표를 그대로 돌려준다
 
 경계: **학습지**(PDF 1장 = 25문항, 정답만)는 지금처럼 InLevMath 안에서 처리하고,
-**문제집**(문항 단위 + 해설 + 분류)만 반입 앱이 맡는다.
+**문제집**(문항 단위 + 해설 + 분류)은 LevMathPro가 맡는다.
 
 ### 문제 확장 — 원본 하나에서 세 갈래
 

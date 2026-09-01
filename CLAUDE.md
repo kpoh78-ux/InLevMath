@@ -57,8 +57,6 @@ packages/shared — 공통 타입/상수/유틸 (TypeScript, 빌드 없이 직�
 워크스페이스는 이 셋뿐이다. `apps/kiosk`(고아 폴더)와 `packages/database`(쓰이지 않는
 중복 schema.prisma)는 정리했다. 키오스크 화면은 `apps/web/src/components/kiosk/` 안에 있다.
 
-### 아직 화면에 연결되지 않은 기능
-
 ### 키오스크는 선생님 로그인을 쓴다
 
 입구 태블릿의 `/kiosk` 와 그 API 두 개(`kiosk-check`, `confirm-checkout`)는
@@ -268,10 +266,26 @@ GET  /api/events                  — SSE 실시간 알림
 > **2026-08-31 결정 — 채점·문제은행·학습지 생성은 LevMathPro로 옮긴다.**
 > InLevMath는 학원 수업관리·시험대비, 상담 및 학생관리, 알림톡을 주기능으로 한다.
 > 교재(Textbook) 기능은 스키마째 삭제했다(마이그레이션 `20260831000000_remove_textbook`).
-> 아래 `Question`·교육과정 트리·반입 계약은 이미 시딩된 데이터라 지우지 않고 남겨 뒀지만,
+> 아래 `Question`·교육과정 트리는 이미 시딩된 데이터라 지우지 않고 남겨 뒀지만,
 > **실제로 채우고 쓰는 일(문제은행 적재, 교재유사문제·교재오답·학습지오답·단원평가·
 > 모의고사 학습지 생성)은 LevMathPro 쪽에서 한다.** 학습지 배포·채점(OMR)과 그로 인한
 > 레벨업만 InLevMath에 남는다.
+>
+> **2026-09-01 갱신 — 문제은행 반입 API를 지웠다.** 위 결정 이전엔 "반입 전용
+> 3번째 앱이 이 DB에 문항을 채워 넣는다"는 계획이 있었고, `POST/GET
+> /api/question-bank/import`·`GET/PATCH /api/question-bank/[id]`·
+> `src/lib/questionImport.ts`(466줄)·`packages/shared/src/questionImport.ts`
+> (347줄)까지 실제로 완성해 배포까지 돼 있었다. 그런데 그 계약을 부를 "반입 앱"도,
+> InLevMath 안에서 그 API를 부르는 화면도 끝내 안 생겼다 — 선생님 인증까지 걸린
+> 채로 아무도 안 부르는 코드 1,097줄이 남아 있던 걸 뒤늦게 발견해 지웠다
+> (`packages/shared/src/index.ts`의 재export도 같이 뺐다).
+>
+> 이제 문제 반입은 LevMathPro가 PDF 업로드 → Gemini 추출 → 교육과정 대조 →
+> 검수로 직접 한다. 애초에 "같은 Postgres에 두 앱이 각자 Prisma로 붙으면
+> 충돌한다"는 게 별도 앱을 두려던 이유였는데, LevMathPro는 처음부터 별도
+> Supabase 프로젝트를 써서 그 위험이 없다 — 3번째 앱을 따로 둘 이유 자체가
+> 없었다. 실제 구현: `C:\My-Project\fourth_Project_LevMathPro`(별도 저장소·
+> 별도 배포)의 `src/lib/ai/gemini.ts`(추출)·`src/lib/questionBank/`(대조·검수).
 
 ### 난이도는 1~5 하나뿐
 
@@ -289,45 +303,10 @@ GET  /api/events                  — SSE 실시간 알림
 | 학교시험대비·단원평가 | 4 |
 | 서술형·심화 | 5 |
 
-### 문제 반입은 LevMathPro가 직접 한다 (2026-09-01 갱신 — 아래는 옛 계획)
-
-> **2026-09-01 결정 — "반입 전용 3번째 앱"은 안 만든다. LevMathPro가 PDF
-> 업로드 → Gemini OCR/AI 추출 → 교육과정 대조 → 검수까지 직접 맡는다.**
-> 아래 문단(별도 앱·`packages/shared/src/questionImport.ts` JSON 계약·
-> `GET /api/question-bank/import`)은 이 결정 이전의 계획이라 지금은 안 쓴다 —
-> 그 계약을 구현한 적이 없으므로 지울 코드도 없다. 남겨 둔 이유는 아래 세
-> 원칙(좌표·개념노드 ID를 직접 안 보낸다, 매칭 실패해도 버리지 않는다,
-> 사람이 손댄 분류는 재반입이 안 덮는다)이 여전히 옳고, LevMathPro의 반입
-> 파이프라인(`src/lib/questionBank/`)도 그대로 따르고 있어서다.
->
-> 애초에 "같은 Postgres에 두 앱이 각자 Prisma로 붙으면 충돌한다"는 게
-> 별도 앱을 두려던 이유였는데, LevMathPro는 처음부터 별도 Supabase
-> 프로젝트를 쓰고 있어 그 위험이 없다 — 3번째 앱과 JSON 계약을 거칠
-> 이유 자체가 사라졌다. 이 DB(InLevMath 쪽)의 `Question`·교육과정 트리는
-> 여전히 시딩된 데이터로 남아 있지만, 새 문항 반입은 여기 붙지 않는다.
-> LevMathPro 쪽 실제 구현: `apps/web` 아님, `C:\My-Project\fourth_Project_LevMathPro`
-> (별도 저장소·별도 배포) — `src/lib/ai/gemini.ts`(추출), `src/lib/questionBank/
-> curriculumMatch.ts`(대조), `src/lib/questionBank/review.ts`(검수).
-
-문제집 PDF 파싱·해설 추출·사람 검수를 별도 앱이 자기 DB로 맡는다는 게 원래
-계획이었다. 같은 PostgreSQL 에 두 앱이 각자 Prisma 스키마로 붙으면 한쪽
-마이그레이션이 다른 쪽을 리셋하려 든다 (이 DB 는 이미 드리프트가 있어 특히
-위험하다) — 그래서 별도 DB를 쓰는 별도 앱을 상정했었다.
-
-두 앱이 공유하기로 했던 것은 `packages/shared/src/questionImport.ts` 의 JSON
-형식 하나뿐이었다.
-
-- 반입 쪽은 **소단원 ID·유형 ID·개념노드 ID 를 보내지 않는다.** 트리를 복제하면 곧 어긋난다.
-  문제집에 적힌 문자열만 보내고, 매칭은 받는 쪽이 한다(LevMathPro는 `curriculumMatch.ts`)
-- 매칭에 실패해도 문항은 저장한다. 원본 표기가 남아 나중에 다시 붙일 수 있다.
-  못 찾았다고 버리면 검수까지 끝낸 문항이 사라진다
-- **사람이 손댄 분류(`classifiedBy` ≠ 'auto')는 재반입이 덮어쓰지 않는다.** 좌표와 난이도
-  모두 지킨다. 문항 내용(본문·답·풀이)만 최신으로 갱신한다
-
-경계: **학습지**(PDF 1장 = 25문항, 정답만)는 지금처럼 InLevMath 안에서 처리하고,
-**문제집**(문항 단위 + 해설 + 분류)은 LevMathPro가 맡는다.
-
 ### 문제 확장 — 원본 하나에서 세 갈래
+
+`variantKind` 는 문항 하나가 원본에서 어떻게 뻗어 나가는지를 나타낸다.
+LevMathPro의 `Question` 도 같은 설계를 그대로 물려받아 쓴다.
 
 | `variantKind` | 뜻 | 난이도 |
 |---|---|---|
@@ -336,24 +315,22 @@ GET  /api/events                  — SSE 실시간 알림
 | `REPHRASED` | 표현 바꾼 문제 | 단서 없으면 **원본을 물려받는다** |
 | `COMPOSITE` | 복합 유형 — 다른 단원 개념을 얹었다 | **하한 4** (`COMPOSITE_MIN_DIFFICULTY`) |
 
-- 변형은 `originId` 로 원본을 가리킨다. 반입 시에는 원본의 `ref` 를 적어 보내고,
-  **원본과 변형을 같은 페이로드에 섞어 보내도 순서와 무관하게 붙는다** (2차 통과에서 연결).
-  원본이 아직 없으면 문항은 저장하되 `danglingVariants` 로 알린다 — 버리지 않는다.
+- 변형은 `originId` 로 원본을 가리킨다.
 - 복합 유형은 개념 하나에 담기지 않으므로 `QuestionConcept`(다대다)에 primary/secondary 로 담는다.
   "개념 A와 B가 함께 나오는 문제"를 뽑으려면 이 표를 본다.
-- 개념 이름 매칭은 유사도라 **비슷하지만 다른 개념에 걸릴 수 있다.** 반입 결과의
-  `conceptMatches` 가 무엇이 무엇으로 붙었는지 그대로 돌려주니 확인하고 고친다.
 
-### 오류 문제는 지우지 않고 표시한다
+이 문항들을 채우던 반입 API(원본·변형 매칭, 개념 이름 유사도 매칭 등 구체적인
+메커니즘)는 위 2026-09-01 갱신에서 지웠다 — 지금 이 로직은 LevMathPro의
+`curriculumMatch.ts` 쪽에 있다.
 
-`PATCH /api/question-bank/[id]` 로 선생님이 본문·답·풀이·좌표·난이도를 고친다.
+### 오류 문제는 지우지 않고 표시한다 (스키마엔 남아 있음, 지금 이 DB엔 고치는 API가 없다)
 
-- `status`: `active` | `flagged`(오류 의심) | `retired`(더 쓰지 않음).
-  **지우지 않는 이유** — 이미 학생에게 나간 기록이 그 문항을 가리키고 있다
-- 고친 흔적을 두 갈래로 남긴다. 재반입이 되돌리지 못하게 하기 위해서다
-  - `editedAt`/`editedBy` — 본문·답·풀이를 고쳤다 → 반입이 **내용**을 건드리지 않는다
-  - `classifiedBy` (≠ 'auto') — 좌표·난이도를 고쳤다 → 반입이 **분류**를 건드리지 않는다
-  - 둘을 따로 두는 이유: 본문만 고쳤는데 자동 분류까지 잠기면 안 된다
+`Question` 에 `status`(`active`|`flagged`|`retired`)·`flagReason`·`editedAt`/`editedBy`·
+`classifiedBy` 필드가 여전히 있다 — 오류 문제를 지우지 않고 표시만 하려던 설계다
+(이미 학생에게 나간 기록이 그 문항을 가리키고 있어서 지우면 안 된다는 원칙 자체는
+여전히 옳다). 다만 이걸 선생님이 직접 고치던 `PATCH /api/question-bank/[id]`는
+2026-09-01에 지웠다 — InLevMath 안에 이 값을 고치는 화면이 없었다. 지금 문제은행을
+고치는 화면은 LevMathPro 쪽에 있다(`src/lib/questionBank/review.ts`).
 
 ## 정답 데이터 확장성 원칙
 

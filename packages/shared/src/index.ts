@@ -652,9 +652,6 @@ export * from './hooks/useResponsiveViewport'
 
 
 
-// 문제 반입 계약 — 문제집 반입 앱과 주고받는 JSON 형식과 난이도 규칙
-export * from "./questionImport"
-
 // 채점 피드백 — 5단계 등급 · 성적 변화 · 레벨 변화 문구와 소리 단서
 export * from "./feedback"
 

@@ -180,7 +180,7 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
           isActive ? 'bg-indigo-50/80 font-bold text-indigo-950' : 'text-slate-800'
         }`}
       >
-        <span className="text-xs font-medium truncate flex-1 pr-2">{student.name}</span>
+        <span className="text-sm font-medium truncate flex-1 pr-2">{student.name}</span>
 
         {/* ── 미등원 [출석] / 등원 완료 [• 하원] / 하원 완료 [완료] ── */}
         <button
@@ -218,7 +218,7 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-scale-up"
+            className="bg-white rounded-2xl w-[min(90vw,26rem)] shadow-2xl border border-slate-100 overflow-hidden animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 모달 헤더 */}
@@ -237,30 +237,30 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
             <div className="p-6 space-y-5">
               {/* 등원 → 하원 타임라인 (조절 중인 시각이 실시간 반영된다) */}
               <div className="flex items-center justify-between bg-slate-50 px-4 py-3 rounded-xl text-xs">
-                <span className="flex flex-col items-start gap-0.5">
-                  <span className="flex items-center gap-1.5 font-bold text-blue-600">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="flex flex-col items-start gap-0.5 shrink-0 whitespace-nowrap">
+                  <span className="flex items-center gap-1.5 font-bold text-blue-600 whitespace-nowrap">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                     등원
                   </span>
-                  <span className="font-mono font-bold text-slate-800 pl-3.5">
+                  <span className="font-mono font-bold text-slate-800 pl-3.5 whitespace-nowrap">
                     {toKoreanTime(checkInInput) || '—'}
                   </span>
                 </span>
 
                 <span className="flex-1 mx-3 border-t border-dashed border-slate-300" />
 
-                <span className="flex flex-col items-end gap-0.5">
+                <span className="flex flex-col items-end gap-0.5 shrink-0 whitespace-nowrap">
                   <span
-                    className={`flex items-center gap-1.5 font-bold ${
+                    className={`flex items-center gap-1.5 font-bold whitespace-nowrap ${
                       mode === 'CHECK_IN' ? 'text-slate-400' : 'text-slate-800'
                     }`}
                   >
                     하원
                     <span
-                      className={`w-2 h-2 rounded-full ${mode === 'CHECK_IN' ? 'bg-slate-300' : 'bg-slate-700'}`}
+                      className={`w-2 h-2 rounded-full shrink-0 ${mode === 'CHECK_IN' ? 'bg-slate-300' : 'bg-slate-700'}`}
                     />
                   </span>
-                  <span className="font-mono font-bold text-slate-800 pr-3.5">
+                  <span className="font-mono font-bold text-slate-800 pr-3.5 whitespace-nowrap">
                     {mode === 'CHECK_IN' ? '하원 전' : toKoreanTime(checkOutInput) || '—'}
                   </span>
                 </span>
@@ -268,15 +268,15 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
 
               {/* 날짜 */}
               <div className="flex items-center justify-between text-sm">
-                <span className="font-bold text-slate-700">
+                <span className="font-bold text-slate-700 shrink-0 whitespace-nowrap">
                   {mode === 'CHECK_IN' ? '등원 날짜' : '하원 날짜'}
                 </span>
-                <span className="font-semibold text-slate-900">{todayFormatted}</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">{todayFormatted}</span>
               </div>
 
               {/* 등원 시간 — 하원 처리 중에도 잘못 찍힌 등원 시각을 고치거나 지울 수 있다 */}
               <div className="flex items-center justify-between text-sm">
-                <span className="font-bold text-slate-700">등원 시간</span>
+                <span className="font-bold text-slate-700 shrink-0 whitespace-nowrap">등원 시간</span>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="time"
@@ -302,7 +302,7 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
               {/* 하원 시간 */}
               {mode !== 'CHECK_IN' && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-bold text-slate-700">하원 시간</span>
+                  <span className="font-bold text-slate-700 shrink-0 whitespace-nowrap">하원 시간</span>
                   <div className="flex items-center gap-1.5">
                     <input
                       type="time"

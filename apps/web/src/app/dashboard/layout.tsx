@@ -50,6 +50,7 @@ function groupByGrade(students: AttendedStudent[]) {
     if (!groups[s.grade]) groups[s.grade] = []
     groups[s.grade].push(s)
   })
+  Object.values(groups).forEach(list => list.sort((a, b) => a.name.localeCompare(b.name, 'ko')))
   return groups
 }
 
@@ -76,6 +77,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   const [teacherName, setTeacherName] = useState('')
   const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
+  const [onlyAttended, setOnlyAttended] = useState(false)
   const [sidebarStudents, setSidebarStudents] = useState<AttendedStudent[]>([])
   const [notifications, setNotifications] = useState<RealtimeNotification[]>([])
   // 좁은 화면(태블릿 세로 이하)에서 출결 사이드바를 서랍으로 여닫는다
@@ -270,13 +272,24 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   const showAttendanceSidebar = !pathname.startsWith('/dashboard/manage')
-  const gradeGroups = groupByGrade(sidebarStudents)
+  const visibleStudents = onlyAttended ? sidebarStudents.filter(s => s.attended) : sidebarStudents
+  const gradeGroups = groupByGrade(visibleStudents)
   const sortedGrades = GRADE_ORDER.filter(g => gradeGroups[g])
   const attendedTotal = sidebarStudents.filter(s => s.attended).length
   const total = sidebarStudents.length
+  const allExpanded = sortedGrades.length > 0 && sortedGrades.every(g => expandedGrades[g] ?? true)
 
   const toggleGrade = (grade: string) =>
     setExpandedGrades(prev => ({ ...prev, [grade]: !prev[grade] }))
+
+  const toggleAllGrades = () => {
+    const next = !allExpanded
+    setExpandedGrades(prev => {
+      const nextState = { ...prev }
+      sortedGrades.forEach(g => { nextState[g] = next })
+      return nextState
+    })
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
@@ -430,9 +443,29 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
+            <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
+              <button
+                onClick={toggleAllGrades}
+                className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors"
+              >
+                {allExpanded ? '전체 닫기' : '전체 열기'}
+              </button>
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyAttended}
+                  onChange={(e) => setOnlyAttended(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded-sm border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                등원생만
+              </label>
+            </div>
+
             <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
               {sortedGrades.length === 0 && (
-                <p className="text-[11px] text-gray-300 text-center py-6">등록된 학생이 없습니다</p>
+                <p className="text-[11px] text-gray-300 text-center py-6">
+                  {onlyAttended ? '등원한 학생이 없습니다' : '등록된 학생이 없습니다'}
+                </p>
               )}
               {sortedGrades.map(grade => {
                 const students = gradeGroups[grade]
@@ -446,7 +479,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                         hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center gap-1">
-                        <span className="text-[11px] font-bold text-gray-500">{grade}</span>
+                        <span className="text-base font-extrabold text-gray-900">{grade}</span>
                         <span className="text-[11px] text-gray-300">/{students.length}</span>
                       </div>
                       <svg

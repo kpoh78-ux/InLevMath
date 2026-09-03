@@ -28,7 +28,7 @@ function jwtSecret() {
 async function signLocalJWT(userId: string, phone: string): Promise<string> {
   return new SignJWT({ sub: userId, phone })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
+    .setExpirationTime('12h')
     .sign(jwtSecret())
 }
 

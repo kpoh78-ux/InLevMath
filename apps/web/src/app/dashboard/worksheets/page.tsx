@@ -570,7 +570,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
       {/* ── O/X 채점 모달 ── */}
       {gradingDist && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col" style={{ maxHeight: '92vh' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl flex flex-col" style={{ maxHeight: '92vh' }}>
             <div className="flex items-start justify-between p-6 pb-4 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">O/X 채점</h2>
@@ -641,7 +641,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto p-5">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                     {Array.from({ length: gradingDist.worksheet.problemCount }, (_, i) => {
                       const num = i + 1
                       const isMarked = markedSet.has(num)
@@ -660,7 +660,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                           onKeyDown={e => {
                             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProblem(num) }
                           }}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-xl border-2 transition-all cursor-pointer min-h-[46px]
+                          className={`flex items-center gap-1.5 px-2 py-2 rounded-xl border-2 transition-all cursor-pointer min-h-[46px]
                             ${!isMarked
                               ? (isPending ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white')
                               : isWrong

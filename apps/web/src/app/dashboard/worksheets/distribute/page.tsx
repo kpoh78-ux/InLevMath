@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, stepDisplayLabel, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
-import { compareWorksheets } from '@/lib/worksheetSort'
+import { compareWorksheets, worksheetOrderKey } from '@/lib/worksheetSort'
 
 type WS = {
   id: string; title: string; grade: string; unit: string
@@ -46,6 +46,8 @@ export default function DistributePage() {
   const [distributedIds, setDistributedIds] = useState<Set<string>>(new Set())
   const [gradeFilter, setGradeFilter] = useState('')
   const [allStudents, setAllStudents] = useState<StudentItem[]>([])
+  const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
+  const [expandedUnits, setExpandedUnits] = useState<Record<string, boolean>>({})
 
   const fetchWorksheets = useCallback(async () => {
     setLoadingList(true)
@@ -63,9 +65,16 @@ export default function DistributePage() {
       if (res.ok) {
         const data = await res.json() as { id: string; grade: string; user: { name: string } }[]
         const sorted = [...data].sort((a, b) =>
-          GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade)
+          GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) ||
+          a.user.name.localeCompare(b.user.name, 'ko')
         )
         setAllStudents(sorted.map(s => ({ id: s.id, name: s.user.name, grade: s.grade })))
+        setExpandedGrades(prev => {
+          const grades = [...new Set(sorted.map(s => s.grade))]
+          const next = { ...prev }
+          grades.forEach(g => { if (next[g] === undefined) next[g] = true })
+          return next
+        })
       }
     } catch { /* 무시 */ }
   }, [])
@@ -85,13 +94,36 @@ export default function DistributePage() {
     )
     .sort(compareWorksheets)
 
+  // 제목 맨 앞 대단원 숫자로 그룹핑 — "1-1. 제곱근과 실수(1회)" → 대단원 1
+  const wsUnitGroups: { key: string; label: string; list: WS[] }[] = []
+  const wsUnitIndex = new Map<string, number>()
+  filteredWS.forEach(w => {
+    const majorUnit = worksheetOrderKey(w.title).units[0]
+    const key = majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타')
+    const label = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
+    if (!wsUnitIndex.has(key)) {
+      wsUnitIndex.set(key, wsUnitGroups.length)
+      wsUnitGroups.push({ key, label, list: [] })
+    }
+    wsUnitGroups[wsUnitIndex.get(key)!].list.push(w)
+  })
+  const allUnitsExpanded = wsUnitGroups.length > 0 &&
+    wsUnitGroups.every(g => expandedUnits[g.key] ?? true)
+
+  const toggleUnit = (key: string) =>
+    setExpandedUnits(prev => ({ ...prev, [key]: !(prev[key] ?? true) }))
+
+  const toggleAllUnits = () => {
+    const next = !allUnitsExpanded
+    setExpandedUnits(prev => {
+      const nextState = { ...prev }
+      wsUnitGroups.forEach(g => { nextState[g.key] = next })
+      return nextState
+    })
+  }
+
   const toggleWS = (id: string) =>
     setSelectedWS(prev => prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id])
-
-  const selectAllWS = () =>
-    setSelectedWS(prev =>
-      prev.length === filteredWS.length ? [] : filteredWS.map(w => w.id)
-    )
 
   const toggleStudent = (id: string) =>
     setSelectedStudents(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
@@ -100,6 +132,27 @@ export default function DistributePage() {
     setSelectedStudents(
       selectedStudents.length === allStudents.length ? [] : allStudents.map(s => s.id)
     )
+
+  const studentGradeGroups: Record<string, StudentItem[]> = {}
+  allStudents.forEach(s => {
+    if (!studentGradeGroups[s.grade]) studentGradeGroups[s.grade] = []
+    studentGradeGroups[s.grade].push(s)
+  })
+  const sortedStudentGrades = GRADE_ORDER.filter(g => studentGradeGroups[g])
+  const allGradesExpanded = sortedStudentGrades.length > 0 &&
+    sortedStudentGrades.every(g => expandedGrades[g] ?? true)
+
+  const toggleGrade = (grade: string) =>
+    setExpandedGrades(prev => ({ ...prev, [grade]: !(prev[grade] ?? true) }))
+
+  const toggleAllGrades = () => {
+    const next = !allGradesExpanded
+    setExpandedGrades(prev => {
+      const nextState = { ...prev }
+      sortedStudentGrades.forEach(g => { nextState[g] = next })
+      return nextState
+    })
+  }
 
   const handleDistribute = async () => {
     if (selectedWS.length === 0 || selectedStudents.length === 0) return
@@ -183,21 +236,21 @@ export default function DistributePage() {
       {/* 가운데: 학습지 목록 */}
       <div className="flex-1 bg-gray-50 flex flex-col">
         <div className="px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-3">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${STEP_STYLE[activeStep]?.bg ?? 'bg-gray-100'} ${STEP_STYLE[activeStep]?.text ?? 'text-gray-600'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${STEP_STYLE[activeStep]?.dot ?? 'bg-gray-400'}`} />
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap ${STEP_STYLE[activeStep]?.bg ?? 'bg-gray-100'} ${STEP_STYLE[activeStep]?.text ?? 'text-gray-600'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STEP_STYLE[activeStep]?.dot ?? 'bg-gray-400'}`} />
             {activeCategory} · {activeStep}
           </div>
-          {threshold && <span className="text-xs text-gray-400">클리어 기준: {threshold}%</span>}
-          {filteredWS.length > 0 && (
-            <button onClick={selectAllWS}
-              className="text-[11px] font-medium text-indigo-500 hover:text-indigo-700 whitespace-nowrap">
-              {selectedWS.length === filteredWS.length ? '전체 해제' : '전체 선택'}
-            </button>
-          )}
+          {threshold && <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">클리어 기준: {threshold}%</span>}
           {selectedWS.length > 0 && (
             <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">
               {selectedWS.length}개 선택
             </span>
+          )}
+          {wsUnitGroups.length > 0 && (
+            <button onClick={toggleAllUnits}
+              className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors whitespace-nowrap">
+              {allUnitsExpanded ? '전체 닫기' : '전체 열기'}
+            </button>
           )}
           <div className="ml-auto flex gap-1.5">
             {['', ...WS_GRADES].map(g => (
@@ -209,7 +262,7 @@ export default function DistributePage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {loadingList ? (
             <p className="text-sm text-gray-400 text-center py-12">불러오는 중...</p>
           ) : filteredWS.length === 0 ? (
@@ -217,33 +270,50 @@ export default function DistributePage() {
               <p className="text-sm">이 스텝에 등록된 학습지가 없습니다.</p>
               <p className="text-xs mt-1">학습지 메뉴에서 먼저 등록해주세요.</p>
             </div>
-          ) : filteredWS.map(ws => {
-            const isSelected = selectedWS.includes(ws.id)
-            const alreadyDist = distributedIds.has(ws.id)
-            const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
+          ) : wsUnitGroups.map(group => {
+            const isExpanded = expandedUnits[group.key] ?? true
             return (
-              <button key={ws.id} onClick={() => toggleWS(ws.id)}
-                className={`w-full text-left bg-white rounded-xl border-2 px-4 py-3.5 transition-all ${isSelected ? 'border-indigo-500 shadow-md shadow-indigo-100' : 'border-gray-200 hover:border-indigo-200'}`}>
-                <div className="flex items-start gap-3">
-                  {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
-                  <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
-                    {isSelected && (
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
+              <div key={group.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                  onClick={() => toggleUnit(group.key)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-gray-600">{group.label}</span>
+                    <span className="text-[11px] text-gray-400">/{group.list.length}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
-                      <span className="text-[11px] text-gray-400">{ws.grade}</span>
-                      {alreadyDist && <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">배포완료</span>}
-                    </div>
-                    <p className="text-sm font-semibold text-gray-800 truncate">{ws.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{ws.unit} · {ws.problemCount}문제</p>
-                  </div>
-                </div>
-              </button>
+                  <svg
+                    className={`w-3 h-3 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {isExpanded && group.list.map(ws => {
+                  const isSelected = selectedWS.includes(ws.id)
+                  const alreadyDist = distributedIds.has(ws.id)
+                  const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
+                  return (
+                    <button key={ws.id} onClick={() => toggleWS(ws.id)}
+                      className={`w-full text-left px-4 py-2 border-t border-gray-100 transition-colors flex items-center gap-2.5 ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                      {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                        {isSelected && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
+                      <span className="text-sm font-semibold text-gray-800 truncate flex-1">{ws.title}</span>
+                      {alreadyDist && (
+                        <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">배포완료</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
         </div>
@@ -268,6 +338,13 @@ export default function DistributePage() {
             </button>
           </div>
           <p className="text-[11px] text-gray-400 mt-0.5">등록 학생 {allStudents.length}명</p>
+        </div>
+
+        <div className="px-4 pb-2 flex items-center justify-between">
+          <button onClick={toggleAllGrades}
+            className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors">
+            {allGradesExpanded ? '전체 닫기' : '전체 열기'}
+          </button>
         </div>
 
         {/* 선택한 학습지 요약 + 배포 버튼 — 학생 목록을 스크롤해도 항상 보이도록 상단 고정 */}
@@ -300,19 +377,42 @@ export default function DistributePage() {
         <div className="flex-1 overflow-y-auto py-2">
           {allStudents.length === 0 ? (
             <p className="text-[11px] text-gray-300 text-center py-6">학생을 불러오는 중...</p>
-          ) : allStudents.map(s => {
-            const checked = selectedStudents.includes(s.id)
+          ) : sortedStudentGrades.map(grade => {
+            const students = studentGradeGroups[grade]
+            const isExpanded = expandedGrades[grade] ?? true
             return (
-              <button key={s.id} onClick={() => toggleStudent(s.id)}
-                className={`w-full flex items-center gap-2.5 px-4 py-2 transition-colors ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
-                  {checked && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
-                  </svg>}
-                </div>
-                <span className={`text-xs flex-1 text-left ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-600'}`}>{s.name}</span>
-                <span className="text-[11px] text-gray-300">{s.grade}</span>
-              </button>
+              <div key={grade}>
+                <button
+                  onClick={() => toggleGrade(grade)}
+                  className="w-full flex items-center justify-between px-4 py-1.5 hover:bg-gray-50 transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-gray-500">{grade}</span>
+                    <span className="text-[11px] text-gray-300">/{students.length}</span>
+                  </div>
+                  <svg
+                    className={`w-3 h-3 text-gray-300 group-hover:text-gray-500 transition-transform duration-150 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {isExpanded && students.map(s => {
+                  const checked = selectedStudents.includes(s.id)
+                  return (
+                    <button key={s.id} onClick={() => toggleStudent(s.id)}
+                      className={`w-full flex items-center gap-2.5 px-4 py-2 transition-colors ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                        {checked && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+                        </svg>}
+                      </div>
+                      <span className={`text-xs flex-1 text-left ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-600'}`}>{s.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
         </div>

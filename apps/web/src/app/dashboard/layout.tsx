@@ -348,11 +348,11 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   className={`
                     relative flex items-center h-full border-b-2 transition-all duration-150
                     ${n.brand
-                      ? `w-[104px] lg:w-[160px] pl-3 lg:pl-6 text-[16px] lg:text-[18px] font-black tracking-tight shrink-0
+                      ? `w-56 lg:w-48 justify-center text-[20px] lg:text-[22px] font-black tracking-tight shrink-0
                           ${active
                             ? 'border-indigo-600 text-indigo-600 bg-indigo-50/60'
                             : 'border-transparent text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`
-                      : `px-3 lg:px-6 text-[14px] lg:text-[15px] font-medium shrink-0 whitespace-nowrap
+                      : `px-3 lg:px-6 text-[16px] lg:text-[17px] font-medium shrink-0 whitespace-nowrap
                           ${active
                             ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60'
                             : 'border-transparent text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400'}`

@@ -377,7 +377,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
       {/* 배포 목록 — 하단 액션바가 마지막 행을 가리지 않도록 아래 여백을 둔다 */}
       <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${selected.size > 0 ? 'mb-20' : ''}`}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
               <th className="px-3 py-3 w-10 text-center">
@@ -391,7 +391,6 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                 />
               </th>
               <th className="px-2 py-3 text-left font-medium">학습지명</th>
-              <th className="px-4 py-3 text-left font-medium w-28">단계</th>
               <th className="px-4 py-3 text-center font-medium w-20">문제 수</th>
               <th className="px-4 py-3 text-center font-medium w-24">상태</th>
               <th className="px-4 py-3 text-center font-medium w-20">정답률</th>
@@ -402,7 +401,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {distributions.length === 0 ? (
-              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400 text-sm">
+              <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400 text-sm">
                 배포된 학습지가 없습니다.
               </td></tr>
             ) : distributions.map(d => {
@@ -421,20 +420,17 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                     />
                   </td>
                   <td className="px-2 py-3.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`inline-block whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded border shrink-0 ${STEP_BADGE[d.worksheet.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                        {d.worksheet.step}
+                      </span>
                       {d.homeworkAt && (
                         <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
                           숙제
                         </span>
                       )}
-                      <span className="font-semibold text-gray-800">{d.worksheet.title}</span>
+                      <span className="font-semibold text-gray-800 truncate" title={d.worksheet.title}>{d.worksheet.title}</span>
                     </div>
-                    <div className="text-xs text-gray-400 mt-0.5">{d.worksheet.grade} · {d.worksheet.unit}</div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span className={`inline-block whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[d.worksheet.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                      {d.worksheet.step}
-                    </span>
                   </td>
                   <td className="px-4 py-3.5 text-center text-gray-700 font-medium">{d.worksheet.problemCount}</td>
                   <td className="px-4 py-3.5 text-center">

@@ -214,11 +214,11 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
       {/* ── 등원 / 하원 / 수정 팝업 모달 ── */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl w-[min(90vw,26rem)] shadow-2xl border border-slate-100 overflow-hidden animate-scale-up"
+            className="bg-white rounded-2xl w-[min(90vw,38rem)] aspect-square max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 모달 헤더 */}

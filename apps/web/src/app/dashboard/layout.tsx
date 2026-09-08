@@ -457,7 +457,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   onChange={(e) => setOnlyAttended(e.target.checked)}
                   className="w-3.5 h-3.5 rounded-sm border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                등원생만
+                등원생
               </label>
             </div>
 

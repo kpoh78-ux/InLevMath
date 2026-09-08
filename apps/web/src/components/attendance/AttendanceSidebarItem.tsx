@@ -198,13 +198,13 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
           {mode === 'CHECK_OUT' && (
             <>
               <span className="w-1.5 h-1.5 rounded-full bg-slate-900 inline-block" />
-              <span>하원</span>
+              <span>등원</span>
             </>
           )}
           {mode === 'DONE' && (
             <>
               <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" />
-              <span>완료</span>
+              <span>하원</span>
             </>
           )}
           {mode === 'CHECK_IN' && <span>출석</span>}
@@ -214,29 +214,36 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
       {/* ── 등원 / 하원 / 수정 팝업 모달 ── */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/15 p-4 animate-fade-in"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl w-[min(90vw,26rem)] shadow-2xl border border-slate-100 overflow-hidden animate-scale-up"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white rounded-xl shadow-2xl border border-slate-300 animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 모달 헤더 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center justify-between px-5 py-4 bg-slate-50 border-b border-slate-200">
               <h3 className="text-base font-bold text-slate-900">
-                {student.name} 학생 {modeLabel}
+                {student.name} 학생 출결 및 등하원 시간 관리
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-5 space-y-4 text-xs">
+              <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 p-3 rounded-lg text-slate-700">
+                <span className="font-bold text-sm text-blue-950">{student.name}</span>
+                <span className="bg-white text-slate-600 px-2 py-0.5 rounded font-semibold border border-slate-200">
+                  {modeLabel}
+                </span>
+              </div>
+
               {/* 등원 → 하원 타임라인 (조절 중인 시각이 실시간 반영된다) */}
-              <div className="flex items-center justify-between bg-slate-50 px-4 py-3 rounded-xl text-xs">
+              <div className="flex items-center justify-between bg-slate-50 px-4 py-3 rounded-lg border border-slate-200">
                 <span className="flex flex-col items-start gap-0.5 shrink-0 whitespace-nowrap">
                   <span className="flex items-center gap-1.5 font-bold text-blue-600 whitespace-nowrap">
                     <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
@@ -346,16 +353,16 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
               )}
 
               {/* 학부모 알림 문자/알림톡 전송 체크박스 */}
-              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-50/50 border border-blue-100 cursor-pointer select-none">
+              <label className="flex items-center justify-between gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer select-none hover:bg-slate-100/80 transition-colors">
                 <input
                   type="checkbox"
                   checked={sendSms}
                   onChange={(e) => setSendSms(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-blue-600 rounded-sm focus:ring-blue-500"
+                  className="order-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                 />
                 <div>
                   <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                    <span>학부모에게 {mode === 'CHECK_IN' ? '등원' : '하원'} 안내 문자/알림톡 전송</span>
+                    <span>학부모 알림톡 / SMS 문자 자동 발송</span>
                     <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
                   </div>
                   <span className="text-[11px] text-slate-500 block mt-0.5">
@@ -363,21 +370,29 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
                   </span>
                 </div>
               </label>
+            </div>
 
-              {/* 제출 버튼 */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-100 transition-colors"
+              >
+                취소
+              </button>
               <button
                 type="button"
                 onClick={handleConfirm}
                 disabled={busy}
-                className="w-full py-3.5 rounded-xl bg-blue-500 hover:bg-blue-600 active:scale-98 text-white font-bold text-sm shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors disabled:opacity-50"
               >
                 {loading
                   ? '처리 중...'
                   : mode === 'CHECK_IN'
-                    ? '등원하기'
+                    ? '등원 처리 및 알림톡 발송'
                     : mode === 'CHECK_OUT'
-                      ? '하원하기'
-                      : '시간 저장'}
+                      ? '하원 처리 및 알림톡 발송'
+                      : '저장 및 알림톡 발송'}
               </button>
             </div>
           </div>

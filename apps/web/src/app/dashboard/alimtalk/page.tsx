@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Bell, MessageSquare, Send, CheckCircle2, XCircle, Clock, ShieldCheck, 
-  RefreshCw, Filter, Download, Sparkles, AlertCircle 
+  Bell, MessageSquare, Send, CheckCircle2, XCircle, Clock,
+  RefreshCw, Sparkles, AlertCircle
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { ReportItemsPanel } from '@/components/alimtalk/ReportItemsPanel';
@@ -67,7 +67,10 @@ export default function AlimtalkPage() {
   }, []);
 
   useEffect(() => {
-    fetchLogs();
+    const timer = window.setTimeout(() => {
+      void fetchLogs();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchLogs]);
 
   // 발송 통계 계산
@@ -349,7 +352,6 @@ export default function AlimtalkPage() {
                       <th className="py-3 px-4 font-bold">학생명</th>
                       <th className="py-3 px-4 font-bold">수신 번호</th>
                       <th className="py-3 px-4 font-bold">채널</th>
-                      <th className="py-3 px-4 font-bold">제목 / 내용 미리보기</th>
                       <th className="py-3 px-4 font-bold">상태</th>
                       <th className="py-3 px-4 font-bold text-right">상세</th>
                     </tr>
@@ -357,7 +359,7 @@ export default function AlimtalkPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-10 text-gray-400">
+                        <td colSpan={6} className="text-center py-10 text-gray-400">
                           발송 내역이 없습니다.
                         </td>
                       </tr>
@@ -384,9 +386,6 @@ export default function AlimtalkPage() {
                             >
                               {log.sendChannel}
                             </span>
-                          </td>
-                          <td className="py-3.5 px-4 max-w-xs truncate text-gray-600">
-                            {log.sentMessageText || log.messageTitle || '-'}
                           </td>
                           <td className="py-3.5 px-4">
                             <span
@@ -554,7 +553,9 @@ export default function AlimtalkPage() {
                     <label className="block text-xs font-bold text-gray-700 mb-1.5">메시지 유형</label>
                     <select
                       value={testType}
-                      onChange={(e) => setTestType(e.target.value as any)}
+                      onChange={(e) =>
+                        setTestType(e.target.value as 'CHECK_IN' | 'CHECK_OUT' | 'REPORT')
+                      }
                       className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold"
                     >
                       <option value="CHECK_IN">등원 안내 알림톡</option>

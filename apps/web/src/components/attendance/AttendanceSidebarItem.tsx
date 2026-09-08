@@ -218,7 +218,7 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="w-[min(90vw,38rem)] aspect-square max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white rounded-xl shadow-2xl border border-slate-300 animate-scale-up"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden bg-white rounded-xl shadow-2xl border border-slate-300 animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 모달 헤더 */}
@@ -370,8 +370,6 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
                   </span>
                 </div>
               </label>
-
-              {/* 제출 버튼 */}
             </div>
 
             <div className="flex items-center justify-end gap-2 px-5 py-3.5 bg-slate-50 border-t border-slate-200">

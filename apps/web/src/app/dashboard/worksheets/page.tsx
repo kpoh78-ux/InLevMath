@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, stepNeedsSubType, stepDisplayLabel, type UnitStep,
+  UNIT_STEPS, EXAM_STEPS, STEP_SUB_TYPES, STEP_CLEAR_THRESHOLD, stepNeedsSubType, stepDisplayLabel, type UnitStep,
   type WorksheetStep,
 } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
@@ -15,7 +15,7 @@ import {
 } from '@/components/AnswerInput'
 import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
 import { WorksheetAiAnswersModal } from '@/components/WorksheetAiAnswersModal'
-import { compareWorksheets, WS_GRADE_ORDER } from '@/lib/worksheetSort'
+import { compareWorksheets, worksheetOrderKey, WS_GRADE_ORDER } from '@/lib/worksheetSort'
 import type { WorksheetFile } from '@/lib/worksheetFiles'
 
 type WorksheetCategory = '단원별' | '내신대비'
@@ -52,6 +52,21 @@ type Distribution = {
 type StudentInfo = { id: string; name: string; grade: string }
 
 const GRADE_OPTIONS = ['중1', '중2', '중3', '고1', '고2', '고3']
+
+const STEP_STYLE: Record<string, { bg: string; text: string; dot: string }> = {
+  '기초':    { bg: 'bg-sky-50',    text: 'text-sky-700',    dot: 'bg-sky-400' },
+  '기본':    { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400' },
+  '발전':    { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400' },
+  '최상위':  { bg: 'bg-rose-50',   text: 'text-rose-700',   dot: 'bg-rose-400' },
+  '취약유형': { bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', dot: 'bg-fuchsia-400' },
+  '오답유형': { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-400' },
+  '단원평가': { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-400' },
+  '최다빈출': { bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-400' },
+  '최다오답': { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  '서술형':  { bg: 'bg-pink-50',   text: 'text-pink-700',   dot: 'bg-pink-400' },
+  '모의고사': { bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-400' },
+  '기출문제': { bg: 'bg-cyan-50',   text: 'text-cyan-700',   dot: 'bg-cyan-400' },
+}
 
 const STEP_BADGE: Record<string, string> = {
   '기초': 'bg-sky-50 text-sky-600 border-sky-200',
@@ -744,6 +759,8 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
 
 
 function AllWorksheetsView() {
+  const [activeCategory, setActiveCategory] = useState<WorksheetCategory>('단원별')
+  const [activeStep, setActiveStep] = useState<WorksheetStep>('기초')
   const [worksheets, setWorksheets] = useState<Worksheet[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -764,7 +781,7 @@ function AllWorksheetsView() {
   const [saveError, setSaveError] = useState('')
   const [search, setSearch] = useState('')
   const [gradeFilter, setGradeFilter] = useState('')
-  const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({})
+  const [expandedUnits, setExpandedUnits] = useState<Record<string, boolean>>({})
 
   const [answerWs, setAnswerWs] = useState<Worksheet | null>(null)
   const [answerInputs, setAnswerInputs] = useState<string[]>([])
@@ -788,13 +805,61 @@ function AllWorksheetsView() {
 
   useEffect(() => { fetchWorksheets() }, [fetchWorksheets])
 
-  const filtered = worksheets.filter(w =>
-    (gradeFilter === '' || w.grade === gradeFilter) &&
-    (w.title.toLowerCase().includes(search.toLowerCase()) || w.unit.includes(search))
-  )
+  const steps = activeCategory === '단원별' ? UNIT_STEPS : EXAM_STEPS
+
+  const filtered = worksheets
+    .filter(w =>
+      w.category === activeCategory &&
+      w.step === activeStep &&
+      (gradeFilter === '' || w.grade === gradeFilter) &&
+      (w.title.toLowerCase().includes(search.toLowerCase()) || w.unit.includes(search))
+    )
+    .sort(compareWorksheets)
+
+  // 대단원별 그룹핑 (distribute 화면과 동일한 규칙)
+  const wsUnitGroups: { key: string; label: string; grade?: string; list: Worksheet[] }[] = []
+  const wsUnitIndex = new Map<string, number>()
+  filtered.forEach(w => {
+    const majorUnit = worksheetOrderKey(w.title).units[0]
+    const key = gradeFilter === ''
+      ? `${w.grade}_${majorUnit !== undefined ? majorUnit : (w.unit || '기타')}`
+      : (majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타'))
+    const unitLabel = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
+    const label = gradeFilter === '' ? `[${w.grade}] ${unitLabel}` : unitLabel
+
+    if (!wsUnitIndex.has(key)) {
+      wsUnitIndex.set(key, wsUnitGroups.length)
+      wsUnitGroups.push({ key, label, grade: w.grade, list: [] })
+    }
+    wsUnitGroups[wsUnitIndex.get(key)!].list.push(w)
+  })
+
+  const allUnitsExpanded = wsUnitGroups.length > 0 &&
+    wsUnitGroups.every(g => expandedUnits[g.key] ?? true)
+
+  const toggleUnit = (key: string) =>
+    setExpandedUnits(prev => ({ ...prev, [key]: !(prev[key] ?? true) }))
+
+  const toggleAllUnits = () => {
+    const next = !allUnitsExpanded
+    setExpandedUnits(prev => {
+      const nextState = { ...prev }
+      wsUnitGroups.forEach(g => { nextState[g.key] = next })
+      return nextState
+    })
+  }
 
   const resetForm = () =>
-    setForm({ title: '', grade: '', unit: '', problemCount: '', source: 'manual', category: '단원별', step: '기초', examSubType: '' })
+    setForm({
+      title: '',
+      grade: gradeFilter || '',
+      unit: '',
+      problemCount: '',
+      source: 'manual',
+      category: activeCategory,
+      step: activeStep,
+      examSubType: '',
+    })
 
   const closeWsModal = () => {
     setShowAddModal(false)
@@ -816,6 +881,14 @@ function AllWorksheetsView() {
     setShowAddModal(true)
   }
 
+  const openAdd = () => {
+    setEditingWs(null)
+    setSaveError('')
+    setPendingAnswers(null)
+    resetForm()
+    setShowAddModal(true)
+  }
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.grade) { alert('학년을 선택해주세요.'); return }
@@ -832,8 +905,7 @@ function AllWorksheetsView() {
     // 문제 수를 줄이면 그 뒤 정답이 사라지므로 확인받는다
     if (editingWs && payload.problemCount < editingWs.problemCount && hasAnswers(editingWs)) {
       const ok = confirm(
-        `문제 수를 ${editingWs.problemCount}개에서 ${payload.problemCount}개로 줄입니다.
-` +
+        `문제 수를 ${editingWs.problemCount}개에서 ${payload.problemCount}개로 줄입니다.\n` +
         `${payload.problemCount + 1}번 이후에 입력된 정답은 삭제됩니다. 계속할까요?`
       )
       if (!ok) return
@@ -946,154 +1018,262 @@ function AllWorksheetsView() {
   }
 
   const stepLabel = (w: Worksheet) => stepDisplayLabel(w.step, w.examSubType)
+  const threshold = STEP_CLEAR_THRESHOLD[activeStep as WorksheetStep]
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">학습지 관리</h1>
-          <p className="text-sm text-gray-500 mt-0.5">정답 설정 후 수업준비 → 학습지 배포에서 학생에게 배포하세요</p>
-        </div>
-        <button onClick={() => setShowUpload(true)}
-          className="border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors mr-2 whitespace-nowrap">
-          학습지 업로드
-        </button>
-        <button onClick={() => { setEditingWs(null); resetForm(); setSaveError(''); setShowAddModal(true) }}
-          className="bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1.5">
-          <span className="text-base leading-none">+</span> 학습지 등록
-        </button>
-      </div>
-
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px] bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
-          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="학습지명, 단원 검색" value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 text-sm outline-none text-gray-700 placeholder-gray-400" />
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {['', ...GRADE_OPTIONS].map(g => (
-            <button key={g} onClick={() => setGradeFilter(g)}
-              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${gradeFilter === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-500 hover:border-indigo-400'}`}>
-              {g || '전체'}
+    <div className="flex gap-0 -mt-2 -mx-6 -mb-6" style={{ minHeight: 'calc(100vh - 10rem)' }}>
+      {/* 왼쪽: 카테고리 + 스텝 */}
+      <div className="w-52 border-r border-gray-200 bg-white shrink-0 flex flex-col">
+        <div className="flex border-b border-gray-200">
+          {(['단원별', '내신대비'] as WorksheetCategory[]).map(cat => (
+            <button
+              key={cat}
+              onClick={() => {
+                setActiveCategory(cat)
+                setActiveStep(cat === '단원별' ? '기초' : '최다빈출')
+              }}
+              className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+                activeCategory === cat ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {cat}
             </button>
           ))}
         </div>
+        <nav className="flex-1 py-2 overflow-y-auto">
+          <p className="px-4 pt-2 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            {activeCategory === '단원별' ? '단원별 스텝' : '내신대비 스텝'}
+          </p>
+          {steps.map((step, idx) => {
+            const style = STEP_STYLE[step] ?? STEP_STYLE['기초']
+            const count = worksheets.filter(
+              w => w.category === activeCategory && w.step === step && (gradeFilter === '' || w.grade === gradeFilter)
+            ).length
+            const isSelected = activeStep === step
+            return (
+              <button
+                key={step}
+                onClick={() => setActiveStep(step)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isSelected ? `${style.bg} ${style.text} font-semibold` : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    isSelected ? `${style.dot} text-white` : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {idx + 1}
+                </span>
+                <span className="flex-1 text-left">{step}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    isSelected ? 'bg-white/60' : 'bg-gray-100 text-gray-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+          <div className="mx-3 mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-[10px] font-semibold text-gray-500 mb-2">클리어 기준</p>
+            {steps.map(step => (
+              <div key={step} className="flex items-center gap-1">
+                <span className={`text-[10px] font-medium ${STEP_STYLE[step]?.text ?? 'text-gray-500'}`}>{step}</span>
+                <span className="text-[10px] text-gray-300 ml-auto">{STEP_CLEAR_THRESHOLD[step]}%</span>
+              </div>
+            ))}
+          </div>
+        </nav>
       </div>
 
-      {/* 학년별 아코디언 */}
-      {loadingList ? (
-        <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">불러오는 중...</div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">
-          {worksheets.length === 0
-            ? '등록된 학습지가 없습니다. 오른쪽 상단 "+ 학습지 등록"을 눌러 추가하세요.'
-            : '검색 결과가 없습니다.'}
-        </div>
-      ) : (() => {
-        // 학년별 그룹 (단원 오름차순 정렬)
-        const groups: Record<string, Worksheet[]> = {}
-        filtered.forEach(w => {
-          if (!groups[w.grade]) groups[w.grade] = []
-          groups[w.grade].push(w)
-        })
-        Object.keys(groups).forEach(g => {
-          groups[g].sort(compareWorksheets)
-        })
-        const sortedGrades = WS_GRADE_ORDER.filter(g => groups[g])
+      {/* 오른쪽: 학습지 목록 및 관리 */}
+      <div className="flex-1 bg-gray-50 flex flex-col min-w-0">
+        {/* 상단 툴바 */}
+        <div className="px-5 py-3 bg-white border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap ${STEP_STYLE[activeStep]?.bg ?? 'bg-gray-100'} ${STEP_STYLE[activeStep]?.text ?? 'text-gray-600'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STEP_STYLE[activeStep]?.dot ?? 'bg-gray-400'}`} />
+              {activeCategory} · {activeStep}
+            </div>
+            {threshold !== undefined && (
+              <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                클리어 기준: {threshold}%
+              </span>
+            )}
+            <div className="flex gap-1 flex-wrap">
+              {['', ...GRADE_OPTIONS].map(g => (
+                <button
+                  key={g}
+                  onClick={() => setGradeFilter(g)}
+                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                    gradeFilter === g
+                      ? 'bg-indigo-600 text-white border-indigo-600 font-semibold'
+                      : 'border-gray-200 text-gray-500 hover:border-indigo-300 bg-white'
+                  }`}
+                >
+                  {g || '전체'}
+                </button>
+              ))}
+            </div>
+            {wsUnitGroups.length > 0 && (
+              <button
+                onClick={toggleAllUnits}
+                className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 bg-white transition-colors whitespace-nowrap"
+              >
+                {allUnitsExpanded ? '전체 닫기' : '전체 열기'}
+              </button>
+            )}
+          </div>
 
-        return (
-          <div className="space-y-2">
-            {sortedGrades.map(grade => {
-              const isOpen = expandedGrades[grade] ?? false
-              const list = groups[grade]
+          <div className="flex items-center gap-2">
+            {/* 검색창 */}
+            <div className="w-44 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="학습지명, 단원 검색"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full text-xs outline-none text-gray-700 placeholder-gray-400 bg-transparent"
+              />
+            </div>
+            <button
+              onClick={() => setShowUpload(true)}
+              className="border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              학습지 업로드
+            </button>
+            <button
+              onClick={openAdd}
+              className="bg-indigo-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+            >
+              <span className="text-sm leading-none">+</span> 학습지 등록
+            </button>
+          </div>
+        </div>
+
+        {/* 목록 테이블 영역 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {loadingList ? (
+            <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">불러오는 중...</div>
+          ) : filtered.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm flex flex-col items-center justify-center">
+              <p>
+                {worksheets.length === 0
+                  ? '등록된 학습지가 없습니다. 오른쪽 상단 "+ 학습지 등록"을 눌러 추가하세요.'
+                  : `${activeCategory} [${activeStep}] 단계에 등록된 학습지가 없습니다.`}
+              </p>
+            </div>
+          ) : (
+            wsUnitGroups.map(group => {
+              const isExpanded = expandedUnits[group.key] ?? true
+              const list = group.list
               return (
-                <div key={grade} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  {/* 학년 헤더 */}
+                <div key={group.key} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+                  {/* 단원 헤더 */}
                   <button
-                    onClick={() => setExpandedGrades(prev => ({ ...prev, [grade]: !isOpen }))}
-                    className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                    onClick={() => toggleUnit(group.key)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
                   >
-                    <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : 'rotate-0'}`}
-                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="text-sm font-bold text-gray-700">{grade}</span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{list.length}개</span>
-                    {list.some(w => !hasAnswers(w)) && (
-                      <span className="text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        정답 미입력 {list.filter(w => !hasAnswers(w)).length}개
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-xs font-bold text-gray-700">{group.label}</span>
+                      <span className="text-[11px] text-gray-400 bg-white border border-gray-200 px-1.5 py-0.5 rounded-full">
+                        {list.length}개
                       </span>
-                    )}
+                      {list.some(w => !hasAnswers(w)) && (
+                        <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium">
+                          정답 미입력 {list.filter(w => !hasAnswers(w)).length}개
+                        </span>
+                      )}
+                    </div>
                   </button>
 
                   {/* 학습지 목록 테이블 */}
-                  {isOpen && (
-                    <table className="w-full text-sm border-t border-gray-100">
-                      <thead>
-                        {/* 배지·날짜 칸은 줄바꿈 없이 한 줄로 나오도록 너비를 고정하고,
-                            남는 폭은 학습지명이 가져간다 */}
-                        <tr className="bg-gray-50 text-xs text-gray-400 whitespace-nowrap">
-                          <th className="px-5 py-2.5 text-left font-medium">학습지명</th>
-                          <th className="px-4 py-2.5 text-left font-medium w-40">단원</th>
-                          <th className="px-4 py-2.5 text-left font-medium w-28">단계</th>
-                          <th className="px-4 py-2.5 text-center font-medium w-20">문제 수</th>
-                          <th className="px-4 py-2.5 text-center font-medium w-20">정답</th>
-                          <th className="px-4 py-2.5 text-left font-medium w-28">등록일</th>
-                          <th className="px-4 py-2.5 text-left font-medium w-36">관리</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {list.map(w => (
-                          <tr key={w.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-5 py-3">
-                              <div className="font-semibold text-gray-800 text-sm">{w.title}</div>
-                              {w.source === 'mathflat' && (
-                                <span className="text-[10px] text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">매쓰플랫</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-gray-500 text-xs">{w.unit}</td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-block whitespace-nowrap text-xs font-semibold px-2 py-0.5 rounded border ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                {stepLabel(w)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center text-gray-700 font-medium text-sm">{w.problemCount}</td>
-                            <td className="px-4 py-3 text-center">
-                              {hasAnswers(w)
-                                ? <span className="inline-block whitespace-nowrap text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
-                                : <span className="inline-block whitespace-nowrap text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
-                            </td>
-                            <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{new Date(w.createdAt).toLocaleDateString('ko-KR')}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2">
-                                <button onClick={() => openAnswers(w)}
-                                  className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap">
-                                  정답 설정
-                                </button>
-                                <button onClick={() => openEdit(w)}
-                                  className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors whitespace-nowrap">
-                                  수정
-                                </button>
-                                <button onClick={() => handleDelete(w)}
-                                  className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-1 rounded transition-colors whitespace-nowrap">
-                                  삭제
-                                </button>
-                              </div>
-                            </td>
+                  {isExpanded && (
+                    <div className="overflow-x-auto border-t border-gray-100">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50/50 text-[11px] text-gray-500 whitespace-nowrap border-b border-gray-100">
+                            <th className="px-4 py-2 text-left font-medium">학습지명</th>
+                            <th className="px-3 py-2 text-center font-medium w-16">문제수</th>
+                            <th className="px-3 py-2 text-center font-medium w-20">정답</th>
+                            <th className="px-3 py-2 text-left font-medium w-24">등록일</th>
+                            <th className="px-3 py-2 text-right font-medium w-48 pr-4">관리</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {list.map(w => (
+                            <tr key={w.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`inline-block whitespace-nowrap text-[11px] font-semibold px-2 py-0.5 rounded border shrink-0 ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                    {stepLabel(w)}
+                                  </span>
+                                  <span className="font-semibold text-gray-800 text-sm truncate" title={w.title}>
+                                    {w.title}
+                                  </span>
+                                  {w.source === 'mathflat' && (
+                                    <span className="text-[10px] text-teal-600 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded shrink-0">
+                                      매쓰플랫
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-xs text-gray-500 whitespace-nowrap">
+                                {w.problemCount}문제
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {hasAnswers(w)
+                                  ? <span className="inline-block whitespace-nowrap text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
+                                  : <span className="inline-block whitespace-nowrap text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
+                              </td>
+                              <td className="px-3 py-2.5 text-gray-400 text-xs whitespace-nowrap">
+                                {new Date(w.createdAt).toLocaleDateString('ko-KR')}
+                              </td>
+                              <td className="px-3 py-2.5 text-right pr-4">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => openAnswers(w)}
+                                    className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap"
+                                  >
+                                    정답 설정
+                                  </button>
+                                  <button
+                                    onClick={() => openEdit(w)}
+                                    className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2.5 py-1 rounded transition-colors whitespace-nowrap"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(w)}
+                                    className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2.5 py-1 rounded transition-colors whitespace-nowrap"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               )
-            })}
-          </div>
-        )
-      })()}
+            })
+          )}
+        </div>
+      </div>
 
       {/* 학습지 등록 모달 */}
       {showAddModal && (

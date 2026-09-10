@@ -1200,63 +1200,63 @@ function AllWorksheetsView() {
 
                   {/* 학습지 목록 테이블 */}
                   {isExpanded && (
-                    <div className="overflow-x-auto border-t border-gray-100">
-                      <table className="w-full text-sm">
+                    <div className="border-t border-gray-100">
+                      <table className="w-full text-xs">
                         <thead>
-                          <tr className="bg-gray-50/50 text-[11px] text-gray-500 whitespace-nowrap border-b border-gray-100">
-                            <th className="px-4 py-2 text-left font-medium">학습지명</th>
-                            <th className="px-3 py-2 text-center font-medium w-16">문제수</th>
-                            <th className="px-3 py-2 text-center font-medium w-20">정답</th>
-                            <th className="px-3 py-2 text-left font-medium w-24">등록일</th>
-                            <th className="px-3 py-2 text-right font-medium w-48 pr-4">관리</th>
+                          <tr className="bg-gray-50/50 text-[10px] text-gray-500 whitespace-nowrap border-b border-gray-100">
+                            <th className="px-3 py-1.5 text-left font-medium">학습지명</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-14">문제수</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-16">정답</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-20">등록일</th>
+                            <th className="px-3 py-1.5 text-right font-medium w-36 pr-3">관리</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {list.map(w => (
                             <tr key={w.id} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-4 py-2.5">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`inline-block whitespace-nowrap text-[11px] font-semibold px-2 py-0.5 rounded border shrink-0 ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`inline-block whitespace-nowrap text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${STEP_BADGE[w.step] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                     {stepLabel(w)}
                                   </span>
-                                  <span className="font-semibold text-gray-800 text-sm truncate" title={w.title}>
+                                  <span className="font-semibold text-gray-800 text-xs truncate" title={w.title}>
                                     {w.title}
                                   </span>
                                   {w.source === 'mathflat' && (
-                                    <span className="text-[10px] text-teal-600 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded shrink-0">
+                                    <span className="text-[9px] text-teal-600 bg-teal-50 border border-teal-200 px-1 py-0.2 rounded shrink-0">
                                       매쓰플랫
                                     </span>
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 text-center text-xs text-gray-500 whitespace-nowrap">
+                              <td className="px-2 py-2 text-center text-[11px] text-gray-500 whitespace-nowrap">
                                 {w.problemCount}문제
                               </td>
-                              <td className="px-3 py-2.5 text-center">
+                              <td className="px-2 py-2 text-center whitespace-nowrap">
                                 {hasAnswers(w)
-                                  ? <span className="inline-block whitespace-nowrap text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">입력됨</span>
-                                  : <span className="inline-block whitespace-nowrap text-[11px] text-amber-500 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">미입력</span>}
+                                  ? <span className="inline-block whitespace-nowrap text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium">입력됨</span>
+                                  : <span className="inline-block whitespace-nowrap text-[10px] text-amber-500 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">미입력</span>}
                               </td>
-                              <td className="px-3 py-2.5 text-gray-400 text-xs whitespace-nowrap">
+                              <td className="px-2 py-2 text-center text-gray-400 text-[10px] whitespace-nowrap">
                                 {new Date(w.createdAt).toLocaleDateString('ko-KR')}
                               </td>
-                              <td className="px-3 py-2.5 text-right pr-4">
-                                <div className="flex items-center justify-end gap-1.5">
+                              <td className="px-3 py-2 text-right pr-3 whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1">
                                   <button
                                     onClick={() => openAnswers(w)}
-                                    className="text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition-colors font-medium whitespace-nowrap"
+                                    className="text-[11px] text-emerald-600 hover:text-emerald-700 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded transition-colors font-medium whitespace-nowrap"
                                   >
                                     정답 설정
                                   </button>
                                   <button
                                     onClick={() => openEdit(w)}
-                                    className="text-xs text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2.5 py-1 rounded transition-colors whitespace-nowrap"
+                                    className="text-[11px] text-indigo-600 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-0.5 rounded transition-colors whitespace-nowrap"
                                   >
                                     수정
                                   </button>
                                   <button
                                     onClick={() => handleDelete(w)}
-                                    className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2.5 py-1 rounded transition-colors whitespace-nowrap"
+                                    className="text-[11px] text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-2 py-0.5 rounded transition-colors whitespace-nowrap"
                                   >
                                     삭제
                                   </button>

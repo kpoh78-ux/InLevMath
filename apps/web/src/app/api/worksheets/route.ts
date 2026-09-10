@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { academyTeacher } from '@/lib/academy'
+import { getCachedWorksheets, setCachedWorksheets, invalidateWorksheetsCache } from '@/lib/worksheetCache'
 
-// GET /api/worksheets — 선생님 학습지 목록
+// GET /api/worksheets — 선생님 학습지 목록 (60초 LRU 캐시 적용)
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
   if (!auth) return NextResponse.json({ error: '인증 필요' }, { status: 401 })
@@ -13,11 +14,36 @@ export async function GET(req: NextRequest) {
   const teacher = await academyTeacher(payload.sub)
   if (!teacher) return NextResponse.json({ error: '선생님 정보 없음' }, { status: 404 })
 
+  // 1. 인메모리 캐시 확인 (적중 시 0.1ms 반환)
+  const cached = getCachedWorksheets(teacher.id)
+  if (cached) {
+    return NextResponse.json(cached)
+  }
+
   const worksheets = await prisma.worksheet.findMany({
     where: { teacherId: teacher.id },
     orderBy: { createdAt: 'desc' },
   })
-  return NextResponse.json(worksheets)
+
+  // 정답 유무 플래그 포함 가공
+  const processed = worksheets.map(w => {
+    let hasAnswers = false
+    if (w.answersJson) {
+      try {
+        const arr = JSON.parse(w.answersJson)
+        hasAnswers = Array.isArray(arr) && arr.some((a: string) => typeof a === 'string' && a.trim() !== '')
+      } catch {
+        hasAnswers = false
+      }
+    }
+    return {
+      ...w,
+      hasAnswers,
+    }
+  })
+
+  setCachedWorksheets(teacher.id, processed)
+  return NextResponse.json(processed)
 }
 
 // POST /api/worksheets — 학습지 등록
@@ -49,5 +75,6 @@ export async function POST(req: NextRequest) {
       teacherId: teacher.id,
     },
   })
+  invalidateWorksheetsCache(teacher.id)
   return NextResponse.json(ws, { status: 201 })
 }

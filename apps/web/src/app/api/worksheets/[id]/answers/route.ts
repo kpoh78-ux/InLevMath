@@ -11,6 +11,7 @@ import {
   MAX_ANSWER_IMAGE_TOTAL_BYTES,
 } from '@/lib/answers'
 import { academyTeacher } from '@/lib/academy'
+import { invalidateWorksheetsCache } from '@/lib/worksheetCache'
 
 async function getTeacher(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
@@ -114,6 +115,7 @@ export async function PUT(
     where: { id },
     data: { answersJson: JSON.stringify(answers) },
   })
+  invalidateWorksheetsCache(teacher.id)
 
   const images = await listAnswerImages({ worksheetId: id })
   return NextResponse.json({ answers, images })

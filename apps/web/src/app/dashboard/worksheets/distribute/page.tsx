@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, stepDisplayLabel, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
 import { compareWorksheets, compareGradeAndWorksheets, worksheetOrderKey, WS_GRADE_ORDER } from '@/lib/worksheetSort'
@@ -86,46 +86,62 @@ export default function DistributePage() {
 
   const steps = activeCategory === '단원별' ? UNIT_STEPS : EXAM_STEPS
 
-  // 학년 순 → 단원 번호 오름차순 정렬
-  const filteredWS = worksheets
-    .filter(w =>
-      w.category === activeCategory && w.step === activeStep &&
-      (gradeFilter === '' || w.grade === gradeFilter)
-    )
-    .sort(compareGradeAndWorksheets)
-
-  // 제목 맨 앞 대단원 숫자로 그룹핑
-  const wsUnitGroups: { key: string; label: string; grade?: string; majorUnit?: number; list: WS[] }[] = []
-  const wsUnitIndex = new Map<string, number>()
-  filteredWS.forEach(w => {
-    const majorUnit = worksheetOrderKey(w.title).units[0]
-    const key = gradeFilter === ''
-      ? `${w.grade}_${majorUnit !== undefined ? majorUnit : (w.unit || '기타')}`
-      : (majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타'))
-    const unitLabel = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
-    const label = gradeFilter === '' ? `[${w.grade}] ${unitLabel}` : unitLabel
-
-    if (!wsUnitIndex.has(key)) {
-      wsUnitIndex.set(key, wsUnitGroups.length)
-      wsUnitGroups.push({ key, label, grade: w.grade, majorUnit, list: [] })
+  // 스텝별 카운트 계산을 1회 순회로 메모이제이션
+  const stepCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const w of worksheets) {
+      if (w.category === activeCategory) {
+        counts[w.step] = (counts[w.step] || 0) + 1
+      }
     }
-    wsUnitGroups[wsUnitIndex.get(key)!].list.push(w)
-  })
+    return counts
+  }, [worksheets, activeCategory])
 
-  // 학년 순(초1->고3) 및 단원 번호(1, 2, 3, 4, 5, 6, 7, 8...) 순서로 그룹 정렬
-  wsUnitGroups.sort((a, b) => {
-    const ga = WS_GRADE_ORDER.indexOf(a.grade ?? '')
-    const gb = WS_GRADE_ORDER.indexOf(b.grade ?? '')
-    const orderA = ga === -1 ? 999 : ga
-    const orderB = gb === -1 ? 999 : gb
-    if (orderA !== orderB) return orderA - orderB
+  // 학년 순 → 단원 번호 오름차순 정렬 (메모이제이션)
+  const filteredWS = useMemo(() => {
+    return worksheets
+      .filter(w =>
+        w.category === activeCategory && w.step === activeStep &&
+        (gradeFilter === '' || w.grade === gradeFilter)
+      )
+      .sort(compareGradeAndWorksheets)
+  }, [worksheets, activeCategory, activeStep, gradeFilter])
 
-    const ua = a.majorUnit ?? 999
-    const ub = b.majorUnit ?? 999
-    if (ua !== ub) return ua - ub
+  // 제목 맨 앞 대단원 숫자로 그룹핑 (메모이제이션)
+  const wsUnitGroups = useMemo(() => {
+    const groups: { key: string; label: string; grade?: string; majorUnit?: number; list: WS[] }[] = []
+    const wsUnitIndex = new Map<string, number>()
+    filteredWS.forEach(w => {
+      const majorUnit = worksheetOrderKey(w.title).units[0]
+      const key = gradeFilter === ''
+        ? `${w.grade}_${majorUnit !== undefined ? majorUnit : (w.unit || '기타')}`
+        : (majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타'))
+      const unitLabel = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
+      const label = gradeFilter === '' ? `[${w.grade}] ${unitLabel}` : unitLabel
 
-    return a.label.localeCompare(b.label, 'ko')
-  })
+      if (!wsUnitIndex.has(key)) {
+        wsUnitIndex.set(key, groups.length)
+        groups.push({ key, label, grade: w.grade, majorUnit, list: [] })
+      }
+      groups[wsUnitIndex.get(key)!].list.push(w)
+    })
+
+    // 학년 순(초1->고3) 및 단원 번호(1, 2, 3, 4, 5, 6, 7, 8...) 순서로 그룹 정렬
+    groups.sort((a, b) => {
+      const ga = WS_GRADE_ORDER.indexOf(a.grade ?? '')
+      const gb = WS_GRADE_ORDER.indexOf(b.grade ?? '')
+      const orderA = ga === -1 ? 999 : ga
+      const orderB = gb === -1 ? 999 : gb
+      if (orderA !== orderB) return orderA - orderB
+
+      const ua = a.majorUnit ?? 999
+      const ub = b.majorUnit ?? 999
+      if (ua !== ub) return ua - ub
+
+      return a.label.localeCompare(b.label, 'ko')
+    })
+    return groups
+  }, [filteredWS, gradeFilter])
   const allUnitsExpanded = wsUnitGroups.length > 0 &&
     wsUnitGroups.every(g => expandedUnits[g.key] ?? true)
 
@@ -152,12 +168,15 @@ export default function DistributePage() {
       selectedStudents.length === allStudents.length ? [] : allStudents.map(s => s.id)
     )
 
-  const studentGradeGroups: Record<string, StudentItem[]> = {}
-  allStudents.forEach(s => {
-    if (!studentGradeGroups[s.grade]) studentGradeGroups[s.grade] = []
-    studentGradeGroups[s.grade].push(s)
-  })
-  const sortedStudentGrades = GRADE_ORDER.filter(g => studentGradeGroups[g])
+  const { studentGradeGroups, sortedStudentGrades } = useMemo(() => {
+    const groups: Record<string, StudentItem[]> = {}
+    allStudents.forEach(s => {
+      if (!groups[s.grade]) groups[s.grade] = []
+      groups[s.grade].push(s)
+    })
+    const sorted = GRADE_ORDER.filter(g => groups[g])
+    return { studentGradeGroups: groups, sortedStudentGrades: sorted }
+  }, [allStudents])
   const allGradesExpanded = sortedStudentGrades.length > 0 &&
     sortedStudentGrades.every(g => expandedGrades[g] ?? true)
 
@@ -230,7 +249,7 @@ export default function DistributePage() {
           </p>
           {steps.map((step, idx) => {
             const style = STEP_STYLE[step] ?? STEP_STYLE['기초']
-            const count = worksheets.filter(w => w.category === activeCategory && w.step === step).length
+            const count = stepCounts[step] ?? 0
             return (
               <button key={step} onClick={() => { setActiveStep(step); setSelectedWS([]) }}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${activeStep === step ? `${style.bg} ${style.text} font-semibold` : 'text-gray-600 hover:bg-gray-50'}`}>

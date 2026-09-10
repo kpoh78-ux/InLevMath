@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { purgeAnswerImages } from '@/lib/answerImageStore'
 import { academyTeacher } from '@/lib/academy'
+import { invalidateWorksheetsCache } from '@/lib/worksheetCache'
 
 async function getTeacherFromReq(req: NextRequest) {
   const auth = req.headers.get('authorization')?.split(' ')[1]
@@ -28,6 +29,7 @@ export async function DELETE(
   // DB 행은 cascade로 지워지지만 오브젝트 스토리지 파일은 직접 정리해야 한다
   await purgeAnswerImages({ worksheetId: id })
   await prisma.worksheet.delete({ where: { id } })
+  invalidateWorksheetsCache(teacher.id)
   return NextResponse.json({ ok: true })
 }
 
@@ -101,5 +103,6 @@ export async function PATCH(
   }
 
   const updated = await prisma.worksheet.update({ where: { id }, data })
+  invalidateWorksheetsCache(teacher.id)
   return NextResponse.json(updated)
 }

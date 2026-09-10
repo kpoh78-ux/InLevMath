@@ -46,3 +46,17 @@ export const WS_GRADE_ORDER = [
   '초1', '초2', '초3', '초4', '초5', '초6',
   '중1', '중2', '중3', '고1', '고2', '고3',
 ]
+
+/** 학년 오름차순(초1→고3) → 단원 번호(1,2,3,4,5,6,7,8...) → 회차 → 제목 순으로 오름차순 */
+export function compareGradeAndWorksheets(
+  a: { grade?: string; title: string },
+  b: { grade?: string; title: string }
+) {
+  const ga = WS_GRADE_ORDER.indexOf(a.grade ?? '')
+  const gb = WS_GRADE_ORDER.indexOf(b.grade ?? '')
+  const orderA = ga === -1 ? 999 : ga
+  const orderB = gb === -1 ? 999 : gb
+  if (orderA !== orderB) return orderA - orderB
+
+  return compareWorksheets(a, b)
+}

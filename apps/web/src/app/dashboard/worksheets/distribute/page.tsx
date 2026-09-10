@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { UNIT_STEPS, EXAM_STEPS, STEP_CLEAR_THRESHOLD, stepDisplayLabel, type WorksheetCategory, type WorksheetStep } from '@inlevmath/shared'
 import { apiFetch } from '@/lib/api'
-import { compareWorksheets, worksheetOrderKey } from '@/lib/worksheetSort'
+import { compareWorksheets, compareGradeAndWorksheets, worksheetOrderKey, WS_GRADE_ORDER } from '@/lib/worksheetSort'
 
 type WS = {
   id: string; title: string; grade: string; unit: string
@@ -86,26 +86,45 @@ export default function DistributePage() {
 
   const steps = activeCategory === '단원별' ? UNIT_STEPS : EXAM_STEPS
 
-  // 서버는 최신 등록순으로 내려주므로 화면에서 단원 번호 오름차순으로 다시 정렬한다
+  // 학년 순 → 단원 번호 오름차순 정렬
   const filteredWS = worksheets
     .filter(w =>
       w.category === activeCategory && w.step === activeStep &&
       (gradeFilter === '' || w.grade === gradeFilter)
     )
-    .sort(compareWorksheets)
+    .sort(compareGradeAndWorksheets)
 
-  // 제목 맨 앞 대단원 숫자로 그룹핑 — "1-1. 제곱근과 실수(1회)" → 대단원 1
-  const wsUnitGroups: { key: string; label: string; list: WS[] }[] = []
+  // 제목 맨 앞 대단원 숫자로 그룹핑
+  const wsUnitGroups: { key: string; label: string; grade?: string; majorUnit?: number; list: WS[] }[] = []
   const wsUnitIndex = new Map<string, number>()
   filteredWS.forEach(w => {
     const majorUnit = worksheetOrderKey(w.title).units[0]
-    const key = majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타')
-    const label = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
+    const key = gradeFilter === ''
+      ? `${w.grade}_${majorUnit !== undefined ? majorUnit : (w.unit || '기타')}`
+      : (majorUnit !== undefined ? String(majorUnit) : (w.unit || '기타'))
+    const unitLabel = w.unit || (majorUnit !== undefined ? `${majorUnit}단원` : '기타')
+    const label = gradeFilter === '' ? `[${w.grade}] ${unitLabel}` : unitLabel
+
     if (!wsUnitIndex.has(key)) {
       wsUnitIndex.set(key, wsUnitGroups.length)
-      wsUnitGroups.push({ key, label, list: [] })
+      wsUnitGroups.push({ key, label, grade: w.grade, majorUnit, list: [] })
     }
     wsUnitGroups[wsUnitIndex.get(key)!].list.push(w)
+  })
+
+  // 학년 순(초1->고3) 및 단원 번호(1, 2, 3, 4, 5, 6, 7, 8...) 순서로 그룹 정렬
+  wsUnitGroups.sort((a, b) => {
+    const ga = WS_GRADE_ORDER.indexOf(a.grade ?? '')
+    const gb = WS_GRADE_ORDER.indexOf(b.grade ?? '')
+    const orderA = ga === -1 ? 999 : ga
+    const orderB = gb === -1 ? 999 : gb
+    if (orderA !== orderB) return orderA - orderB
+
+    const ua = a.majorUnit ?? 999
+    const ub = b.majorUnit ?? 999
+    if (ua !== ub) return ua - ub
+
+    return a.label.localeCompare(b.label, 'ko')
   })
   const allUnitsExpanded = wsUnitGroups.length > 0 &&
     wsUnitGroups.every(g => expandedUnits[g.key] ?? true)

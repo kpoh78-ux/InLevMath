@@ -15,7 +15,7 @@ import {
 } from '@/components/AnswerInput'
 import { WorksheetUploadModal } from '@/components/WorksheetUploadModal'
 import { WorksheetAiAnswersModal } from '@/components/WorksheetAiAnswersModal'
-import { compareWorksheets, worksheetOrderKey, WS_GRADE_ORDER } from '@/lib/worksheetSort'
+import { compareWorksheets, compareGradeAndWorksheets, worksheetOrderKey, WS_GRADE_ORDER } from '@/lib/worksheetSort'
 import type { WorksheetFile } from '@/lib/worksheetFiles'
 
 type WorksheetCategory = '단원별' | '내신대비'
@@ -814,10 +814,10 @@ function AllWorksheetsView() {
       (gradeFilter === '' || w.grade === gradeFilter) &&
       (w.title.toLowerCase().includes(search.toLowerCase()) || w.unit.includes(search))
     )
-    .sort(compareWorksheets)
+    .sort(compareGradeAndWorksheets)
 
-  // 대단원별 그룹핑 (distribute 화면과 동일한 규칙)
-  const wsUnitGroups: { key: string; label: string; grade?: string; list: Worksheet[] }[] = []
+  // 대단원별 그룹핑 (학년 및 단원 번호 오름차순)
+  const wsUnitGroups: { key: string; label: string; grade?: string; majorUnit?: number; list: Worksheet[] }[] = []
   const wsUnitIndex = new Map<string, number>()
   filtered.forEach(w => {
     const majorUnit = worksheetOrderKey(w.title).units[0]
@@ -829,9 +829,24 @@ function AllWorksheetsView() {
 
     if (!wsUnitIndex.has(key)) {
       wsUnitIndex.set(key, wsUnitGroups.length)
-      wsUnitGroups.push({ key, label, grade: w.grade, list: [] })
+      wsUnitGroups.push({ key, label, grade: w.grade, majorUnit, list: [] })
     }
     wsUnitGroups[wsUnitIndex.get(key)!].list.push(w)
+  })
+
+  // 학년 순(초1->고3) 및 단원 번호(1, 2, 3, 4, 5, 6, 7, 8...) 순서로 그룹 정렬
+  wsUnitGroups.sort((a, b) => {
+    const ga = WS_GRADE_ORDER.indexOf(a.grade ?? '')
+    const gb = WS_GRADE_ORDER.indexOf(b.grade ?? '')
+    const orderA = ga === -1 ? 999 : ga
+    const orderB = gb === -1 ? 999 : gb
+    if (orderA !== orderB) return orderA - orderB
+
+    const ua = a.majorUnit ?? 999
+    const ub = b.majorUnit ?? 999
+    if (ua !== ub) return ua - ub
+
+    return a.label.localeCompare(b.label, 'ko')
   })
 
   const allUnitsExpanded = wsUnitGroups.length > 0 &&

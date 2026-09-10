@@ -1213,17 +1213,17 @@ function AllWorksheetsView() {
                     </div>
                   </button>
 
-                  {/* 학습지 목록 테이블 */}
+                  {/* 학습지 목록 테이블 — 세로 스크롤 및 상단 고정 헤더 적용 */}
                   {isExpanded && (
-                    <div className="border-t border-gray-100">
+                    <div className="max-h-[50vh] overflow-y-auto border-t border-gray-100">
                       <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-gray-50/50 text-[10px] text-gray-500 whitespace-nowrap border-b border-gray-100">
-                            <th className="px-3 py-1.5 text-left font-medium">학습지명</th>
-                            <th className="px-2 py-1.5 text-center font-medium w-14">문제수</th>
-                            <th className="px-2 py-1.5 text-center font-medium w-16">정답</th>
-                            <th className="px-2 py-1.5 text-center font-medium w-20">등록일</th>
-                            <th className="px-3 py-1.5 text-right font-medium w-36 pr-3">관리</th>
+                        <thead className="sticky top-0 z-10 bg-gray-50 shadow-xs">
+                          <tr className="bg-gray-50 text-[10px] text-gray-500 whitespace-nowrap border-b border-gray-200">
+                            <th className="px-3 py-1.5 text-left font-medium bg-gray-50">학습지명</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-14 bg-gray-50">문제수</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-16 bg-gray-50">정답</th>
+                            <th className="px-2 py-1.5 text-center font-medium w-20 bg-gray-50">등록일</th>
+                            <th className="px-3 py-1.5 text-right font-medium w-36 pr-3 bg-gray-50">관리</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">

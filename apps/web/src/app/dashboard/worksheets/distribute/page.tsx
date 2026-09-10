@@ -309,29 +309,33 @@ export default function DistributePage() {
                   </svg>
                 </button>
 
-                {isExpanded && group.list.map(ws => {
-                  const isSelected = selectedWS.includes(ws.id)
-                  const alreadyDist = distributedIds.has(ws.id)
-                  const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
-                  return (
-                    <button key={ws.id} onClick={() => toggleWS(ws.id)}
-                      className={`w-full text-left px-4 py-2 border-t border-gray-100 transition-colors flex items-center gap-2.5 ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                      {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
-                        {isSelected && (
-                          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
-                      <span className="text-sm font-semibold text-gray-800 truncate flex-1">{ws.title}</span>
-                      {alreadyDist && (
-                        <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">배포완료</span>
-                      )}
-                    </button>
-                  )
-                })}
+                {isExpanded && (
+                  <div className="max-h-[50vh] overflow-y-auto border-t border-gray-100">
+                    {group.list.map(ws => {
+                      const isSelected = selectedWS.includes(ws.id)
+                      const alreadyDist = distributedIds.has(ws.id)
+                      const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
+                      return (
+                        <button key={ws.id} onClick={() => toggleWS(ws.id)}
+                          className={`w-full text-left px-4 py-2 border-b border-gray-50 last:border-b-0 transition-colors flex items-center gap-2.5 ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                          {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                            {isSelected && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
+                          <span className="text-sm font-semibold text-gray-800 truncate flex-1">{ws.title}</span>
+                          {alreadyDist && (
+                            <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">배포완료</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           })}

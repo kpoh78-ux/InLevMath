@@ -390,31 +390,32 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
         </div>
       </div>
 
-      {/* 배포 목록 — 하단 액션바가 마지막 행을 가리지 않도록 아래 여백을 둔다 */}
+      {/* 배포 목록 — 목록이 길어지면 세로 스크롤 및 고정 헤더 적용, 하단 액션바 여백 */}
       <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${selected.size > 0 ? 'mb-20' : ''}`}>
-        <table className="w-full text-sm table-fixed">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
-              <th className="px-3 py-3 w-10 text-center">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  disabled={distributions.length === 0}
-                  aria-label="전체 선택"
-                  className="w-4 h-4 rounded-sm text-indigo-600 focus:ring-indigo-500 align-middle"
-                />
-              </th>
-              <th className="px-2 py-3 text-left font-medium">학습지명</th>
-              <th className="px-4 py-3 text-center font-medium w-20">문제 수</th>
-              <th className="px-4 py-3 text-center font-medium w-24">상태</th>
-              <th className="px-4 py-3 text-center font-medium w-20">정답률</th>
-              <th className="px-4 py-3 text-left font-medium w-28">배포일</th>
-              <th className="px-4 py-3 text-left font-medium w-28">채점</th>
-              <th className="px-2 py-3 w-12 text-center font-medium">더보기</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
+        <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+          <table className="w-full text-sm table-fixed">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-xs">
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 whitespace-nowrap">
+                <th className="px-3 py-3 w-10 text-center bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    disabled={distributions.length === 0}
+                    aria-label="전체 선택"
+                    className="w-4 h-4 rounded-sm text-indigo-600 focus:ring-indigo-500 align-middle"
+                  />
+                </th>
+                <th className="px-2 py-3 text-left font-medium bg-gray-50">학습지명</th>
+                <th className="px-4 py-3 text-center font-medium w-20 bg-gray-50">문제 수</th>
+                <th className="px-4 py-3 text-center font-medium w-24 bg-gray-50">상태</th>
+                <th className="px-4 py-3 text-center font-medium w-20 bg-gray-50">정답률</th>
+                <th className="px-4 py-3 text-left font-medium w-28 bg-gray-50">출제일</th>
+                <th className="px-4 py-3 text-left font-medium w-28 bg-gray-50">채점</th>
+                <th className="px-2 py-3 w-12 text-center font-medium bg-gray-50">더보기</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
             {distributions.length === 0 ? (
               <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400 text-sm">
                 배포된 학습지가 없습니다.
@@ -532,6 +533,7 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* ── 선택 시 하단 액션바 ── */}

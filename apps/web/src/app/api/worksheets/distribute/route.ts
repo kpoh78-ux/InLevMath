@@ -41,14 +41,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '학습지를 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  // ─── 배치 처리 (기존 N×M upsert → 2회 쿼리로 전환) ─────────────────────────
-  // 학습지 10개 × 학생 30명 = 기존 300 쿼리 → 아래 2 쿼리로 대체
-  //
-  // ① 신규 배포 일괄 생성 — 이미 존재하는 (worksheetId, studentId) 조합은 건너뜀
-  // ② 기존 배포의 hiddenAt 초기화 — 숨김 해제 (배포 이력·결과는 그대로 유지)
+  // ─── 배치 처리 ─────────────────────────────────────────────────────────────
+  // ① 신규 배포는 일괄 생성
+  // ② 이미 존재하는 배포 건은 이전 답안/채점 초기화 후 최신 배포 시각으로 갱신(재배포)
   const pairs = ids.flatMap(wsId =>
     studentIds.map((studentId: string) => ({ worksheetId: wsId, studentId }))
   )
+
+  // 이미 존재하는 배포 건 확인 (재배포 대상)
+  const existingDistributions = await prisma.worksheetDistribution.findMany({
+    where: {
+      OR: pairs.map(p => ({
+        worksheetId: p.worksheetId,
+        studentId: p.studentId,
+      })),
+    },
+    select: { id: true },
+  })
+  const existingIds = existingDistributions.map(d => d.id)
 
   const [createResult] = await prisma.$transaction([
     // ① 신규 행 삽입 (중복 충돌 시 스킵)
@@ -56,17 +66,20 @@ export async function POST(req: NextRequest) {
       data: pairs.map(p => ({ ...p, status: 'distributed' })),
       skipDuplicates: true,
     }),
-    // ② 이미 존재하던 행의 hiddenAt 초기화 (재배포 시 숨김 해제)
-    prisma.worksheetDistribution.updateMany({
-      where: {
-        OR: pairs.map(p => ({
-          worksheetId: p.worksheetId,
-          studentId: p.studentId,
-        })),
-        hiddenAt: { not: null },
-      },
-      data: { hiddenAt: null },
-    }),
+    // ② 기존 배포 건이 있다면: 이전 답안/채점 결과 삭제 후 상태 및 배포일시 갱신 (재배포)
+    ...(existingIds.length > 0 ? [
+      prisma.worksheetResult.deleteMany({
+        where: { distributionId: { in: existingIds } },
+      }),
+      prisma.worksheetDistribution.updateMany({
+        where: { id: { in: existingIds } },
+        data: {
+          status: 'distributed',
+          hiddenAt: null,
+          distributedAt: new Date(),
+        },
+      }),
+    ] : []),
   ])
 
   // SSE: 학생 대상 "새로운 학습지 미션" 실시간 알림 브로드캐스트
@@ -84,6 +97,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     distributed: pairs.length,
     created: createResult.count,
+    reDistributed: existingIds.length,
     worksheetCount: ids.length,
     studentCount: studentIds.length,
   })

@@ -204,15 +204,15 @@ export default function DistributePage() {
         method: 'POST',
         body: JSON.stringify({ worksheetIds: selectedWS, studentIds: selectedStudents }),
       })
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
         alert(data.error || '배포 실패')
         return
       }
       setDistributedIds(prev => new Set([...prev, ...selectedWS]))
-      setJustDistributed(
-        titles.length === 1 ? titles[0] : `${titles[0]} 외 ${titles.length - 1}건`
-      )
+      const titleText = titles.length === 1 ? titles[0] : `${titles[0]} 외 ${titles.length - 1}건`
+      const reDistText = data.reDistributed && data.reDistributed > 0 ? ` (재배포 ${data.reDistributed}건 포함)` : ''
+      setJustDistributed(`${titleText}${reDistText}`)
       setSelectedWS([])
       setSelectedStudents([])
       setTimeout(() => setJustDistributed(null), 3000)

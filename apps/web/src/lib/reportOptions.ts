@@ -18,7 +18,6 @@ export const REPORT_ITEM_KEYS = [
   'includeWorksheet',
   'includeUnitExam',
   'includeGoalRate',
-  'includeAttitude',
   'includeComment',
 ] as const
 
@@ -33,7 +32,6 @@ export const REPORT_ITEM_META: Record<ReportItemKey, { label: string; hint: stri
   includeWorksheet:    { label: '오답 클리닉',      hint: '최다오답·오답유형·취약유형 학습지' },
   includeUnitExam:     { label: '단원평가·모의고사', hint: '단원평가·모의고사·기출문제 학습지' },
   includeGoalRate:     { label: '목표 완성률',      hint: '그날 낸 문항 ÷ 그날 배정된 문항' },
-  includeAttitude:     { label: '수업 태도',        hint: '데이터로 뽑을 수 없어 선생님이 그날 직접 적는다' },
   includeComment:      { label: '선생님 코멘트',    hint: '학부모에게 남기는 자유 문장' },
 }
 
@@ -44,7 +42,6 @@ export const DEFAULT_ITEMS: ReportItems = {
   includeWorksheet: true,
   includeUnitExam: true,
   includeGoalRate: false,
-  includeAttitude: false,
   includeComment: false,
 }
 

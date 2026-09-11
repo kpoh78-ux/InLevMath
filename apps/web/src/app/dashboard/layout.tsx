@@ -19,7 +19,7 @@ const NAV: { href: string; label: string; brand?: true; badge?: string }[] = [
 type AttendedStudent = {
   id: string; name: string; grade: string
   attended: boolean; checkInTime?: string; checkOutTime?: string
-  status?: string; attendancePin?: string
+  status?: string; attendancePin?: string; memo?: string
 }
 
 export type RealtimeNotification = {
@@ -90,7 +90,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       if (!res.ok) return
       const data = await res.json() as {
         id: string; grade: string; attendancePin?: string; user: { name: string; phone?: string }
-        attendanceLogs?: Array<{ type: string; status: string; checkInTime?: string; checkOutTime?: string }>
+        attendanceLogs?: Array<{ type: string; status: string; checkInTime?: string; checkOutTime?: string; memo?: string }>
       }[]
       const students: AttendedStudent[] = data.map(s => {
         const todayLog = s.attendanceLogs && s.attendanceLogs.length > 0 ? s.attendanceLogs[0] : null
@@ -108,6 +108,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           checkOutTime: checkOutTimeStr,
           status: todayLog?.status,
           attendancePin: s.attendancePin,
+          memo: todayLog?.memo || undefined,
         }
       })
       setSidebarStudents(students)

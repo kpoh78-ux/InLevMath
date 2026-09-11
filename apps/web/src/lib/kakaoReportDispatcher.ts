@@ -56,8 +56,9 @@ export async function sendDailyReport(params: {
   date: string
   /** 이미 보냈어도 다시 보낸다 (선생님이 화면에서 직접 누른 경우) */
   force?: boolean
+  comment?: string | null
 }): Promise<DispatchResult> {
-  const { teacherId, studentId, date, force } = params
+  const { teacherId, studentId, date, force, comment } = params
 
   const student = await prisma.student.findUnique({
     where: { id: studentId },
@@ -78,9 +79,9 @@ export async function sendDailyReport(params: {
   }
 
   const options = await resolveReportOptions(teacherId, studentId, date)
+  const resolvedComment = comment !== undefined ? comment : options.comment
   const report = await buildDailyStudentReport(studentId, date, {
-    attitude: options.attitude,
-    comment: options.comment,
+    comment: resolvedComment,
   })
   if (!report || !report.hasAnything) {
     return { studentId, studentName, sent: false, skipped: 'NO_DATA' }
@@ -143,16 +144,20 @@ export async function dispatchOnCheckOut(params: {
   teacherId: string | null
   studentId: string
   date: string
+  sendNotification?: boolean
+  comment?: string | null
 }): Promise<DispatchResult | null> {
-  const { teacherId, studentId, date } = params
+  const { teacherId, studentId, date, sendNotification, comment } = params
   if (!teacherId) return null
 
   try {
     const preset = await getTeacherPreset(teacherId)
-    if (!preset.autoSendOnCheckOut) {
+    // 학부모 알림톡에 체크된 경우(sendNotification) 또는 프리셋 자동발송이 켜진 경우 모두 발송
+    if (!sendNotification && !preset.autoSendOnCheckOut) {
       return { studentId, studentName: '', sent: false, skipped: 'AUTO_SEND_OFF' }
     }
-    return await sendDailyReport({ teacherId, studentId, date })
+    // 학부모 알림톡 체크 시에는 당일 이미 발송된 건이 있어도 최신 학습리포트를 발송(force)
+    return await sendDailyReport({ teacherId, studentId, date, force: Boolean(sendNotification), comment })
   } catch (e) {
     console.error('[dailyReport] 하원 자동 발송 실패:', e instanceof Error ? e.message : e)
     return null

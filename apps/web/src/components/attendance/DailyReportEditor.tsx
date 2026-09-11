@@ -29,7 +29,6 @@ const ITEM_LABEL: Record<string, string> = {
   includeWorksheet: '오답 클리닉',
   includeUnitExam: '단원평가',
   includeGoalRate: '목표 완성률',
-  includeAttitude: '수업 태도',
   includeComment: '코멘트',
 };
 
@@ -197,22 +196,7 @@ export const DailyReportEditor: React.FC<Props> = ({ studentId, studentName, dat
         })}
       </div>
 
-      {/* 데이터로 뽑을 수 없는 두 항목은 직접 적는다 */}
-      {items.includeAttitude && (
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">수업 태도</label>
-          <input
-            type="text"
-            value={attitude}
-            onChange={(e) => {
-              setAttitude(e.target.value);
-              setDirty(true);
-            }}
-            placeholder="예) 집중해서 끝까지 풀었습니다"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
-        </div>
-      )}
+      {/* 코멘트는 직접 적는다 */}
 
       {items.includeComment && (
         <div>

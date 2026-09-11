@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
         user: { select: { name: true, phone: true } },
         attendanceLogs: {
           where: { date: today },
-          select: { type: true, status: true, checkInTime: true, checkOutTime: true },
+          select: { type: true, status: true, checkInTime: true, checkOutTime: true, memo: true },
           take: 1,
         },
       },

@@ -5,11 +5,16 @@ import { sendKakaoAlimtalk } from '@/lib/kakaoBizmsg';
 import { getStudentDayClasses, describeClasses, type DailyClassPlan } from '@/lib/dailyClasses';
 
 // 하원 리포트 자동 발송. dispatcher 가 집계를 거쳐 이 파일을 다시 참조하므로
-// 정적 import 로 묶으면 순환이 된다 — 쓰는 자리에서 동적으로 불러온다.
-async function fireCheckOutReport(teacherId: string | null, studentId: string, date: string) {
+async function fireCheckOutReport(
+  teacherId: string | null,
+  studentId: string,
+  date: string,
+  sendNotification?: boolean,
+  comment?: string | null
+) {
   try {
     const { dispatchOnCheckOut } = await import('@/lib/kakaoReportDispatcher');
-    await dispatchOnCheckOut({ teacherId, studentId, date });
+    await dispatchOnCheckOut({ teacherId, studentId, date, sendNotification, comment });
   } catch (e) {
     // 발송이 안 돼도 하원 기록은 남아야 한다
     console.error('[attendance] 하원 리포트 발송 실패:', e instanceof Error ? e.message : e);
@@ -475,13 +480,16 @@ export async function confirmCheckOut(
   const dayPlan = await getStudentDayClasses(student.id, todayStr);
   const classLine = describeClasses(dayPlan);
 
+  const teacherComment = todayLog?.memo?.trim() || '';
+
   // 하원 카카오 알림톡 발송 — 미연동 상태면 success: false가 돌아온다
   const alimtalkResult = await sendKakaoAlimtalk({
     templateCode: 'INLEV_ATTEND_OUT',
     recipientPhone: targetParentPhone,
     message:
       `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
-      (classLine ? `\n\n오늘 수업\n${classLine}` : ''),
+      (classLine ? `\n\n오늘 수업\n${classLine}` : '') +
+      (teacherComment ? `\n\n선생님 코멘트:\n${teacherComment}` : ''),
     variables: {
       studentName: student.user.name,
       checkOutTime: nowTimeStr,
@@ -512,8 +520,8 @@ export async function confirmCheckOut(
     });
   }
 
-  // 하원 학습리포트 자동 발송 (선생님이 켰을 때만)
-  await fireCheckOutReport(student.teacherId ?? null, student.id, todayStr);
+  // 하원 학습리포트 자동 발송 (선생님이 켰을 때 또는 학생별 알림톡 체크 시 저장된 코멘트 포함 발송)
+  await fireCheckOutReport(student.teacherId ?? null, student.id, todayStr, true, teacherComment || null);
 
   return {
     studentId: student.id,
@@ -533,7 +541,7 @@ export async function confirmCheckOut(
  */
 export async function toggleAttendance(params: {
   studentId: string;
-  type: 'CHECK_IN' | 'CHECK_OUT' | 'ABSENT' | 'MAKEUP';
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'ABSENT' | 'MAKEUP' | 'MEMO';
   status?: 'ON_TIME' | 'LATE' | 'ABSENT' | 'MAKEUP';
   /** 이번에 기록할 시각 ("HH:mm" 또는 "오전 hh : mm"). 없으면 현재 시각 */
   time?: string;
@@ -611,8 +619,12 @@ export async function toggleAttendance(params: {
     updateData.status = resolvedStatus;
   }
 
-  if (type === 'CHECK_IN') {
+  if (type === 'MEMO') {
+    // 코멘트만 중간 저장할 때 — 기존 출결 type 및 시각 유지
+    updateData.type = log?.type || 'CHECK_IN';
+  } else if (type === 'CHECK_IN') {
     updateData.checkInTime = eventAt;
+    updateData.checkOutTime = null;
     if (!resolvedStatus) updateData.status = 'ON_TIME';
   } else if (type === 'CHECK_OUT') {
     updateData.checkOutTime = eventAt;
@@ -643,7 +655,7 @@ export async function toggleAttendance(params: {
       data: {
         studentId,
         date: targetDate,
-        type,
+        type: type === 'MEMO' ? 'CHECK_IN' : type,
         status: updateData.status || 'ON_TIME',
         lateMinutes: updateData.lateMinutes,
         checkInTime: type === 'CHECK_IN' ? eventAt : (checkInAt ?? undefined),
@@ -653,8 +665,8 @@ export async function toggleAttendance(params: {
     });
   }
 
-  // 알림 발송 옵션이 켜져 있는 경우
-  if (sendNotification) {
+  // 알림 발송 옵션이 켜져 있는 경우 (코멘트 임시 저장은 알림 발송 안 함)
+  if (sendNotification && type !== 'MEMO') {
     const parentPhone = student.parentPhone || student.user.phone;
     const templateCode = type === 'CHECK_OUT' ? 'INLEV_ATTEND_OUT' : 'INLEV_ATTEND_IN';
 
@@ -668,8 +680,10 @@ export async function toggleAttendance(params: {
       message:
         type === 'CHECK_OUT'
           ? `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
-            (classLine ? `\n\n오늘 수업\n${classLine}` : '')
-          : `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 안전하게 등원(출석)하였습니다.`,
+            (classLine ? `\n\n오늘 수업\n${classLine}` : '') +
+            (memo?.trim() ? `\n\n선생님 코멘트:\n${memo.trim()}` : '')
+          : `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 안전하게 등원(출석)하였습니다.` +
+            (memo?.trim() ? `\n\n선생님 코멘트:\n${memo.trim()}` : ''),
       variables: {
         studentName: student.user.name,
         time: timeStr,
@@ -701,9 +715,9 @@ export async function toggleAttendance(params: {
     });
   }
 
-  // 하원 학습리포트 자동 발송 (선생님이 켰을 때만)
+  // 하원 학습리포트 자동 발송 (선생님이 켰을 때 또는 학부모 알림톡 체크 시)
   if (type === 'CHECK_OUT') {
-    await fireCheckOutReport(targetTeacherId ?? null, studentId, targetDate);
+    await fireCheckOutReport(targetTeacherId ?? null, studentId, targetDate, sendNotification, memo);
   }
 
   return { success: true, log };

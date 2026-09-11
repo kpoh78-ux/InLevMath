@@ -329,12 +329,9 @@ export function formatDailyReportMessage(
       `${pct(g.rate)} (${g.submittedProblems}/${g.assignedProblems}문항)`)
   }
 
-  if (items.includeAttitude && report.attitude) {
-    lines.push('', '■ 수업 태도', report.attitude)
-  }
-
-  if (items.includeComment && report.comment) {
-    lines.push('', '■ 선생님 코멘트', report.comment)
+  // 선생님 코멘트: 작성된 경우에만 알림톡에 포함
+  if (report.comment && report.comment.trim().length > 0) {
+    lines.push('', '■ 선생님 코멘트', report.comment.trim())
   }
 
   return lines.join('\n')

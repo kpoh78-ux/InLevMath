@@ -41,7 +41,6 @@ export interface SendPayload {
     includeWorksheet: boolean;
     includeUnitExam: boolean;
     includeAttendance: boolean;
-    includeAttitude: boolean;
     includeGoalRate: boolean;
     includeComment: boolean;
   };
@@ -65,7 +64,6 @@ export const AlimtalkSendPanel: React.FC<{
     includeWorksheet: true,
     includeUnitExam: typeof initialData.unitExamScore === 'number',
     includeAttendance: true,
-    includeAttitude: true,
     includeGoalRate: true,
     includeComment: true,
   });
@@ -104,10 +102,6 @@ export const AlimtalkSendPanel: React.FC<{
 
     if (checkedOptions.includeAttendance) {
       msg += `📌 [출결 현황] : ${getAttendanceLabel()}\n`;
-    }
-    if (checkedOptions.includeAttitude) {
-      msg += `🧠 [수업 집중도] : ${getAttitudeLabel()}\n`;
-      msg += `⏱️ [학습시간 달성률] : ${data.studyTimeAchieveRate}%\n`;
     }
     if (checkedOptions.includeGoalRate) {
       msg += `🎯 [일일 목표 완성률] : ${data.targetGoalRate}%\n`;
@@ -303,64 +297,36 @@ export const AlimtalkSendPanel: React.FC<{
           </div>
         </div>
 
-        {/* 교사 입력 데이터 (출결 & 수업 태도) */}
+        {/* 교사 입력 데이터 (출결) */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-            2. 출결 및 수업 태도 체크
+            2. 출결 체크
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                  <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-                  <span>출결 상태</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggleOption('includeAttendance')}
-                  className="text-[10px] text-indigo-600 font-semibold flex items-center gap-0.5 cursor-pointer"
-                >
-                  {checkedOptions.includeAttendance ? <CheckSquare className="w-3 h-3 text-indigo-600" /> : <Square className="w-3 h-3 text-slate-300" />}
-                  <span>포함</span>
-                </button>
-              </div>
-              <select
-                value={data.attendance}
-                onChange={(e) => setData({ ...data, attendance: e.target.value as any })}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500"
+          <div className="mb-2.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                <span>출결 상태</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleOption('includeAttendance')}
+                className="text-[10px] text-indigo-600 font-semibold flex items-center gap-0.5 cursor-pointer"
               >
-                <option value="ON_TIME">정시 출석</option>
-                <option value="LATE">지각</option>
-                <option value="ABSENT">결석</option>
-                <option value="MAKEUP">보강 참석</option>
-              </select>
+                {checkedOptions.includeAttendance ? <CheckSquare className="w-3 h-3 text-indigo-600" /> : <Square className="w-3 h-3 text-slate-300" />}
+                <span>포함</span>
+              </button>
             </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>수업 집중력</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggleOption('includeAttitude')}
-                  className="text-[10px] text-indigo-600 font-semibold flex items-center gap-0.5 cursor-pointer"
-                >
-                  {checkedOptions.includeAttitude ? <CheckSquare className="w-3 h-3 text-indigo-600" /> : <Square className="w-3 h-3 text-slate-300" />}
-                  <span>포함</span>
-                </button>
-              </div>
-              <select
-                value={data.concentrationGrade}
-                onChange={(e) => setData({ ...data, concentrationGrade: e.target.value as any })}
-                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="EXCELLENT">매우 우수</option>
-                <option value="GOOD">양호</option>
-                <option value="NORMAL">보통</option>
-                <option value="NEEDS_CARE">주의 필요</option>
-              </select>
-            </div>
+            <select
+              value={data.attendance}
+              onChange={(e) => setData({ ...data, attendance: e.target.value as any })}
+              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="ON_TIME">정시 출석</option>
+              <option value="LATE">지각</option>
+              <option value="ABSENT">결석</option>
+              <option value="MAKEUP">보강 참석</option>
+            </select>
           </div>
           {data.attendance === 'LATE' && (
             <div className="flex items-center gap-2 pt-1">

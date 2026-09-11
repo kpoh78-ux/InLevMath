@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       lateMinutes, // 지각 정도(분)
       sendNotification: Boolean(sendNotification),
       memo,
+      teacherId: user.id,
     });
 
     return NextResponse.json({ success: true, log: updated });

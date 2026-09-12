@@ -227,7 +227,7 @@ export default function DistributePage() {
   const wsLabel = (w: WS) => stepDisplayLabel(w.step, w.examSubType)
 
   return (
-    <div className="flex gap-0 -mt-2 -mx-6 -mb-6" style={{ minHeight: 'calc(100vh - 10rem)' }}>
+    <div className="flex gap-0 -mt-2 -mx-6 -mb-6 min-w-0" style={{ minHeight: 'calc(100vh - 10rem)' }}>
 
       {/* 왼쪽: 카테고리 + 스텝 */}
       <div className="w-52 border-r border-gray-200 bg-white shrink-0 flex flex-col">
@@ -272,8 +272,8 @@ export default function DistributePage() {
       </div>
 
       {/* 가운데: 학습지 목록 */}
-      <div className="flex-1 bg-gray-50 flex flex-col">
-        <div className="px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-3">
+      <div className="flex-1 min-w-0 bg-gray-50 flex flex-col">
+        <div className="px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-3 overflow-x-auto min-w-0">
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap ${STEP_STYLE[activeStep]?.bg ?? 'bg-gray-100'} ${STEP_STYLE[activeStep]?.text ?? 'text-gray-600'}`}>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STEP_STYLE[activeStep]?.dot ?? 'bg-gray-400'}`} />
             {activeCategory} · {activeStep}
@@ -371,7 +371,7 @@ export default function DistributePage() {
       </div>
 
       {/* 오른쪽: 학생 선택 */}
-      <div className="w-56 bg-white border-l border-gray-200 flex flex-col shrink-0">
+      <div className="w-72 xl:w-80 bg-white border-l border-gray-200 flex flex-col shrink-0">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-700">배포 대상</p>
@@ -450,7 +450,7 @@ export default function DistributePage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
                         </svg>}
                       </div>
-                      <span className={`text-xs flex-1 text-left ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-600'}`}>{s.name}</span>
+                      <span className={`text-sm flex-1 text-left whitespace-nowrap ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-700 font-medium'}`}>{s.name}</span>
                     </button>
                   )
                 })}

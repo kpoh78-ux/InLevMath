@@ -701,11 +701,11 @@ function StudentWorksheetView({ studentId }: { studentId: string }) {
                           {img ? (
                             <AnswerThumb src={img} onZoom={setZoomSrc} />
                           ) : isImageAnswer(answer) ? (
-                            <span className="text-xs text-gray-300 flex-1 text-left">이미지 정답</span>
+                            <span className="text-xs text-gray-400 flex-1 text-left">이미지 정답</span>
                           ) : answer ? (
-                            <span className="text-xs text-gray-400 truncate flex-1 text-left">정답: {answer}</span>
+                            <span className="text-sm font-semibold text-black truncate flex-1 text-left">정답: {answer}</span>
                           ) : (
-                            <span className="text-xs text-gray-300 flex-1 text-left">정답 미등록</span>
+                            <span className="text-xs text-gray-400 flex-1 text-left">정답 미등록</span>
                           )}
                           {isPending && (
                             <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">

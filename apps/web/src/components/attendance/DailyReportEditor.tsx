@@ -25,11 +25,11 @@ interface Props {
 
 const ITEM_LABEL: Record<string, string> = {
   includeAttendance: '출결·지각',
-  includeHomework: '숙제',
-  includeWorksheet: '오답 클리닉',
+  includeHomework: '숙제 채점',
+  includeWorksheet: '학습지·오답클리닉',
   includeUnitExam: '단원평가',
   includeGoalRate: '목표 완성률',
-  includeComment: '코멘트',
+  includeComment: '선생님 코멘트',
 };
 
 const ORDER = Object.keys(ITEM_LABEL);

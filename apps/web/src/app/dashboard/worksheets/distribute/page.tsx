@@ -230,7 +230,7 @@ export default function DistributePage() {
     <div className="flex gap-0 -mt-2 -mx-6 -mb-6 min-w-0" style={{ minHeight: 'calc(100vh - 10rem)' }}>
 
       {/* 왼쪽: 카테고리 + 스텝 */}
-      <div className="w-52 border-r border-gray-200 bg-white shrink-0 flex flex-col">
+      <div className="w-44 border-r border-gray-200 bg-white shrink-0 flex flex-col">
         <div className="flex border-b border-gray-200">
           {(['단원별', '내신대비'] as WorksheetCategory[]).map(cat => (
             <button key={cat} onClick={() => {
@@ -238,13 +238,13 @@ export default function DistributePage() {
               setActiveStep(cat === '단원별' ? '기초' : '최다빈출')
               setSelectedWS([])
             }}
-              className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${activeCategory === cat ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+              className={`flex-1 py-2 text-xs font-semibold transition-colors ${activeCategory === cat ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
               {cat}
             </button>
           ))}
         </div>
-        <nav className="flex-1 py-2">
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+        <nav className="flex-1 py-1.5">
+          <p className="px-3 pt-1.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
             {activeCategory === '단원별' ? '단원별 스텝' : '내신대비 스텝'}
           </p>
           {steps.map((step, idx) => {
@@ -252,15 +252,15 @@ export default function DistributePage() {
             const count = stepCounts[step] ?? 0
             return (
               <button key={step} onClick={() => { setActiveStep(step); setSelectedWS([]) }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${activeStep === step ? `${style.bg} ${style.text} font-semibold` : 'text-gray-600 hover:bg-gray-50'}`}>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${activeStep === step ? `${style.dot} text-white` : 'bg-gray-200 text-gray-500'}`}>{idx + 1}</span>
-                <span className="flex-1 text-left">{step}</span>
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${activeStep === step ? `${style.bg} ${style.text} font-semibold` : 'text-gray-600 hover:bg-gray-50'}`}>
+                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${activeStep === step ? `${style.dot} text-white` : 'bg-gray-200 text-gray-500'}`}>{idx + 1}</span>
+                <span className="flex-1 text-left truncate">{step}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeStep === step ? 'bg-white/60' : 'bg-gray-100 text-gray-400'}`}>{count}</span>
               </button>
             )
           })}
-          <div className="mx-3 mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-[10px] font-semibold text-gray-500 mb-2">클리어 기준</p>
+          <div className="mx-2.5 mt-3 p-2.5 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-[10px] font-semibold text-gray-500 mb-1.5">클리어 기준</p>
             {steps.map(step => (
               <div key={step} className="flex items-center gap-1">
                 <span className={`text-[10px] font-medium ${STEP_STYLE[step]?.text ?? 'text-gray-500'}`}>{step}</span>
@@ -273,27 +273,24 @@ export default function DistributePage() {
 
       {/* 가운데: 학습지 목록 */}
       <div className="flex-1 min-w-0 bg-gray-50 flex flex-col">
-        <div className="px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-3 overflow-x-auto min-w-0">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 whitespace-nowrap ${STEP_STYLE[activeStep]?.bg ?? 'bg-gray-100'} ${STEP_STYLE[activeStep]?.text ?? 'text-gray-600'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STEP_STYLE[activeStep]?.dot ?? 'bg-gray-400'}`} />
-            {activeCategory} · {activeStep}
+        <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {wsUnitGroups.length > 0 && (
+              <button onClick={toggleAllUnits}
+                className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                {allUnitsExpanded ? '전체 닫기' : '전체 열기'}
+              </button>
+            )}
+            {selectedWS.length > 0 && (
+              <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">
+                {selectedWS.length}개 선택
+              </span>
+            )}
           </div>
-          {threshold && <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">클리어 기준: {threshold}%</span>}
-          {selectedWS.length > 0 && (
-            <span className="text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">
-              {selectedWS.length}개 선택
-            </span>
-          )}
-          {wsUnitGroups.length > 0 && (
-            <button onClick={toggleAllUnits}
-              className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors whitespace-nowrap">
-              {allUnitsExpanded ? '전체 닫기' : '전체 열기'}
-            </button>
-          )}
-          <div className="ml-auto flex gap-1.5">
+          <div className="flex items-center gap-1 shrink-0">
             {['', ...WS_GRADES].map(g => (
               <button key={g} onClick={() => setGradeFilter(g)}
-                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${gradeFilter === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-500 hover:border-indigo-300'}`}>
+                className={`px-2 py-1 text-xs rounded-lg border transition-colors ${gradeFilter === g ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-500 hover:border-indigo-300'}`}>
                 {g || '전체'}
               </button>
             ))}
@@ -318,10 +315,10 @@ export default function DistributePage() {
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-gray-600">{group.label}</span>
-                    <span className="text-[11px] text-gray-400">/{group.list.length}</span>
+                    <span className="text-xs text-gray-400">/{group.list.length}</span>
                   </div>
                   <svg
-                    className={`w-3 h-3 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                    className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -329,24 +326,24 @@ export default function DistributePage() {
                 </button>
 
                 {isExpanded && (
-                  <div className="max-h-[50vh] overflow-y-auto border-t border-gray-100">
+                  <div className="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto border-t border-gray-100">
                     {group.list.map(ws => {
                       const isSelected = selectedWS.includes(ws.id)
                       const alreadyDist = distributedIds.has(ws.id)
                       const style = STEP_STYLE[ws.step] ?? STEP_STYLE['기초']
                       return (
                         <button key={ws.id} onClick={() => toggleWS(ws.id)}
-                          className={`w-full text-left px-4 py-2 border-b border-gray-50 last:border-b-0 transition-colors flex items-center gap-2.5 ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                          className={`w-full text-left px-4 py-2.5 border-b border-gray-50 last:border-b-0 transition-colors flex items-center gap-3 ${isSelected ? 'bg-indigo-50/80' : 'hover:bg-gray-50'}`}>
                           {/* 여러 개를 고를 수 있으므로 네모 체크박스로 표시한다 */}
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
                             {isSelected && (
                               <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                               </svg>
                             )}
                           </div>
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
-                          <span className="text-sm font-semibold text-gray-800 truncate flex-1">{ws.title}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${style.bg} ${style.text}`}>{wsLabel(ws)}</span>
+                          <span className={`text-sm flex-1 truncate ${isSelected ? 'font-bold text-indigo-900' : 'font-medium text-gray-800'}`}>{ws.title}</span>
                           {alreadyDist && (
                             <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">배포완료</span>
                           )}
@@ -371,8 +368,8 @@ export default function DistributePage() {
       </div>
 
       {/* 오른쪽: 학생 선택 */}
-      <div className="w-72 xl:w-80 bg-white border-l border-gray-200 flex flex-col shrink-0">
-        <div className="px-4 py-3">
+      <div className="w-44 bg-white border-l border-gray-200 flex flex-col shrink-0">
+        <div className="px-3 py-2.5">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-700">배포 대상</p>
             <button onClick={selectAll} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">
@@ -382,41 +379,41 @@ export default function DistributePage() {
           <p className="text-[11px] text-gray-400 mt-0.5">등록 학생 {allStudents.length}명</p>
         </div>
 
-        <div className="px-4 pb-2 flex items-center justify-between">
+        <div className="px-3 pb-2 flex items-center justify-between">
           <button onClick={toggleAllGrades}
-            className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors">
+            className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2 py-0.5 hover:bg-gray-50 transition-colors">
             {allGradesExpanded ? '전체 닫기' : '전체 열기'}
           </button>
         </div>
 
         {/* 선택한 학습지 요약 + 배포 버튼 — 학생 목록을 스크롤해도 항상 보이도록 상단 고정 */}
         {selectedWSData.length > 0 && (
-          <div className="mx-3 mb-2 p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs">
+          <div className="mx-2 mb-2 p-2 bg-gray-50 rounded-xl border border-gray-200 text-xs">
             {/* 여러 장을 골랐을 때도 무엇을 보내는지 한눈에 보이도록 목록으로 둔다 */}
-            <div className="max-h-24 overflow-y-auto space-y-0.5">
+            <div className="max-h-20 overflow-y-auto space-y-0.5">
               {selectedWSData.map(w => (
-                <p key={w.id} className="font-semibold text-gray-700 truncate">{w.title}</p>
+                <p key={w.id} className="font-semibold text-gray-700 truncate text-[11px]" title={w.title}>{w.title}</p>
               ))}
             </div>
-            <p className="text-gray-400 mt-1 pt-1 border-t border-gray-200">
+            <p className="text-gray-400 mt-1 pt-1 border-t border-gray-200 text-[10px]">
               학습지 {selectedWSData.length}장 · 총 {totalProblems}문제
               {threshold !== null && ` · 클리어 ${threshold}%`}
             </p>
           </div>
         )}
 
-        <div className="px-3 pb-3 border-b border-gray-100">
+        <div className="px-2.5 pb-2.5 border-b border-gray-100">
           <button onClick={handleDistribute}
             disabled={selectedWS.length === 0 || selectedStudents.length === 0 || distributing}
-            className="w-full bg-indigo-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            className="w-full bg-indigo-600 text-white text-xs font-bold py-2 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             {distributing ? '배포 중...'
-              : selectedWS.length === 0 ? '학습지를 선택하세요'
-              : selectedStudents.length === 0 ? '학생을 선택하세요'
-              : `학습지 ${selectedWS.length}장 → ${selectedStudents.length}명 배포`}
+              : selectedWS.length === 0 ? '학습지 선택'
+              : selectedStudents.length === 0 ? '학생 선택'
+              : `${selectedWS.length}장 → ${selectedStudents.length}명`}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto py-1">
           {allStudents.length === 0 ? (
             <p className="text-[11px] text-gray-300 text-center py-6">학생을 불러오는 중...</p>
           ) : sortedStudentGrades.map(grade => {
@@ -426,7 +423,7 @@ export default function DistributePage() {
               <div key={grade}>
                 <button
                   onClick={() => toggleGrade(grade)}
-                  className="w-full flex items-center justify-between px-4 py-1.5 hover:bg-gray-50 transition-colors group"
+                  className="w-full flex items-center justify-between px-3 py-1 hover:bg-gray-50 transition-colors group"
                 >
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] font-bold text-gray-500">{grade}</span>
@@ -444,13 +441,13 @@ export default function DistributePage() {
                   const checked = selectedStudents.includes(s.id)
                   return (
                     <button key={s.id} onClick={() => toggleStudent(s.id)}
-                      className={`w-full flex items-center gap-2.5 px-4 py-2 transition-colors ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
                         {checked && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
                         </svg>}
                       </div>
-                      <span className={`text-sm flex-1 text-left whitespace-nowrap ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-700 font-medium'}`}>{s.name}</span>
+                      <span className={`text-xs flex-1 text-left truncate ${checked ? 'text-indigo-700 font-semibold' : 'text-gray-700'}`}>{s.name}</span>
                     </button>
                   )
                 })}

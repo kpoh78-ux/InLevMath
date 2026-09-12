@@ -347,18 +347,18 @@ export const AttendanceSidebarItem: React.FC<Props> = ({
     <>
       <div
         onClick={onSelect}
-        className={`flex items-center justify-between px-3 py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer rounded-lg mx-1 ${
+        className={`flex items-center justify-between px-2 py-1.5 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer rounded-lg mx-0.5 ${
           isActive ? 'bg-indigo-50/80 font-bold text-indigo-950' : 'text-slate-800'
         }`}
       >
-        <span className="text-sm font-medium truncate flex-1 pr-2">{student.name}</span>
+        <span className="text-xs font-medium truncate flex-1 pr-1">{student.name}</span>
 
-        {/* ── 버튼 크기 고정(50x26): 등원 시 밝은 파란색, 하원 시 원래 색 복귀 ── */}
+        {/* ── 버튼 크기 고정(46x24): 등원 시 밝은 파란색, 하원 시 원래 색 복귀 ── */}
         <button
           type="button"
           onClick={handleOpenModal}
           title={isAttending ? '하원 시간 설정' : (completedRounds.length > 0 ? `${completedRounds.length}회차 완료 • 다음 등원 설정` : '등원 시간 설정')}
-          className={`w-[50px] h-[26px] flex items-center justify-center rounded-full text-xs font-semibold border transition-all active:scale-95 shrink-0 ${
+          className={`w-[46px] h-[24px] flex items-center justify-center rounded-full text-[11px] font-semibold border transition-all active:scale-95 shrink-0 ${
             isAttending
               ? 'bg-white border-blue-400 text-blue-500 hover:border-blue-500 hover:text-blue-600'
               : 'bg-white border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700'

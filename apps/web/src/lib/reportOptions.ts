@@ -28,8 +28,8 @@ export type ReportItems = Record<ReportItemKey, boolean>
 /** 화면에 그대로 쓰는 이름과 설명 */
 export const REPORT_ITEM_META: Record<ReportItemKey, { label: string; hint: string }> = {
   includeAttendance:   { label: '출결·지각',        hint: '등·하원 시각과 지각 여부. 수업 시작 시각과 맞대어 자동 판정' },
-  includeHomework:     { label: '숙제',             hint: '완성도(얼마나 풀었나)와 정답률(푼 것 중 맞은 비율)' },
-  includeWorksheet:    { label: '오답 클리닉',      hint: '최다오답·오답유형·취약유형 학습지' },
+  includeHomework:     { label: '숙제 채점',        hint: '완성도(얼마나 풀었나)와 정답률(푼 것 중 맞은 비율)' },
+  includeWorksheet:    { label: '학습지·오답클리닉', hint: '당일 원내 풀이 학습지 및 오답 클리닉 채점 결과' },
   includeUnitExam:     { label: '단원평가·모의고사', hint: '단원평가·모의고사·기출문제 학습지' },
   includeGoalRate:     { label: '목표 완성률',      hint: '그날 낸 문항 ÷ 그날 배정된 문항' },
   includeComment:      { label: '선생님 코멘트',    hint: '학부모에게 남기는 자유 문장' },

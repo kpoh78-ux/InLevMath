@@ -358,6 +358,8 @@ enum MissionType {
 enum ResultSource {
   manual
   mathflat
+  textbook
+  worksheet
 }
 
 // ── 보상 아이템 (선생님이 생성) ────────────────────────────────────────────────

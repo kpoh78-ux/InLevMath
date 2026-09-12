@@ -418,14 +418,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         {showAttendanceSidebar && (
           <aside
             className={`
-              w-56 lg:w-48 bg-white border-r border-gray-200 shrink-0 flex flex-col
+              w-44 bg-white border-r border-gray-200 shrink-0 flex flex-col
               h-[calc(100vh-3.5rem)] top-14
               fixed left-0 z-40 shadow-xl transition-transform duration-200
               lg:sticky lg:z-auto lg:shadow-none lg:translate-x-0
               ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
             `}
           >
-            <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between gap-2">
+            <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between gap-1">
               <div>
                 <p className="text-xs font-bold text-gray-800">등록 학생</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">총 {total}명 (등원 {attendedTotal}명)</p>
@@ -436,7 +436,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                 </span>
                 <button
                   onClick={() => setSidebarOpen(false)}
-                  className="lg:hidden text-gray-400 hover:text-gray-700 text-xl leading-none px-1.5"
+                  className="lg:hidden text-gray-400 hover:text-gray-700 text-xl leading-none px-1"
                   aria-label="학생 목록 닫기"
                 >
                   &times;
@@ -444,14 +444,14 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
+            <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center justify-between gap-1">
               <button
                 onClick={toggleAllGrades}
-                className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors"
+                className="text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2 py-0.5 hover:bg-gray-50 transition-colors"
               >
                 {allExpanded ? '전체 닫기' : '전체 열기'}
               </button>
-              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 cursor-pointer select-none">
+              <label className="flex items-center gap-1 text-[11px] font-semibold text-gray-600 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={onlyAttended}
@@ -476,7 +476,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                   <div key={grade}>
                     <button
                       onClick={() => toggleGrade(grade)}
-                      className="w-full flex items-center justify-between px-3 py-1.5
+                      className="w-full flex items-center justify-between px-2.5 py-1
                         hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center gap-1">

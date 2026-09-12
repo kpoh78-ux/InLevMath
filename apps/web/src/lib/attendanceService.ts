@@ -482,18 +482,25 @@ export async function confirmCheckOut(
 
   const teacherComment = todayLog?.memo?.trim() || '';
 
+  // 당일 일일 학습결과 요약 (출결·지각, 숙제, 교재, 학습지)
+  const { buildDailyStudentReport, formatCheckOutLearningSummary } = await import('@/lib/dailyReportAggregator');
+  const report = await buildDailyStudentReport(student.id, todayStr, { comment: teacherComment });
+  const learningSummary = report ? formatCheckOutLearningSummary(report) : '';
+
   // 하원 카카오 알림톡 발송 — 미연동 상태면 success: false가 돌아온다
   const alimtalkResult = await sendKakaoAlimtalk({
     templateCode: 'INLEV_ATTEND_OUT',
     recipientPhone: targetParentPhone,
     message:
       `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${nowTimeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
-      (classLine ? `\n\n오늘 수업\n${classLine}` : '') +
-      (teacherComment ? `\n\n선생님 코멘트:\n${teacherComment}` : ''),
+      (classLine ? `\n\n[오늘 수업]\n${classLine}` : '') +
+      (learningSummary ? `\n\n[일일 학습 결과]\n${learningSummary}` : '') +
+      (teacherComment ? `\n\n[선생님 코멘트]\n${teacherComment}` : ''),
     variables: {
       studentName: student.user.name,
       checkOutTime: nowTimeStr,
       classSummary: classLine,
+      learningSummary,
       teacherNames: dayPlan.teacherNames.join(', '),
       academyName: 'InLevMath 학원',
     },
@@ -670,9 +677,18 @@ export async function toggleAttendance(params: {
     const parentPhone = student.parentPhone || student.user.phone;
     const templateCode = type === 'CHECK_OUT' ? 'INLEV_ATTEND_OUT' : 'INLEV_ATTEND_IN';
 
-    // 하원 안내에는 그날 수업 전체를 붙인다 — 선생님이 여럿이어도 하루는 하나다
+    // 하원 안내에는 그날 수업 전체와 일일 학습 결과를 붙인다 — 선생님이 여럿이어도 하루는 하나다
     const dayPlan = type === 'CHECK_OUT' ? await getStudentDayClasses(studentId, targetDate) : null;
     const classLine = dayPlan ? describeClasses(dayPlan) : '';
+
+    let learningSummary = '';
+    if (type === 'CHECK_OUT') {
+      const { buildDailyStudentReport, formatCheckOutLearningSummary } = await import('@/lib/dailyReportAggregator');
+      const report = await buildDailyStudentReport(studentId, targetDate, { comment: memo?.trim() || null });
+      if (report) {
+        learningSummary = formatCheckOutLearningSummary(report);
+      }
+    }
 
     const notifyResult = await sendKakaoAlimtalk({
       templateCode,
@@ -680,14 +696,16 @@ export async function toggleAttendance(params: {
       message:
         type === 'CHECK_OUT'
           ? `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 모든 수업 및 학습을 마치고 안전하게 하원(퇴원)하였습니다.` +
-            (classLine ? `\n\n오늘 수업\n${classLine}` : '') +
-            (memo?.trim() ? `\n\n선생님 코멘트:\n${memo.trim()}` : '')
+            (classLine ? `\n\n[오늘 수업]\n${classLine}` : '') +
+            (learningSummary ? `\n\n[일일 학습 결과]\n${learningSummary}` : '') +
+            (memo?.trim() ? `\n\n[선생님 코멘트]\n${memo.trim()}` : '')
           : `[InLevMath 출결안내]\n${student.user.name} 학생이 오늘 ${timeStr}에 안전하게 등원(출석)하였습니다.` +
             (memo?.trim() ? `\n\n선생님 코멘트:\n${memo.trim()}` : ''),
       variables: {
         studentName: student.user.name,
         time: timeStr,
         classSummary: classLine,
+        learningSummary,
         teacherNames: dayPlan ? dayPlan.teacherNames.join(', ') : '',
         academyName: 'InLevMath 학원',
       },
